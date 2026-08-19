@@ -124,6 +124,9 @@
   },
   "created_at": "2026-08-18T12:35:28+00:00",
   "dependencies": [],
+  "git": {
+    "committed_sha": "d5e868de165ff4cd31459e13b4bb12535e0876a1"
+  },
   "history": [
     {
       "actor": "Codex",
@@ -388,6 +391,13 @@
       "from": "IN_PROGRESS",
       "reason": "R009 最小收口修正后的五项本地检查均由受控 runner 实际执行并通过，session、文档与 workflow 无阻断，冻结工作区摘要 workspace:sha256:94c00b1e402c8c25a2b8f1a8980942daf0ddf8bd3b7994d19d77750a44e4cc5e",
       "to": "LOCAL_VERIFIED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T07:11:47+00:00",
+      "from": "LOCAL_VERIFIED",
+      "reason": "R009 最小收口内容提交已由受控入口创建并非强制推送，记录精确内容 SHA d5e868de165ff4cd31459e13b4bb12535e0876a1，等待受保护控制提交和真实三平台 CI",
+      "to": "COMMITTED"
     }
   ],
   "open_questions": [
@@ -3863,10 +3873,10 @@
     }
   ],
   "scope_version": 4,
-  "status": "LOCAL_VERIFIED",
+  "status": "COMMITTED",
   "summary": "只初始化 G0 治理控制层、记录和 CI 定义；本范围同时将后续所有正式审批从 OpenSSH 签名改为用户对话确认，补齐 LOCAL_VERIFIED 后受控返工入口并修正文档迁移状态；不创建应用脚手架、依赖文件或业务代码。",
   "task_id": "GOV-0001",
-  "updated_at": "2026-08-19T07:10:01+00:00",
+  "updated_at": "2026-08-19T07:11:47+00:00",
   "validation": {
     "required": [
       {
