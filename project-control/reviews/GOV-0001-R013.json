@@ -1,0 +1,23 @@
+{
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "conversation:2026-08-19:run6-executable-mode-rework",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "同意",
+  "decided_at": "2026-08-19T10:04:31+00:00",
+  "decision": "approved",
+  "expires_at": "2026-08-20T12:00:00+00:00",
+  "from_status": "LOCAL_VERIFIED",
+  "kind": "rework",
+  "project_id": "material",
+  "reason": "批准仅修复 Run 32233154643 暴露的跨平台可执行位摘要不一致：已跟踪文件改用 Git 索引模式并增加回归测试，不修改 workflow、业务、依赖或脚手架",
+  "recorded_by": "Codex",
+  "review_id": "GOV-0001-R013",
+  "schema_version": 3,
+  "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+  "scope_version": 4,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "subject": "workspace:sha256:1fffe657571136e793a23b8a54136710b0c18b3b587b021bdbd025522f899b76",
+  "supersedes": null,
+  "task_id": "GOV-0001"
+}

@@ -1,0 +1,23 @@
+{
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "conversation:2026-08-19:run6-executable-mode-rework",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "同意",
+  "decided_at": "2026-08-19T10:10:12+00:00",
+  "decision": "approved",
+  "expires_at": "2026-08-20T12:00:00+00:00",
+  "kind": "irreversible_operation",
+  "operation_id": "GOV-0001-CI-RUN-32233154643-PENDING-CONTENT-RECOVERY",
+  "project_id": "material",
+  "reason": "R015 取代因不变量集合格式无效而未被消费的 R014；授权内容仍仅为 Run 32233154643 的最小 pending-content 恢复，不豁免验证、不强推、不修改 workflow/业务/依赖",
+  "recorded_by": "Codex",
+  "review_id": "GOV-0001-R015",
+  "schema_version": 3,
+  "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+  "scope_version": 4,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "supersedes": "GOV-0001-R014",
+  "target_digest": "sha256:2f922bf6f97c847139fa21013e1016cc4eb21b5797a0176835b3a3c43b1583e3",
+  "task_id": "GOV-0001"
+}

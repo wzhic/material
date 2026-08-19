@@ -1,0 +1,23 @@
+{
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "conversation:2026-08-19:run6-executable-mode-rework",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "同意",
+  "decided_at": "2026-08-19T10:07:56+00:00",
+  "decision": "approved",
+  "expires_at": "2026-08-20T12:00:00+00:00",
+  "kind": "irreversible_operation",
+  "operation_id": "GOV-0001-CI-RUN-32233154643-PENDING-CONTENT-RECOVERY",
+  "project_id": "material",
+  "reason": "批准 R014 仅用于恢复 Run 32233154643 失败后的 pending-content 治理链：保留历史、禁止强推、重新执行完整本地与三平台 CI；不构成验证豁免",
+  "recorded_by": "Codex",
+  "review_id": "GOV-0001-R014",
+  "schema_version": 3,
+  "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+  "scope_version": 4,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "supersedes": null,
+  "target_digest": "sha256:9dfe8b88af98f9704d8ff9f27f291aec58c58e730fcafd07dcef90700c92d98f",
+  "task_id": "GOV-0001"
+}

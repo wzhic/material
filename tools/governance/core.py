@@ -978,19 +978,77 @@ def _subject_path_is_excluded(relative: str) -> bool:
     return filename.endswith((".pyc", ".pyo")) or filename in (".DS_Store", "coverage.xml")
 
 
+def _tracked_git_modes(root: Path) -> Dict[str, str]:
+    """Return stage-zero Git index modes keyed by repository-relative path.
+
+    Git stores the executable distinction independently from the host checkout.
+    A repository must therefore use the index as the portable source of truth;
+    plain fixture directories keep the filesystem fallback used for untracked
+    content.
+    """
+
+    git_marker = root / ".git"
+    if not git_marker.exists():
+        return {}
+    if git_marker.is_dir():
+        index_path = git_marker / "index"
+    elif git_marker.is_file():
+        try:
+            marker_text = git_marker.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise GovernanceError("cannot inspect Git worktree pointer: %s" % exc) from exc
+        prefix = "gitdir: "
+        if not marker_text.startswith(prefix):
+            raise GovernanceError("cannot parse Git worktree pointer")
+        git_directory = Path(marker_text[len(prefix):])
+        if not git_directory.is_absolute():
+            git_directory = (root / git_directory).resolve()
+        index_path = git_directory / "index"
+    else:
+        raise GovernanceError("unsupported .git repository marker")
+    if not index_path.is_file():
+        # Hook tests use a synthetic .git marker, while a newly initialized
+        # repository has no index until its first add.  Both contain no tracked
+        # executable classes and correctly use the untracked fallback.
+        return {}
+    output, error = run_git(root, ("ls-files", "--stage", "-z"))
+    if error:
+        raise GovernanceError("cannot inspect Git index modes: %s" % error)
+    modes: Dict[str, str] = {}
+    for record in (output or "").split("\0"):
+        if not record:
+            continue
+        try:
+            metadata, relative = record.split("\t", 1)
+        except ValueError as exc:
+            raise GovernanceError("cannot parse Git index mode record") from exc
+        fields = metadata.split()
+        if len(fields) != 3 or not re.fullmatch(r"[0-7]{6}", fields[0]):
+            raise GovernanceError("cannot parse Git index mode metadata")
+        mode, _object_id, stage = fields
+        if stage != "0":
+            raise GovernanceError("cannot calculate subject with unmerged Git index entries")
+        previous = modes.get(relative)
+        if previous is not None and previous != mode:
+            raise GovernanceError("conflicting Git index modes for %s" % relative)
+        modes[relative] = mode
+    return modes
+
+
 def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
     """Hash current governed file contents while excluding mutable control state.
 
-    The path, file kind, executable-bit class and bytes are hashed.  Git tracks
-    the executable distinction, so chmod +x must invalidate prior local
-    evidence even when file bytes do not change.  Task/review/current-task
-    records are excluded so appending the validation result does not invalidate
-    itself.  Git metadata and generated caches are excluded as non-project
-    content.
+    The path, file kind, executable-bit class and bytes are hashed.  Tracked
+    files use Git's 100644/100755 index mode so the same checkout has the same
+    subject on POSIX and Windows; untracked files use host executable bits until
+    they enter the index.  Task/review/current-task records are excluded so
+    appending the validation result does not invalidate itself.  Git metadata
+    and generated caches are excluded as non-project content.
     """
 
     root = root.resolve()
     patterns = task.get("allowed_paths", [])
+    tracked_modes = _tracked_git_modes(root)
     entries: List[Tuple[str, str, int, bytes]] = []
     try:
         for directory, directory_names, file_names in os.walk(str(root), topdown=True, followlinks=False):
@@ -1024,7 +1082,13 @@ def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
                     content = os.readlink(str(candidate)).encode("utf-8")
                 elif stat.S_ISREG(mode):
                     kind = "file"
-                    executable_bits = mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+                    tracked_mode = tracked_modes.get(relative)
+                    if tracked_mode == "100755":
+                        executable_bits = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+                    elif tracked_mode in ("100644", "120000"):
+                        executable_bits = 0
+                    else:
+                        executable_bits = mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
                     content = candidate.read_bytes()
                 else:
                     continue

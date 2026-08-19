@@ -8,12 +8,14 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 GOVERNANCE_DIR = Path(__file__).resolve().parents[1]
 if str(GOVERNANCE_DIR) not in sys.path:
     sys.path.insert(0, str(GOVERNANCE_DIR))
 
+import core  # noqa: E402
 import taskctl  # noqa: E402
 from core import managed_content_subject, read_json, validation_gate_status  # noqa: E402
 from helpers import (  # noqa: E402
@@ -77,6 +79,66 @@ class ValidationEvidenceTests(AuthenticatedReceiptTestCase):
             gate = validation_gate_status(root, stored, "LOCAL_VERIFIED")
             self.assertEqual("unit", gate["missing"][0]["check_id"])
             self.assertIn("subject", gate["missing"][0]["reason"])
+
+    def test_tracked_executable_mode_uses_git_index_not_host_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = initialize_root(root)
+            governed_file = root / "tools" / "governance" / "subject.sh"
+            governed_file.parent.mkdir(parents=True, exist_ok=True)
+            governed_file.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            relative = governed_file.relative_to(root).as_posix()
+            original_lstat = os.lstat
+
+            def lstat_with_permissions(permissions: int):
+                def fake_lstat(path: object) -> os.stat_result:
+                    result = original_lstat(path)
+                    if Path(path) == governed_file:
+                        values = list(result)
+                        values[stat.ST_MODE] = (values[stat.ST_MODE] & ~0o777) | permissions
+                        return os.stat_result(values)
+                    return result
+
+                return fake_lstat
+
+            with mock.patch.object(core, "_tracked_git_modes", return_value={relative: "100755"}):
+                with mock.patch.object(core.os, "lstat", side_effect=lstat_with_permissions(0o644)):
+                    non_posix_checkout = managed_content_subject(root, task)
+                with mock.patch.object(core.os, "lstat", side_effect=lstat_with_permissions(0o755)):
+                    posix_checkout = managed_content_subject(root, task)
+            self.assertEqual(non_posix_checkout, posix_checkout)
+
+    def test_git_index_executable_class_changes_subject(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = initialize_root(root)
+            governed_file = root / "tools" / "governance" / "subject.sh"
+            governed_file.parent.mkdir(parents=True, exist_ok=True)
+            governed_file.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            relative = governed_file.relative_to(root).as_posix()
+            with mock.patch.object(core, "_tracked_git_modes", return_value={relative: "100644"}):
+                regular_subject = managed_content_subject(root, task)
+            with mock.patch.object(core, "_tracked_git_modes", return_value={relative: "100755"}):
+                executable_subject = managed_content_subject(root, task)
+            self.assertNotEqual(regular_subject, executable_subject)
+
+    def test_tracked_git_modes_parse_stage_zero_records(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / ".git").mkdir()
+            (root / ".git" / "index").write_bytes(b"test-index-marker")
+            output = (
+                "100755 0123456789012345678901234567890123456789 0\ttools/governance/a.sh\0"
+                "100644 1234567890123456789012345678901234567890 0\tdocs/a name.md\0"
+            )
+            with mock.patch.object(core, "run_git", return_value=(output, None)):
+                self.assertEqual(
+                    {
+                        "docs/a name.md": "100644",
+                        "tools/governance/a.sh": "100755",
+                    },
+                    core._tracked_git_modes(root),
+                )
 
     def test_nonpassing_ci_result_requires_matching_commit_and_environment(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

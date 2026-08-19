@@ -1,0 +1,37 @@
+{
+  "allowed_paths": [
+    "docs/governance/验证与豁免-GOV-0003-v1.0.md",
+    "docs/requirements/治理基线-REQ-0001/治理基线-REQ-0001-v1.0.md",
+    "docs/troubleshooting/治理门禁问题排查-TRB-0001-v1.0.md",
+    "project-control/proposals/GOV-0001-R014-pending-content-recovery.json",
+    "project-control/proposals/GOV-0001-R015-pending-content-recovery.json",
+    "project-control/reviews/GOV-0001-R013.json",
+    "project-control/reviews/GOV-0001-R014.json",
+    "project-control/reviews/GOV-0001-R015.json",
+    "project-control/tasks/GOV-0001.json",
+    "tools/governance/core.py",
+    "tools/governance/tests/test_evidence.py"
+  ],
+  "commit_message": "fix(governance): normalize executable mode by Git index",
+  "expected_history_count": 6,
+  "failed_content_sha": "0b27ffaa178dd3ffc1ff0d53b899099126839e07",
+  "failed_control_head": "0b27ffaa178dd3ffc1ff0d53b899099126839e07",
+  "failed_run_id": "32233154643",
+  "failure_stage": "content_ci_pending",
+  "from_previous_status": "LOCAL_VERIFIED",
+  "from_status": "BLOCKED",
+  "invariants": [
+    "no_validation_waiver",
+    "no_force_push",
+    "preserve_existing_history",
+    "controlled_local_validation_required",
+    "three_platform_ci_required",
+    "no_business_code_or_dependency_files"
+  ],
+  "operation_id": "GOV-0001-CI-RUN-32233154643-PENDING-CONTENT-RECOVERY",
+  "review_id": "GOV-0001-R015",
+  "rework_review_id": "GOV-0001-R013",
+  "schema_version": 2,
+  "scope_version": 4,
+  "task_id": "GOV-0001"
+}
