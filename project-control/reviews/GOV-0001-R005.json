@@ -1,0 +1,23 @@
+{
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "conversation:2026-08-19:bootstrap-ci-rework",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "确认",
+  "decided_at": "2026-08-19T05:24:15+00:00",
+  "decision": "approved",
+  "expires_at": "2026-08-26T00:00:00+00:00",
+  "from_status": "LOCAL_VERIFIED",
+  "kind": "rework",
+  "project_id": "material",
+  "reason": "批准同范围修复空仓库首次内容提交 A、控制提交 B 与 GitHub CI 的可验证闭环；不得弱化非 G0 任务门禁",
+  "recorded_by": "Codex",
+  "review_id": "GOV-0001-R005",
+  "schema_version": 3,
+  "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+  "scope_version": 4,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "subject": "workspace:sha256:7c7447174d45c4eb1a5bb2e77d63801dd18393e7ba179a9ff8dcbb99a84b06f9",
+  "supersedes": null,
+  "task_id": "GOV-0001"
+}

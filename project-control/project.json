@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "project_id": "material",
+  "name": "广告素材制作项目",
+  "scale": "M",
+  "topology": "multi",
+  "classification_confirmed_at": "2026-08-18T12:35:28+00:00",
+  "classification_basis": [
+    "面向广告素材制作者与广告优化师",
+    "包含公网统一后端和登录鉴权",
+    "个人数据保存在客户端本地 SQLite",
+    "三个发布单元需要独立构建、验证、发布和回退"
+  ],
+  "source_repository": "git@github.com:wzhic/material.git",
+  "maintainers": 1,
+  "coding_agents": [
+    "Codex"
+  ],
+  "release_units": [
+    {
+      "id": "mac",
+      "name": "macOS 客户端",
+      "codebase": "shared-client",
+      "release_and_rollback": "independent"
+    },
+    {
+      "id": "win",
+      "name": "Windows 客户端",
+      "codebase": "shared-client",
+      "release_and_rollback": "independent"
+    },
+    {
+      "id": "backend",
+      "name": "统一后端服务",
+      "codebase": "backend",
+      "release_and_rollback": "independent"
+    }
+  ],
+  "review_policy": {
+    "approvers": [
+      "user"
+    ],
+    "agent_may_approve": false,
+    "skip_requires_user_receipt": true,
+    "scope_change_invalidates_approval": true,
+    "approval_mode": "conversation-v1",
+    "cryptographic_identity_proof": false,
+    "requires_explicit_user_message": true,
+    "migration_receipt_id": "GOV-0001-R003",
+    "migration_payload_sha256": "sha256:80b72baede7e7e81c06e095d9e88ea87209d764a2e8977b7b85b85fc850e8b15"
+  },
+  "branch_policy": {
+    "default_base_branch": "main",
+    "default_pattern": "codex/<requirement-id>-<task-id>-<readable-slug>",
+    "one_feature_per_branch": true,
+    "protected_branches": [
+      "main"
+    ],
+    "bootstrap_main_tasks": [
+      "GOV-0001"
+    ],
+    "bootstrap_reason": "空仓库的 G0 根信任初始化；后续功能不得沿用此例外"
+  },
+  "data_boundary": {
+    "local_personal_data": "SQLite",
+    "backend_stores_account_data": false,
+    "login_and_authentication": true,
+    "credential_storage_requirement": "使用操作系统安全存储，不得明文写入 SQLite"
+  },
+  "distribution": {
+    "app_stores_now": false,
+    "reserve_store_distribution_capability": true,
+    "environments": [
+      "local",
+      "public_internet"
+    ]
+  }
+}

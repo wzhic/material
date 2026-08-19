@@ -1,0 +1,3200 @@
+{
+  "allowed_commands": [
+    "python3 -m unittest discover -s tools/governance/tests -p test_*.py -v",
+    "python3 -m unittest discover -s .codex/tests -p test_*.py -v",
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reviewctl.py verify --json",
+    "python3 tools/governance/reviewctl.py record-conversation GOV-0001",
+    "python3 tools/governance/taskctl.py reopen GOV-0001",
+    "python3 tools/governance/taskctl.py run-validation GOV-0001",
+    "python3 tools/governance/taskctl.py run-required GOV-0001",
+    "python3 tools/governance/taskctl.py sync-github-run GOV-0001",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py docs --json",
+    "python3 tools/governance/reconcile.py workflow --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/reconcile.py precommit --json",
+    "python3 tools/governance/reconcile.py ci --json"
+  ],
+  "allowed_paths": [
+    ".codex/**",
+    ".github/**",
+    ".gitignore",
+    "AGENTS.md",
+    "README.md",
+    "docs/**",
+    "project-control/**",
+    "tools/governance/**"
+  ],
+  "allowed_tools": [
+    "apply_patch",
+    "ApplyPatch",
+    "Bash",
+    "Read",
+    "Glob",
+    "Grep",
+    "view_image",
+    "codex_app__read_thread_terminal"
+  ],
+  "assumptions": [
+    {
+      "id": "ASM-0001",
+      "source": "用户确认",
+      "statement": "产品不会自动发布广告，也不会自动调整广告预算。",
+      "status": "confirmed"
+    },
+    {
+      "id": "ASM-0002",
+      "source": "用户确认",
+      "statement": "后端不保存账号数据；个人数据仅保存在客户端本地 SQLite。",
+      "status": "confirmed"
+    },
+    {
+      "id": "ASM-0003",
+      "source": "用户确认",
+      "statement": "macOS 与 Windows 客户端共享代码且业务功能完全一致，但独立构建、发布和回退。",
+      "status": "confirmed"
+    },
+    {
+      "id": "ASM-0004",
+      "source": "用户确认",
+      "statement": "当前不通过应用商店分发，但架构和发布流程需预留后续接入能力。",
+      "status": "confirmed"
+    },
+    {
+      "id": "ASM-0005",
+      "source": "用户确认 2026-08-19",
+      "statement": "GOV-0001-R003 是最后一份 OpenSSH 签名迁移回执；后续正式审批使用 conversation-v1 对话回执，不再要求签名。",
+      "status": "confirmed"
+    },
+    {
+      "id": "ASM-0006",
+      "source": "用户确认 2026-08-19",
+      "statement": "GitHub 仓库为私有仓库，允许用仓库外只读凭据在线核验 Actions run。",
+      "status": "confirmed"
+    },
+    {
+      "id": "ASM-0007",
+      "source": "用户确认 2026-08-19",
+      "statement": "conversation-v1 回执用于审计绑定，不提供密码学身份或人在场证明；用户了解并接受该边界。",
+      "status": "confirmed"
+    }
+  ],
+  "base_branch": "main",
+  "blockers": [],
+  "branch": "main",
+  "branch_exception": {
+    "applies_only_to_task": "GOV-0001",
+    "kind": "bootstrap-main",
+    "reason": "空仓库尚无首个提交，G0 是唯一根信任初始化任务；后续功能必须使用独立分支。"
+  },
+  "ci_trust": {
+    "api_base": "https://api.github.com",
+    "api_version": "2026-03-10",
+    "ci_events": [
+      "pull_request",
+      "push"
+    ],
+    "post_merge_events": [
+      "push"
+    ],
+    "private": true,
+    "provider": "github_actions_rest_v1",
+    "repository": "wzhic/material",
+    "required_jobs": {
+      "pull_request": [
+        "Governance (ubuntu-latest)",
+        "Governance (macos-latest)",
+        "Governance (windows-latest)"
+      ],
+      "push": [
+        "Governance (ubuntu-latest)",
+        "Governance (macos-latest)",
+        "Governance (windows-latest)"
+      ]
+    },
+    "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "workflow_path": ".github/workflows/governance.yml"
+  },
+  "coordination": {
+    "coordinator_task": "GOV-0001",
+    "mode": "governance-bootstrap",
+    "no_release_artifacts": true,
+    "rationale": "G0 只建立治理控制层，不创建或发布 mac、win、backend 应用产物。"
+  },
+  "created_at": "2026-08-18T12:35:28+00:00",
+  "dependencies": [],
+  "history": [
+    {
+      "actor": "Codex",
+      "at": "2026-08-18T12:00:00+00:00",
+      "from": null,
+      "reason": "形成 G0 有界初始化方向",
+      "to": "DRAFT"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-18T12:05:00+00:00",
+      "from": "DRAFT",
+      "reason": "提交用户确认",
+      "to": "REVIEW_PENDING"
+    },
+    {
+      "actor": "user",
+      "at": "2026-08-18T12:20:00+00:00",
+      "from": "REVIEW_PENDING",
+      "reason": "用户回复确认无误",
+      "to": "APPROVED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-18T12:30:00+00:00",
+      "from": "APPROVED",
+      "reason": "审核范围、路径和依赖核对完成",
+      "to": "READY"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-18T12:35:28+00:00",
+      "from": "READY",
+      "reason": "开始仅实现 G0 治理控制层",
+      "to": "IN_PROGRESS"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T02:03:00+00:00",
+      "from": "IN_PROGRESS",
+      "reason": "等待用户确认仓库外回执签名方案与 GitHub Run 在线核验信任来源；确认前禁止 scope v2 和验证 PASS",
+      "to": "BLOCKED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T02:15:51+00:00",
+      "from": "BLOCKED",
+      "reason": "用户已确认专用 OpenSSH 签名与私有 GitHub Actions 只读核验方案",
+      "to": "IN_PROGRESS"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T02:55:06+00:00",
+      "from": "IN_PROGRESS",
+      "reason": "等待用户提供仓库外专用 OpenSSH 公钥与 SHA256 指纹，并通过 /hooks 审阅项目 Hook；scope v2 生效前禁止验证 PASS、提交和 CI",
+      "to": "BLOCKED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T03:31:38+00:00",
+      "from": "BLOCKED",
+      "reason": "用户已提供并核验专用 OpenSSH 公钥与 SHA256 指纹，且确认 PreToolUse 和 SessionStart 均已信任",
+      "to": "IN_PROGRESS"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T03:32:17+00:00",
+      "event": "scope_revision",
+      "from": "IN_PROGRESS",
+      "from_scope_version": 1,
+      "reason": "将用户确认的 OpenSSH 公钥信任锚、受控验证 argv、私有 GitHub Actions 在线核验与多发布单元协调合同纳入 scope v2",
+      "to": "REVIEW_PENDING",
+      "to_scope_version": 2
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T03:35:18+00:00",
+      "from": "REVIEW_PENDING",
+      "reason": "用户签名回执 GOV-0001-R002 已通过 OpenSSH 验签并精确绑定 scope v2",
+      "to": "APPROVED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T03:35:24+00:00",
+      "from": "APPROVED",
+      "reason": "scope v2 回执、依赖、分支、文档和验证计划核对完成",
+      "to": "READY"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T03:35:31+00:00",
+      "from": "READY",
+      "reason": "开始执行 scope v2 已审核的 G0 本地验证，不扩展到应用脚手架或业务代码",
+      "to": "IN_PROGRESS"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T03:36:12+00:00",
+      "from": "IN_PROGRESS",
+      "reason": "受控 runner 的 5 项本地检查、session 对账和 precommit 复核全部通过，工作区摘要已冻结",
+      "to": "LOCAL_VERIFIED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T03:38:15+00:00",
+      "from": "LOCAL_VERIFIED",
+      "reason": "提交前语义复核发现 README 与治理/需求文档仍声明缺公钥、scope v1 待迁移，和已验签的 scope v2/R002 事实冲突；LOCAL_VERIFIED 冻结后现有工具没有受控返工入口，禁止直接改文档或提交",
+      "to": "BLOCKED"
+    },
+    {
+      "actor": "user",
+      "at": "2026-08-19T03:45:21+00:00",
+      "event": "scope_revision",
+      "from": "BLOCKED",
+      "from_scope_version": 2,
+      "reason": "用户确认最后签一次迁移回执，之后全部使用对话审批",
+      "to": "REVIEW_PENDING",
+      "to_scope_version": 3
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T03:49:00+00:00",
+      "from": "REVIEW_PENDING",
+      "reason": "用户最终签名迁移回执 GOV-0001-R003 已通过验签并精确绑定 scope v3",
+      "to": "APPROVED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T03:49:00+00:00",
+      "from": "APPROVED",
+      "reason": "scope v3 回执、依赖、分支、文档和验证计划核对完成",
+      "to": "READY"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T03:49:00+00:00",
+      "from": "READY",
+      "reason": "开始实现已批准的对话审批迁移、受控返工入口和陈旧文档检查，不扩展到应用代码",
+      "to": "IN_PROGRESS"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T04:10:07+00:00",
+      "event": "scope_revision",
+      "from": "IN_PROGRESS",
+      "from_scope_version": 3,
+      "reason": "在 R003 最终签名迁移授权下，将对话审批命令、受控返工命令、审计边界和已完成迁移状态纳入 review-bound scope",
+      "to": "REVIEW_PENDING",
+      "to_scope_version": 4
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T04:10:49+00:00",
+      "from": "REVIEW_PENDING",
+      "reason": "R004 对话回执已核验并精确绑定 scope v4",
+      "to": "APPROVED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T04:10:49+00:00",
+      "from": "APPROVED",
+      "reason": "scope v4 的依赖、分支、验证计划和审核回执核对完成",
+      "to": "READY"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T04:10:49+00:00",
+      "from": "READY",
+      "reason": "开始在 scope v4 内完成最终回归和受控本地验证，不扩展到应用代码",
+      "to": "IN_PROGRESS"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T04:14:08+00:00",
+      "from": "IN_PROGRESS",
+      "reason": "scope v4 的 5 项本地检查全部由受控 runner 实际执行并通过，session 与 precommit 对账均无阻断，冻结当前工作区摘要",
+      "to": "LOCAL_VERIFIED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T05:19:09+00:00",
+      "from": "LOCAL_VERIFIED",
+      "reason": "LOCAL_VERIFIED 阶段的 PreToolUse 拒绝受审只读 reconcile，且仓库尚无首个提交和 Git 远端，无法完成 G0 提交与 CI 生命周期或启动应用初始化任务",
+      "to": "BLOCKED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T05:24:24+00:00",
+      "event": "same_scope_rework",
+      "from": "BLOCKED",
+      "reason": "R005 已批准同范围修复首次 G0 提交与 CI 闭环；归档旧本地证据并重新验证全部检查",
+      "review_id": "GOV-0001-R005",
+      "to": "IN_PROGRESS"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T05:34:14+00:00",
+      "from": "IN_PROGRESS",
+      "reason": "R005 返工后的五项本地检查均由受控 runner 实际执行并通过，session/static/workflow/precommit 与 diff 核对无阻断，冻结当前工作区摘要",
+      "to": "LOCAL_VERIFIED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T05:54:19+00:00",
+      "event": "same_scope_rework",
+      "from": "LOCAL_VERIFIED",
+      "reason": "R006 已批准补齐严格受控的 GOV-0001 A/B 提交与推送入口；归档当前本地证据，完成后重新运行全部检查",
+      "review_id": "GOV-0001-R006",
+      "to": "IN_PROGRESS"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T06:03:02+00:00",
+      "from": "IN_PROGRESS",
+      "reason": "R006 返工后的五项本地检查由受控 runner 全部通过；治理测试、Hook、session/static/workflow/precommit 与 diff 核对无阻断，冻结受控提交前工作区",
+      "to": "LOCAL_VERIFIED"
+    }
+  ],
+  "open_questions": [
+    {
+      "blocking_for": "application_initialization",
+      "id": "OPEN-0001",
+      "question": "登录与鉴权在后端不保存账号数据的前提下采用什么身份模型？",
+      "status": "open"
+    },
+    {
+      "blocking_for": "relevant_feature_design",
+      "id": "OPEN-0002",
+      "question": "素材丢失、账号被盗和错误素材发布的风险上限如何分级？",
+      "status": "deferred_by_user"
+    },
+    {
+      "blocking_for": "application_initialization",
+      "id": "OPEN-0003",
+      "question": "共享客户端与统一后端分别采用哪套官方脚手架和技术栈？",
+      "status": "open"
+    },
+    {
+      "blocking_for": "historical_migration_complete",
+      "id": "OPEN-0006",
+      "question": "最后一次 OpenSSH 签名迁移是否已经完成？",
+      "resolution": "GOV-0001-R003 已导入并通过验签；它授权 scope v3 起使用 conversation-v1，对后续正式审批不再要求签名。",
+      "status": "confirmed"
+    }
+  ],
+  "release_units": [
+    "mac",
+    "win",
+    "backend"
+  ],
+  "required_docs": [
+    "README.md",
+    "AGENTS.md",
+    "docs/README.md",
+    "docs/project/项目基线-PROJ-0001-v1.0.md",
+    "docs/requirements/治理基线-REQ-0001/治理基线-REQ-0001-v1.0.md",
+    "docs/requirements/需求文档模板-REQ-TEMPLATE-0001-v1.0.md",
+    "docs/development/开发流程-DEV-0001-v1.0.md",
+    "docs/operations/发布与回退-OPS-0001-v1.0.md",
+    "docs/troubleshooting/治理门禁问题排查-TRB-0001-v1.0.md",
+    "docs/decisions/项目形态与发布单元-ADR-0001.md",
+    "docs/governance/治理总则-GOV-0001-v1.0.md",
+    "docs/governance/假设和未决事项-GOV-0002-v1.0.md",
+    "docs/governance/验证与豁免-GOV-0003-v1.0.md",
+    ".github/workflows/governance.yml",
+    ".github/pull_request_template.md"
+  ],
+  "requirement": {
+    "id": "治理基线-REQ-0001",
+    "interaction_kind": "non_ui",
+    "name": "治理控制层初始化",
+    "version": "v1.0"
+  },
+  "review_authority": {
+    "identity": "material-project-owner",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E",
+    "namespace": "material-governance-review",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "scheme": "ssh-keygen-y-v1"
+  },
+  "rework_history": [
+    {
+      "actor": "Codex",
+      "archived_validation_results": [
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:172ff3eebf492131e51dd423cf1ebcc69cfde1f90cf059130087556fbca2dd1c",
+          "check_id": "governance_unit_tests",
+          "declared_argv": [
+            "python3",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tools/governance/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "duration_ms": 9805,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tools/governance/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "exit_code": 1,
+          "finished_at": "2026-08-19T04:12:16+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:6ee49cb62018140f4a0a57e8031c02d6cdccfd111cab3dceedfee2a7db08558f",
+            "managed_content_subject_before": "workspace:sha256:6ee49cb62018140f4a0a57e8031c02d6cdccfd111cab3dceedfee2a7db08558f",
+            "protected_state_digest_after": "protected-state:sha256:f821e4a7c6bb3fcd2130e962d1f575be31bfdc1837ee6155f68241cf7c53978a",
+            "protected_state_digest_before": "protected-state:sha256:f821e4a7c6bb3fcd2130e962d1f575be31bfdc1837ee6155f68241cf7c53978a",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:845fb9cf734d282850e7065674b839c1908cbbc76f7b967d1d0243d7a3a11c66",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T04:12:16+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T04:12:06+00:00",
+          "status": "failed",
+          "stderr": {
+            "byte_count": 32147,
+            "sha256": "98d03747bd388dd315a962beb947dfd9a8bf5338d0620eaaf1961d31fc8bbf69"
+          },
+          "stdout": {
+            "byte_count": 37430,
+            "sha256": "1762b3582e76d2696114cdbbc97f372e6865a45bd4f9e1811843966cc4a6bbe8"
+          },
+          "subject": "workspace:sha256:6ee49cb62018140f4a0a57e8031c02d6cdccfd111cab3dceedfee2a7db08558f",
+          "timed_out": false,
+          "timeout_seconds": 600.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:7719b97ada74195e7b4d5aa7aa09200c6a2ab70d1d4969be668ffc26d7f8a146",
+          "check_id": "hook_contract_tests",
+          "declared_argv": [
+            "python3",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            ".codex/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "duration_ms": 1853,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            ".codex/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T04:12:18+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:6ee49cb62018140f4a0a57e8031c02d6cdccfd111cab3dceedfee2a7db08558f",
+            "managed_content_subject_before": "workspace:sha256:6ee49cb62018140f4a0a57e8031c02d6cdccfd111cab3dceedfee2a7db08558f",
+            "protected_state_digest_after": "protected-state:sha256:f821e4a7c6bb3fcd2130e962d1f575be31bfdc1837ee6155f68241cf7c53978a",
+            "protected_state_digest_before": "protected-state:sha256:f821e4a7c6bb3fcd2130e962d1f575be31bfdc1837ee6155f68241cf7c53978a",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:ea8514c9d8c1331c594b2457bc2850ad02f21640411779acff37e8725dce1727",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T04:12:18+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T04:12:16+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 7491,
+            "sha256": "96f4149bb09bdcee84e11d626247f73b837179319fedb50dca3a23d09285abac"
+          },
+          "stdout": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "subject": "workspace:sha256:6ee49cb62018140f4a0a57e8031c02d6cdccfd111cab3dceedfee2a7db08558f",
+          "timed_out": false,
+          "timeout_seconds": 600.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:eb4cc4a6665b748d5e82a656b81d7fbad1637f061972ced5a6464dc28049812f",
+          "check_id": "reconcile_session",
+          "declared_argv": [
+            "python3",
+            "tools/governance/reconcile.py",
+            "session",
+            "--json"
+          ],
+          "duration_ms": 275,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "tools/governance/reconcile.py",
+            "session",
+            "--json"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T04:12:18+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:6ee49cb62018140f4a0a57e8031c02d6cdccfd111cab3dceedfee2a7db08558f",
+            "managed_content_subject_before": "workspace:sha256:6ee49cb62018140f4a0a57e8031c02d6cdccfd111cab3dceedfee2a7db08558f",
+            "protected_state_digest_after": "protected-state:sha256:f821e4a7c6bb3fcd2130e962d1f575be31bfdc1837ee6155f68241cf7c53978a",
+            "protected_state_digest_before": "protected-state:sha256:f821e4a7c6bb3fcd2130e962d1f575be31bfdc1837ee6155f68241cf7c53978a",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:e25319bdf8c1bbb5866ddc1045421660da4b608972654914d6713e9dec098417",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T04:12:18+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T04:12:18+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stdout": {
+            "byte_count": 19969,
+            "sha256": "76e48c1eca1e582939246361108f92faeb2a6620c18965b66dd3dfb06a8dc6a0"
+          },
+          "subject": "workspace:sha256:6ee49cb62018140f4a0a57e8031c02d6cdccfd111cab3dceedfee2a7db08558f",
+          "timed_out": false,
+          "timeout_seconds": 120.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:e00bcb3ab83778088a7c5e5a6f63792549dcff2cf5b16922fde245973f5b644c",
+          "check_id": "documentation_structure",
+          "declared_argv": [
+            "python3",
+            "tools/governance/reconcile.py",
+            "static",
+            "--json"
+          ],
+          "duration_ms": 250,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "tools/governance/reconcile.py",
+            "static",
+            "--json"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T04:12:18+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:6ee49cb62018140f4a0a57e8031c02d6cdccfd111cab3dceedfee2a7db08558f",
+            "managed_content_subject_before": "workspace:sha256:6ee49cb62018140f4a0a57e8031c02d6cdccfd111cab3dceedfee2a7db08558f",
+            "protected_state_digest_after": "protected-state:sha256:f821e4a7c6bb3fcd2130e962d1f575be31bfdc1837ee6155f68241cf7c53978a",
+            "protected_state_digest_before": "protected-state:sha256:f821e4a7c6bb3fcd2130e962d1f575be31bfdc1837ee6155f68241cf7c53978a",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:fa1a62b36699931ec7d87b101be653fff74aec45419fa9dfe5f1e90857bb5699",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T04:12:18+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T04:12:18+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stdout": {
+            "byte_count": 24369,
+            "sha256": "f4ba6806e96df92ecabd4075b9de0b4cc62def548c59f51fe5c487f200c0f4a5"
+          },
+          "subject": "workspace:sha256:6ee49cb62018140f4a0a57e8031c02d6cdccfd111cab3dceedfee2a7db08558f",
+          "timed_out": false,
+          "timeout_seconds": 120.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:2042cf92c7f4d531ac2e02733ac326a0bed705dfdf4871c315ea938ea0f920fa",
+          "check_id": "workflow_definition",
+          "declared_argv": [
+            "python3",
+            "tools/governance/reconcile.py",
+            "workflow",
+            "--json"
+          ],
+          "duration_ms": 265,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "tools/governance/reconcile.py",
+            "workflow",
+            "--json"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T04:12:19+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:6ee49cb62018140f4a0a57e8031c02d6cdccfd111cab3dceedfee2a7db08558f",
+            "managed_content_subject_before": "workspace:sha256:6ee49cb62018140f4a0a57e8031c02d6cdccfd111cab3dceedfee2a7db08558f",
+            "protected_state_digest_after": "protected-state:sha256:f821e4a7c6bb3fcd2130e962d1f575be31bfdc1837ee6155f68241cf7c53978a",
+            "protected_state_digest_before": "protected-state:sha256:f821e4a7c6bb3fcd2130e962d1f575be31bfdc1837ee6155f68241cf7c53978a",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:a8e3d6157ad5e1b09bc1b6e3f075a87bacbb5f04d33304965fbe94152004e0ec",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T04:12:19+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T04:12:18+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stdout": {
+            "byte_count": 21737,
+            "sha256": "6e7f19a7a755535596e1d6c29bace7567a800f746a312af3fc95adc1ccbf45f2"
+          },
+          "subject": "workspace:sha256:6ee49cb62018140f4a0a57e8031c02d6cdccfd111cab3dceedfee2a7db08558f",
+          "timed_out": false,
+          "timeout_seconds": 120.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:172ff3eebf492131e51dd423cf1ebcc69cfde1f90cf059130087556fbca2dd1c",
+          "check_id": "governance_unit_tests",
+          "declared_argv": [
+            "python3",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tools/governance/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "duration_ms": 9841,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tools/governance/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T04:13:48+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:7c7447174d45c4eb1a5bb2e77d63801dd18393e7ba179a9ff8dcbb99a84b06f9",
+            "managed_content_subject_before": "workspace:sha256:7c7447174d45c4eb1a5bb2e77d63801dd18393e7ba179a9ff8dcbb99a84b06f9",
+            "protected_state_digest_after": "protected-state:sha256:c92cc00868ff1784890f67de4c80677c4d0a9be23ffc478e98f340d52b0744ff",
+            "protected_state_digest_before": "protected-state:sha256:c92cc00868ff1784890f67de4c80677c4d0a9be23ffc478e98f340d52b0744ff",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:845fb9cf734d282850e7065674b839c1908cbbc76f7b967d1d0243d7a3a11c66",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T04:13:48+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T04:13:38+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 20041,
+            "sha256": "f59f1bfe20d2d511885b33afe4fa46d4f854d77ad9e1ad3ac164bb4ebcd76de2"
+          },
+          "stdout": {
+            "byte_count": 37430,
+            "sha256": "2814b2fe1e43e1fc024d35e3373a5b73f2a8db1d5d8b17a73eb42cfd4b3f3604"
+          },
+          "subject": "workspace:sha256:7c7447174d45c4eb1a5bb2e77d63801dd18393e7ba179a9ff8dcbb99a84b06f9",
+          "timed_out": false,
+          "timeout_seconds": 600.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:7719b97ada74195e7b4d5aa7aa09200c6a2ab70d1d4969be668ffc26d7f8a146",
+          "check_id": "hook_contract_tests",
+          "declared_argv": [
+            "python3",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            ".codex/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "duration_ms": 1660,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            ".codex/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T04:13:50+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:7c7447174d45c4eb1a5bb2e77d63801dd18393e7ba179a9ff8dcbb99a84b06f9",
+            "managed_content_subject_before": "workspace:sha256:7c7447174d45c4eb1a5bb2e77d63801dd18393e7ba179a9ff8dcbb99a84b06f9",
+            "protected_state_digest_after": "protected-state:sha256:c92cc00868ff1784890f67de4c80677c4d0a9be23ffc478e98f340d52b0744ff",
+            "protected_state_digest_before": "protected-state:sha256:c92cc00868ff1784890f67de4c80677c4d0a9be23ffc478e98f340d52b0744ff",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:ea8514c9d8c1331c594b2457bc2850ad02f21640411779acff37e8725dce1727",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T04:13:50+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T04:13:48+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 7491,
+            "sha256": "a129a61e9d659c52d4921d56f4ab3c6344ee31d55e3bc13b8930cd76be7bd051"
+          },
+          "stdout": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "subject": "workspace:sha256:7c7447174d45c4eb1a5bb2e77d63801dd18393e7ba179a9ff8dcbb99a84b06f9",
+          "timed_out": false,
+          "timeout_seconds": 600.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:eb4cc4a6665b748d5e82a656b81d7fbad1637f061972ced5a6464dc28049812f",
+          "check_id": "reconcile_session",
+          "declared_argv": [
+            "python3",
+            "tools/governance/reconcile.py",
+            "session",
+            "--json"
+          ],
+          "duration_ms": 264,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "tools/governance/reconcile.py",
+            "session",
+            "--json"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T04:13:50+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:7c7447174d45c4eb1a5bb2e77d63801dd18393e7ba179a9ff8dcbb99a84b06f9",
+            "managed_content_subject_before": "workspace:sha256:7c7447174d45c4eb1a5bb2e77d63801dd18393e7ba179a9ff8dcbb99a84b06f9",
+            "protected_state_digest_after": "protected-state:sha256:c92cc00868ff1784890f67de4c80677c4d0a9be23ffc478e98f340d52b0744ff",
+            "protected_state_digest_before": "protected-state:sha256:c92cc00868ff1784890f67de4c80677c4d0a9be23ffc478e98f340d52b0744ff",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:e25319bdf8c1bbb5866ddc1045421660da4b608972654914d6713e9dec098417",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T04:13:50+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T04:13:50+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stdout": {
+            "byte_count": 20554,
+            "sha256": "b21b6ddb7b763588f00b93b5147518a7292121c4d1084ae655d2eaeed00c9ea0"
+          },
+          "subject": "workspace:sha256:7c7447174d45c4eb1a5bb2e77d63801dd18393e7ba179a9ff8dcbb99a84b06f9",
+          "timed_out": false,
+          "timeout_seconds": 120.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:e00bcb3ab83778088a7c5e5a6f63792549dcff2cf5b16922fde245973f5b644c",
+          "check_id": "documentation_structure",
+          "declared_argv": [
+            "python3",
+            "tools/governance/reconcile.py",
+            "static",
+            "--json"
+          ],
+          "duration_ms": 272,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "tools/governance/reconcile.py",
+            "static",
+            "--json"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T04:13:51+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:7c7447174d45c4eb1a5bb2e77d63801dd18393e7ba179a9ff8dcbb99a84b06f9",
+            "managed_content_subject_before": "workspace:sha256:7c7447174d45c4eb1a5bb2e77d63801dd18393e7ba179a9ff8dcbb99a84b06f9",
+            "protected_state_digest_after": "protected-state:sha256:c92cc00868ff1784890f67de4c80677c4d0a9be23ffc478e98f340d52b0744ff",
+            "protected_state_digest_before": "protected-state:sha256:c92cc00868ff1784890f67de4c80677c4d0a9be23ffc478e98f340d52b0744ff",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:fa1a62b36699931ec7d87b101be653fff74aec45419fa9dfe5f1e90857bb5699",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T04:13:51+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T04:13:50+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stdout": {
+            "byte_count": 24954,
+            "sha256": "8d24c780ce60f80aa98eefa61af200fa7c3286444b402b031a51b2174427819f"
+          },
+          "subject": "workspace:sha256:7c7447174d45c4eb1a5bb2e77d63801dd18393e7ba179a9ff8dcbb99a84b06f9",
+          "timed_out": false,
+          "timeout_seconds": 120.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:2042cf92c7f4d531ac2e02733ac326a0bed705dfdf4871c315ea938ea0f920fa",
+          "check_id": "workflow_definition",
+          "declared_argv": [
+            "python3",
+            "tools/governance/reconcile.py",
+            "workflow",
+            "--json"
+          ],
+          "duration_ms": 274,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "tools/governance/reconcile.py",
+            "workflow",
+            "--json"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T04:13:51+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:7c7447174d45c4eb1a5bb2e77d63801dd18393e7ba179a9ff8dcbb99a84b06f9",
+            "managed_content_subject_before": "workspace:sha256:7c7447174d45c4eb1a5bb2e77d63801dd18393e7ba179a9ff8dcbb99a84b06f9",
+            "protected_state_digest_after": "protected-state:sha256:c92cc00868ff1784890f67de4c80677c4d0a9be23ffc478e98f340d52b0744ff",
+            "protected_state_digest_before": "protected-state:sha256:c92cc00868ff1784890f67de4c80677c4d0a9be23ffc478e98f340d52b0744ff",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:a8e3d6157ad5e1b09bc1b6e3f075a87bacbb5f04d33304965fbe94152004e0ec",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T04:13:51+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T04:13:51+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stdout": {
+            "byte_count": 22322,
+            "sha256": "bbfa494ad4e5ffe822b73048c9721e63998639e49d1a8c6c0950f376a481241d"
+          },
+          "subject": "workspace:sha256:7c7447174d45c4eb1a5bb2e77d63801dd18393e7ba179a9ff8dcbb99a84b06f9",
+          "timed_out": false,
+          "timeout_seconds": 120.0
+        }
+      ],
+      "at": "2026-08-19T05:24:24+00:00",
+      "from_status": "BLOCKED",
+      "reason": "R005 已批准同范围修复首次 G0 提交与 CI 闭环；归档旧本地证据并重新验证全部检查",
+      "review_id": "GOV-0001-R005",
+      "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+      "subject": "workspace:sha256:7c7447174d45c4eb1a5bb2e77d63801dd18393e7ba179a9ff8dcbb99a84b06f9",
+      "to_status": "IN_PROGRESS"
+    },
+    {
+      "actor": "Codex",
+      "archived_validation_results": [
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:172ff3eebf492131e51dd423cf1ebcc69cfde1f90cf059130087556fbca2dd1c",
+          "check_id": "governance_unit_tests",
+          "declared_argv": [
+            "python3",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tools/governance/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "duration_ms": 12397,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tools/governance/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T05:33:49+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:bc3f2e3ea514a25119127be8b6fbb4483c55e6bb1b6ebe90f4d34dec0b3ade27",
+            "managed_content_subject_before": "workspace:sha256:bc3f2e3ea514a25119127be8b6fbb4483c55e6bb1b6ebe90f4d34dec0b3ade27",
+            "protected_state_digest_after": "protected-state:sha256:79022d9f1c2e87d20cd9223727a590a4dbd03db3d00c2b63d116756864ad8956",
+            "protected_state_digest_before": "protected-state:sha256:79022d9f1c2e87d20cd9223727a590a4dbd03db3d00c2b63d116756864ad8956",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:845fb9cf734d282850e7065674b839c1908cbbc76f7b967d1d0243d7a3a11c66",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T05:33:49+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T05:33:37+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 20428,
+            "sha256": "e7d03b1a82533d46f4604f32f852aaa6767d7fc23e441aabe6c3147b0151067c"
+          },
+          "stdout": {
+            "byte_count": 38475,
+            "sha256": "6087811e64b71443576a903906f6b5e0cc664207f4f96842a3bff566ee132beb"
+          },
+          "subject": "workspace:sha256:bc3f2e3ea514a25119127be8b6fbb4483c55e6bb1b6ebe90f4d34dec0b3ade27",
+          "timed_out": false,
+          "timeout_seconds": 600.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:7719b97ada74195e7b4d5aa7aa09200c6a2ab70d1d4969be668ffc26d7f8a146",
+          "check_id": "hook_contract_tests",
+          "declared_argv": [
+            "python3",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            ".codex/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "duration_ms": 1690,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            ".codex/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T05:33:51+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:bc3f2e3ea514a25119127be8b6fbb4483c55e6bb1b6ebe90f4d34dec0b3ade27",
+            "managed_content_subject_before": "workspace:sha256:bc3f2e3ea514a25119127be8b6fbb4483c55e6bb1b6ebe90f4d34dec0b3ade27",
+            "protected_state_digest_after": "protected-state:sha256:79022d9f1c2e87d20cd9223727a590a4dbd03db3d00c2b63d116756864ad8956",
+            "protected_state_digest_before": "protected-state:sha256:79022d9f1c2e87d20cd9223727a590a4dbd03db3d00c2b63d116756864ad8956",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:ea8514c9d8c1331c594b2457bc2850ad02f21640411779acff37e8725dce1727",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T05:33:51+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T05:33:49+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 7491,
+            "sha256": "81f3b23106d3c825c5b892a6c7ef46cd4c5d36e3020e5c36c82a47d0891dc318"
+          },
+          "stdout": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "subject": "workspace:sha256:bc3f2e3ea514a25119127be8b6fbb4483c55e6bb1b6ebe90f4d34dec0b3ade27",
+          "timed_out": false,
+          "timeout_seconds": 600.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:eb4cc4a6665b748d5e82a656b81d7fbad1637f061972ced5a6464dc28049812f",
+          "check_id": "reconcile_session",
+          "declared_argv": [
+            "python3",
+            "tools/governance/reconcile.py",
+            "session",
+            "--json"
+          ],
+          "duration_ms": 293,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "tools/governance/reconcile.py",
+            "session",
+            "--json"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T05:33:51+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:bc3f2e3ea514a25119127be8b6fbb4483c55e6bb1b6ebe90f4d34dec0b3ade27",
+            "managed_content_subject_before": "workspace:sha256:bc3f2e3ea514a25119127be8b6fbb4483c55e6bb1b6ebe90f4d34dec0b3ade27",
+            "protected_state_digest_after": "protected-state:sha256:79022d9f1c2e87d20cd9223727a590a4dbd03db3d00c2b63d116756864ad8956",
+            "protected_state_digest_before": "protected-state:sha256:79022d9f1c2e87d20cd9223727a590a4dbd03db3d00c2b63d116756864ad8956",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:e25319bdf8c1bbb5866ddc1045421660da4b608972654914d6713e9dec098417",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T05:33:51+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T05:33:51+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stdout": {
+            "byte_count": 20025,
+            "sha256": "d69f3e6ef2602941a21cc092f948f976ba2705407d4fe0ba2c8e8c96ae83c2b5"
+          },
+          "subject": "workspace:sha256:bc3f2e3ea514a25119127be8b6fbb4483c55e6bb1b6ebe90f4d34dec0b3ade27",
+          "timed_out": false,
+          "timeout_seconds": 120.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:e00bcb3ab83778088a7c5e5a6f63792549dcff2cf5b16922fde245973f5b644c",
+          "check_id": "documentation_structure",
+          "declared_argv": [
+            "python3",
+            "tools/governance/reconcile.py",
+            "static",
+            "--json"
+          ],
+          "duration_ms": 294,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "tools/governance/reconcile.py",
+            "static",
+            "--json"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T05:33:51+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:bc3f2e3ea514a25119127be8b6fbb4483c55e6bb1b6ebe90f4d34dec0b3ade27",
+            "managed_content_subject_before": "workspace:sha256:bc3f2e3ea514a25119127be8b6fbb4483c55e6bb1b6ebe90f4d34dec0b3ade27",
+            "protected_state_digest_after": "protected-state:sha256:79022d9f1c2e87d20cd9223727a590a4dbd03db3d00c2b63d116756864ad8956",
+            "protected_state_digest_before": "protected-state:sha256:79022d9f1c2e87d20cd9223727a590a4dbd03db3d00c2b63d116756864ad8956",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:fa1a62b36699931ec7d87b101be653fff74aec45419fa9dfe5f1e90857bb5699",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T05:33:51+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T05:33:51+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stdout": {
+            "byte_count": 24487,
+            "sha256": "6f18fbf7465fa88beea917408073a0a579bdb60817a829c6d440734741bec27a"
+          },
+          "subject": "workspace:sha256:bc3f2e3ea514a25119127be8b6fbb4483c55e6bb1b6ebe90f4d34dec0b3ade27",
+          "timed_out": false,
+          "timeout_seconds": 120.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:2042cf92c7f4d531ac2e02733ac326a0bed705dfdf4871c315ea938ea0f920fa",
+          "check_id": "workflow_definition",
+          "declared_argv": [
+            "python3",
+            "tools/governance/reconcile.py",
+            "workflow",
+            "--json"
+          ],
+          "duration_ms": 302,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "tools/governance/reconcile.py",
+            "workflow",
+            "--json"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T05:33:52+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:bc3f2e3ea514a25119127be8b6fbb4483c55e6bb1b6ebe90f4d34dec0b3ade27",
+            "managed_content_subject_before": "workspace:sha256:bc3f2e3ea514a25119127be8b6fbb4483c55e6bb1b6ebe90f4d34dec0b3ade27",
+            "protected_state_digest_after": "protected-state:sha256:79022d9f1c2e87d20cd9223727a590a4dbd03db3d00c2b63d116756864ad8956",
+            "protected_state_digest_before": "protected-state:sha256:79022d9f1c2e87d20cd9223727a590a4dbd03db3d00c2b63d116756864ad8956",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:a8e3d6157ad5e1b09bc1b6e3f075a87bacbb5f04d33304965fbe94152004e0ec",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T05:33:52+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T05:33:51+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stdout": {
+            "byte_count": 21855,
+            "sha256": "2f9f016831deb113f223d4135bdb3c5e77dce0a656ef66fb884b64359c1f29c0"
+          },
+          "subject": "workspace:sha256:bc3f2e3ea514a25119127be8b6fbb4483c55e6bb1b6ebe90f4d34dec0b3ade27",
+          "timed_out": false,
+          "timeout_seconds": 120.0
+        }
+      ],
+      "at": "2026-08-19T05:54:19+00:00",
+      "from_status": "LOCAL_VERIFIED",
+      "reason": "R006 已批准补齐严格受控的 GOV-0001 A/B 提交与推送入口；归档当前本地证据，完成后重新运行全部检查",
+      "review_id": "GOV-0001-R006",
+      "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+      "subject": "workspace:sha256:bc3f2e3ea514a25119127be8b6fbb4483c55e6bb1b6ebe90f4d34dec0b3ade27",
+      "to_status": "IN_PROGRESS"
+    }
+  ],
+  "schema_version": 1,
+  "scope_revisions": [
+    {
+      "actor": "Codex",
+      "archived_validation_results": [],
+      "at": "2026-08-19T03:32:17+00:00",
+      "changed_fields": [
+        "requirement",
+        "base_branch",
+        "allowed_commands",
+        "validation",
+        "assumptions",
+        "open_questions",
+        "review_authority",
+        "ci_trust",
+        "coordination"
+      ],
+      "from_scope_hash": "sha256:49f4f4adf502f635e7115c498df27784683a4fadd16e7fd069d39cf1252520ec",
+      "from_scope_version": 1,
+      "previous_scope": {
+        "allowed_commands": [
+          "python3 -m unittest discover -s tools/governance/tests -p test_*.py -v",
+          "python3 -m unittest discover -s .codex/tests -p test_*.py -v",
+          "python3 tools/governance/taskctl.py current --json",
+          "python3 tools/governance/reviewctl.py verify --json",
+          "python3 tools/governance/reconcile.py session --json",
+          "python3 tools/governance/reconcile.py precommit --json",
+          "python3 tools/governance/reconcile.py ci --json"
+        ],
+        "allowed_paths": [
+          ".codex/**",
+          ".github/**",
+          ".gitignore",
+          "AGENTS.md",
+          "README.md",
+          "docs/**",
+          "project-control/**",
+          "tools/governance/**"
+        ],
+        "allowed_tools": [
+          "apply_patch",
+          "ApplyPatch",
+          "Bash",
+          "Read",
+          "Glob",
+          "Grep",
+          "view_image",
+          "codex_app__read_thread_terminal"
+        ],
+        "assumptions": [
+          {
+            "id": "ASM-0001",
+            "source": "用户确认",
+            "statement": "产品不会自动发布广告，也不会自动调整广告预算。",
+            "status": "confirmed"
+          },
+          {
+            "id": "ASM-0002",
+            "source": "用户确认",
+            "statement": "后端不保存账号数据；个人数据仅保存在客户端本地 SQLite。",
+            "status": "confirmed"
+          },
+          {
+            "id": "ASM-0003",
+            "source": "用户确认",
+            "statement": "macOS 与 Windows 客户端共享代码且业务功能完全一致，但独立构建、发布和回退。",
+            "status": "confirmed"
+          },
+          {
+            "id": "ASM-0004",
+            "source": "用户确认",
+            "statement": "当前不通过应用商店分发，但架构和发布流程需预留后续接入能力。",
+            "status": "confirmed"
+          }
+        ],
+        "branch": "main",
+        "dependencies": [],
+        "open_questions": [
+          {
+            "blocking_for": "application_initialization",
+            "id": "OPEN-0001",
+            "question": "登录与鉴权在后端不保存账号数据的前提下采用什么身份模型？",
+            "status": "open"
+          },
+          {
+            "blocking_for": "relevant_feature_design",
+            "id": "OPEN-0002",
+            "question": "素材丢失、账号被盗和错误素材发布的风险上限如何分级？",
+            "status": "deferred_by_user"
+          },
+          {
+            "blocking_for": "application_initialization",
+            "id": "OPEN-0003",
+            "question": "共享客户端与统一后端分别采用哪套官方脚手架和技术栈？",
+            "status": "open"
+          }
+        ],
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "required_docs": [
+          "README.md",
+          "AGENTS.md",
+          "docs/README.md",
+          "docs/project/项目基线-PROJ-0001-v1.0.md",
+          "docs/requirements/治理基线-REQ-0001/治理基线-REQ-0001-v1.0.md",
+          "docs/requirements/需求文档模板-REQ-TEMPLATE-0001-v1.0.md",
+          "docs/development/开发流程-DEV-0001-v1.0.md",
+          "docs/operations/发布与回退-OPS-0001-v1.0.md",
+          "docs/troubleshooting/治理门禁问题排查-TRB-0001-v1.0.md",
+          "docs/decisions/项目形态与发布单元-ADR-0001.md",
+          "docs/governance/治理总则-GOV-0001-v1.0.md",
+          "docs/governance/假设和未决事项-GOV-0002-v1.0.md",
+          "docs/governance/验证与豁免-GOV-0003-v1.0.md",
+          ".github/workflows/governance.yml",
+          ".github/pull_request_template.md"
+        ],
+        "requirement": {
+          "id": "治理基线-REQ-0001",
+          "name": "治理控制层初始化",
+          "version": "v1.0"
+        },
+        "scope_version": 1,
+        "summary": "只初始化 G0 治理控制层、记录和 CI 定义，不创建应用脚手架、依赖文件或业务代码。",
+        "task_id": "GOV-0001",
+        "validation_required": [
+          {
+            "command": "python3 -m unittest discover -s tools/governance/tests -p test_*.py -v",
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED"
+            ],
+            "id": "governance_unit_tests"
+          },
+          {
+            "command": "python3 -m unittest discover -s .codex/tests -p test_*.py -v",
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED"
+            ],
+            "id": "hook_contract_tests"
+          },
+          {
+            "command": "python3 tools/governance/reconcile.py session --json",
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED"
+            ],
+            "id": "reconcile_session"
+          },
+          {
+            "command": "hook contract tests exercise approved and rejected PreToolUse calls",
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED"
+            ],
+            "id": "reconcile_pretool"
+          },
+          {
+            "command": "python3 tools/governance/reconcile.py precommit --json",
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED"
+            ],
+            "id": "documentation_structure"
+          },
+          {
+            "command": "GitHub Actions executes governance tests and reconcile ci after a commit",
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED"
+            ],
+            "id": "workflow_definition"
+          }
+        ]
+      },
+      "reason": "将用户确认的 OpenSSH 公钥信任锚、受控验证 argv、私有 GitHub Actions 在线核验与多发布单元协调合同纳入 scope v2",
+      "to_scope_hash": "sha256:7592656579355e3b7cc2bfd1b96f91fe557613aa06d3cdf010b332f471551ef9",
+      "to_scope_version": 2
+    },
+    {
+      "actor": "user",
+      "archived_validation_results": [
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:172ff3eebf492131e51dd423cf1ebcc69cfde1f90cf059130087556fbca2dd1c",
+          "check_id": "governance_unit_tests",
+          "declared_argv": [
+            "python3",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tools/governance/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "duration_ms": 10057,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tools/governance/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T03:35:55+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:e8f1920ec63166994c01d02cdebe613e95f5487bb7859570710c77fa989fb7b0",
+            "managed_content_subject_before": "workspace:sha256:e8f1920ec63166994c01d02cdebe613e95f5487bb7859570710c77fa989fb7b0",
+            "protected_state_digest_after": "protected-state:sha256:0f439a373caeb77eb9cc910931be644a485d3e971040b8cb8b514599945ced8b",
+            "protected_state_digest_before": "protected-state:sha256:0f439a373caeb77eb9cc910931be644a485d3e971040b8cb8b514599945ced8b",
+            "scope_hash_after": "sha256:7592656579355e3b7cc2bfd1b96f91fe557613aa06d3cdf010b332f471551ef9",
+            "scope_hash_before": "sha256:7592656579355e3b7cc2bfd1b96f91fe557613aa06d3cdf010b332f471551ef9",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:845fb9cf734d282850e7065674b839c1908cbbc76f7b967d1d0243d7a3a11c66",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T03:35:55+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:7592656579355e3b7cc2bfd1b96f91fe557613aa06d3cdf010b332f471551ef9",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T03:35:45+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 19057,
+            "sha256": "26f9d426436515bb9974e697918863a8b9a866ea66011e1dfeb0b1d313571924"
+          },
+          "stdout": {
+            "byte_count": 37430,
+            "sha256": "b1ec5712869f0c613858fa0de95bd041921711b759ba7b2d485eae380c1226bf"
+          },
+          "subject": "workspace:sha256:e8f1920ec63166994c01d02cdebe613e95f5487bb7859570710c77fa989fb7b0",
+          "timed_out": false,
+          "timeout_seconds": 600.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:7719b97ada74195e7b4d5aa7aa09200c6a2ab70d1d4969be668ffc26d7f8a146",
+          "check_id": "hook_contract_tests",
+          "declared_argv": [
+            "python3",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            ".codex/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "duration_ms": 1707,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            ".codex/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T03:35:57+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:e8f1920ec63166994c01d02cdebe613e95f5487bb7859570710c77fa989fb7b0",
+            "managed_content_subject_before": "workspace:sha256:e8f1920ec63166994c01d02cdebe613e95f5487bb7859570710c77fa989fb7b0",
+            "protected_state_digest_after": "protected-state:sha256:0f439a373caeb77eb9cc910931be644a485d3e971040b8cb8b514599945ced8b",
+            "protected_state_digest_before": "protected-state:sha256:0f439a373caeb77eb9cc910931be644a485d3e971040b8cb8b514599945ced8b",
+            "scope_hash_after": "sha256:7592656579355e3b7cc2bfd1b96f91fe557613aa06d3cdf010b332f471551ef9",
+            "scope_hash_before": "sha256:7592656579355e3b7cc2bfd1b96f91fe557613aa06d3cdf010b332f471551ef9",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:ea8514c9d8c1331c594b2457bc2850ad02f21640411779acff37e8725dce1727",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T03:35:57+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:7592656579355e3b7cc2bfd1b96f91fe557613aa06d3cdf010b332f471551ef9",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T03:35:55+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 7339,
+            "sha256": "8c464a6c4df428ef4ffc8fd62971ff3ea6043d331103c671185e01bd933b6106"
+          },
+          "stdout": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "subject": "workspace:sha256:e8f1920ec63166994c01d02cdebe613e95f5487bb7859570710c77fa989fb7b0",
+          "timed_out": false,
+          "timeout_seconds": 600.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:eb4cc4a6665b748d5e82a656b81d7fbad1637f061972ced5a6464dc28049812f",
+          "check_id": "reconcile_session",
+          "declared_argv": [
+            "python3",
+            "tools/governance/reconcile.py",
+            "session",
+            "--json"
+          ],
+          "duration_ms": 245,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "tools/governance/reconcile.py",
+            "session",
+            "--json"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T03:35:57+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:e8f1920ec63166994c01d02cdebe613e95f5487bb7859570710c77fa989fb7b0",
+            "managed_content_subject_before": "workspace:sha256:e8f1920ec63166994c01d02cdebe613e95f5487bb7859570710c77fa989fb7b0",
+            "protected_state_digest_after": "protected-state:sha256:0f439a373caeb77eb9cc910931be644a485d3e971040b8cb8b514599945ced8b",
+            "protected_state_digest_before": "protected-state:sha256:0f439a373caeb77eb9cc910931be644a485d3e971040b8cb8b514599945ced8b",
+            "scope_hash_after": "sha256:7592656579355e3b7cc2bfd1b96f91fe557613aa06d3cdf010b332f471551ef9",
+            "scope_hash_before": "sha256:7592656579355e3b7cc2bfd1b96f91fe557613aa06d3cdf010b332f471551ef9",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:e25319bdf8c1bbb5866ddc1045421660da4b608972654914d6713e9dec098417",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T03:35:57+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:7592656579355e3b7cc2bfd1b96f91fe557613aa06d3cdf010b332f471551ef9",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T03:35:57+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stdout": {
+            "byte_count": 19400,
+            "sha256": "faec3bbd709a6810ce28e8131646a3dff686ec879db34d4a3b6ec72d7c0de723"
+          },
+          "subject": "workspace:sha256:e8f1920ec63166994c01d02cdebe613e95f5487bb7859570710c77fa989fb7b0",
+          "timed_out": false,
+          "timeout_seconds": 120.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:e00bcb3ab83778088a7c5e5a6f63792549dcff2cf5b16922fde245973f5b644c",
+          "check_id": "documentation_structure",
+          "declared_argv": [
+            "python3",
+            "tools/governance/reconcile.py",
+            "static",
+            "--json"
+          ],
+          "duration_ms": 298,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "tools/governance/reconcile.py",
+            "static",
+            "--json"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T03:35:57+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:e8f1920ec63166994c01d02cdebe613e95f5487bb7859570710c77fa989fb7b0",
+            "managed_content_subject_before": "workspace:sha256:e8f1920ec63166994c01d02cdebe613e95f5487bb7859570710c77fa989fb7b0",
+            "protected_state_digest_after": "protected-state:sha256:0f439a373caeb77eb9cc910931be644a485d3e971040b8cb8b514599945ced8b",
+            "protected_state_digest_before": "protected-state:sha256:0f439a373caeb77eb9cc910931be644a485d3e971040b8cb8b514599945ced8b",
+            "scope_hash_after": "sha256:7592656579355e3b7cc2bfd1b96f91fe557613aa06d3cdf010b332f471551ef9",
+            "scope_hash_before": "sha256:7592656579355e3b7cc2bfd1b96f91fe557613aa06d3cdf010b332f471551ef9",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:fa1a62b36699931ec7d87b101be653fff74aec45419fa9dfe5f1e90857bb5699",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T03:35:57+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:7592656579355e3b7cc2bfd1b96f91fe557613aa06d3cdf010b332f471551ef9",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T03:35:57+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stdout": {
+            "byte_count": 23500,
+            "sha256": "f8c3d3188c6b84f07b105411c334f8e2338220f279ae5b1c8e9eb304c0d4ef05"
+          },
+          "subject": "workspace:sha256:e8f1920ec63166994c01d02cdebe613e95f5487bb7859570710c77fa989fb7b0",
+          "timed_out": false,
+          "timeout_seconds": 120.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:2042cf92c7f4d531ac2e02733ac326a0bed705dfdf4871c315ea938ea0f920fa",
+          "check_id": "workflow_definition",
+          "declared_argv": [
+            "python3",
+            "tools/governance/reconcile.py",
+            "workflow",
+            "--json"
+          ],
+          "duration_ms": 244,
+          "environment": "macos-local-codex-runtime",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "tools/governance/reconcile.py",
+            "workflow",
+            "--json"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T03:35:58+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:e8f1920ec63166994c01d02cdebe613e95f5487bb7859570710c77fa989fb7b0",
+            "managed_content_subject_before": "workspace:sha256:e8f1920ec63166994c01d02cdebe613e95f5487bb7859570710c77fa989fb7b0",
+            "protected_state_digest_after": "protected-state:sha256:0f439a373caeb77eb9cc910931be644a485d3e971040b8cb8b514599945ced8b",
+            "protected_state_digest_before": "protected-state:sha256:0f439a373caeb77eb9cc910931be644a485d3e971040b8cb8b514599945ced8b",
+            "scope_hash_after": "sha256:7592656579355e3b7cc2bfd1b96f91fe557613aa06d3cdf010b332f471551ef9",
+            "scope_hash_before": "sha256:7592656579355e3b7cc2bfd1b96f91fe557613aa06d3cdf010b332f471551ef9",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:a8e3d6157ad5e1b09bc1b6e3f075a87bacbb5f04d33304965fbe94152004e0ec",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T03:35:58+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:7592656579355e3b7cc2bfd1b96f91fe557613aa06d3cdf010b332f471551ef9",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T03:35:57+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stdout": {
+            "byte_count": 21168,
+            "sha256": "181e1bf70d3f61d6334f807f297adc0989cabd059c2de19250987d9b5bf30e1a"
+          },
+          "subject": "workspace:sha256:e8f1920ec63166994c01d02cdebe613e95f5487bb7859570710c77fa989fb7b0",
+          "timed_out": false,
+          "timeout_seconds": 120.0
+        }
+      ],
+      "at": "2026-08-19T03:45:21+00:00",
+      "changed_fields": [
+        "summary"
+      ],
+      "from_scope_hash": "sha256:7592656579355e3b7cc2bfd1b96f91fe557613aa06d3cdf010b332f471551ef9",
+      "from_scope_version": 2,
+      "previous_scope": {
+        "allowed_commands": [
+          "python3 -m unittest discover -s tools/governance/tests -p test_*.py -v",
+          "python3 -m unittest discover -s .codex/tests -p test_*.py -v",
+          "python3 tools/governance/taskctl.py current --json",
+          "python3 tools/governance/reviewctl.py verify --json",
+          "python3 tools/governance/reviewctl.py prepare GOV-0001",
+          "python3 tools/governance/taskctl.py run-validation GOV-0001",
+          "python3 tools/governance/taskctl.py run-required GOV-0001",
+          "python3 tools/governance/taskctl.py sync-github-run GOV-0001",
+          "python3 tools/governance/reconcile.py session --json",
+          "python3 tools/governance/reconcile.py docs --json",
+          "python3 tools/governance/reconcile.py workflow --json",
+          "python3 tools/governance/reconcile.py static --json",
+          "python3 tools/governance/reconcile.py precommit --json",
+          "python3 tools/governance/reconcile.py ci --json"
+        ],
+        "allowed_paths": [
+          ".codex/**",
+          ".github/**",
+          ".gitignore",
+          "AGENTS.md",
+          "README.md",
+          "docs/**",
+          "project-control/**",
+          "tools/governance/**"
+        ],
+        "allowed_tools": [
+          "apply_patch",
+          "ApplyPatch",
+          "Bash",
+          "Read",
+          "Glob",
+          "Grep",
+          "view_image",
+          "codex_app__read_thread_terminal"
+        ],
+        "assumptions": [
+          {
+            "id": "ASM-0001",
+            "source": "用户确认",
+            "statement": "产品不会自动发布广告，也不会自动调整广告预算。",
+            "status": "confirmed"
+          },
+          {
+            "id": "ASM-0002",
+            "source": "用户确认",
+            "statement": "后端不保存账号数据；个人数据仅保存在客户端本地 SQLite。",
+            "status": "confirmed"
+          },
+          {
+            "id": "ASM-0003",
+            "source": "用户确认",
+            "statement": "macOS 与 Windows 客户端共享代码且业务功能完全一致，但独立构建、发布和回退。",
+            "status": "confirmed"
+          },
+          {
+            "id": "ASM-0004",
+            "source": "用户确认",
+            "statement": "当前不通过应用商店分发，但架构和发布流程需预留后续接入能力。",
+            "status": "confirmed"
+          },
+          {
+            "id": "ASM-0005",
+            "source": "用户确认 2026-08-19",
+            "statement": "高权限审核回执采用用户独占私钥的 OpenSSH detached signature。",
+            "status": "confirmed"
+          },
+          {
+            "id": "ASM-0006",
+            "source": "用户确认 2026-08-19",
+            "statement": "GitHub 仓库为私有仓库，允许用仓库外只读凭据在线核验 Actions run。",
+            "status": "confirmed"
+          }
+        ],
+        "base_branch": "main",
+        "branch": "main",
+        "ci_trust": {
+          "api_base": "https://api.github.com",
+          "api_version": "2026-03-10",
+          "ci_events": [
+            "pull_request",
+            "push"
+          ],
+          "post_merge_events": [
+            "push"
+          ],
+          "private": true,
+          "provider": "github_actions_rest_v1",
+          "repository": "wzhic/material",
+          "required_jobs": {
+            "pull_request": [
+              "Governance (ubuntu-latest)",
+              "Governance (macos-latest)",
+              "Governance (windows-latest)"
+            ],
+            "push": [
+              "Governance (ubuntu-latest)",
+              "Governance (macos-latest)",
+              "Governance (windows-latest)"
+            ]
+          },
+          "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+          "workflow_path": ".github/workflows/governance.yml"
+        },
+        "coordination": {
+          "coordinator_task": "GOV-0001",
+          "mode": "governance-bootstrap",
+          "no_release_artifacts": true,
+          "rationale": "G0 只建立治理控制层，不创建或发布 mac、win、backend 应用产物。"
+        },
+        "dependencies": [],
+        "open_questions": [
+          {
+            "blocking_for": "application_initialization",
+            "id": "OPEN-0001",
+            "question": "登录与鉴权在后端不保存账号数据的前提下采用什么身份模型？",
+            "status": "open"
+          },
+          {
+            "blocking_for": "relevant_feature_design",
+            "id": "OPEN-0002",
+            "question": "素材丢失、账号被盗和错误素材发布的风险上限如何分级？",
+            "status": "deferred_by_user"
+          },
+          {
+            "blocking_for": "application_initialization",
+            "id": "OPEN-0003",
+            "question": "共享客户端与统一后端分别采用哪套官方脚手架和技术栈？",
+            "status": "open"
+          },
+          {
+            "blocking_for": "scope_v2_review",
+            "id": "OPEN-0006",
+            "question": "请用户在仓库外创建专用 OpenSSH 签名密钥，并只提供公钥行与 SHA256 指纹。",
+            "resolution": "用户已在仓库外生成专用 Ed25519 密钥；仅向项目提供公钥与经独立核验一致的 SHA256 指纹，私钥和密码不进入仓库或 Codex。",
+            "status": "confirmed"
+          }
+        ],
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "required_docs": [
+          "README.md",
+          "AGENTS.md",
+          "docs/README.md",
+          "docs/project/项目基线-PROJ-0001-v1.0.md",
+          "docs/requirements/治理基线-REQ-0001/治理基线-REQ-0001-v1.0.md",
+          "docs/requirements/需求文档模板-REQ-TEMPLATE-0001-v1.0.md",
+          "docs/development/开发流程-DEV-0001-v1.0.md",
+          "docs/operations/发布与回退-OPS-0001-v1.0.md",
+          "docs/troubleshooting/治理门禁问题排查-TRB-0001-v1.0.md",
+          "docs/decisions/项目形态与发布单元-ADR-0001.md",
+          "docs/governance/治理总则-GOV-0001-v1.0.md",
+          "docs/governance/假设和未决事项-GOV-0002-v1.0.md",
+          "docs/governance/验证与豁免-GOV-0003-v1.0.md",
+          ".github/workflows/governance.yml",
+          ".github/pull_request_template.md"
+        ],
+        "requirement": {
+          "id": "治理基线-REQ-0001",
+          "interaction_kind": "non_ui",
+          "name": "治理控制层初始化",
+          "version": "v1.0"
+        },
+        "review_authority": {
+          "identity": "material-project-owner",
+          "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E",
+          "namespace": "material-governance-review",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+          "scheme": "ssh-keygen-y-v1"
+        },
+        "scope_version": 2,
+        "summary": "只初始化 G0 治理控制层、记录和 CI 定义，不创建应用脚手架、依赖文件或业务代码。",
+        "task_id": "GOV-0001",
+        "validation_required": [
+          {
+            "argv": [
+              "python3",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tools/governance/tests",
+              "-p",
+              "test_*.py",
+              "-v"
+            ],
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED",
+              "POST_MERGE_VERIFIED"
+            ],
+            "id": "governance_unit_tests",
+            "release_units": [
+              "mac",
+              "win",
+              "backend"
+            ],
+            "timeout_seconds": 600
+          },
+          {
+            "argv": [
+              "python3",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              ".codex/tests",
+              "-p",
+              "test_*.py",
+              "-v"
+            ],
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED",
+              "POST_MERGE_VERIFIED"
+            ],
+            "id": "hook_contract_tests",
+            "release_units": [
+              "mac",
+              "win",
+              "backend"
+            ],
+            "timeout_seconds": 600
+          },
+          {
+            "argv": [
+              "python3",
+              "tools/governance/reconcile.py",
+              "session",
+              "--json"
+            ],
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED"
+            ],
+            "id": "reconcile_session",
+            "release_units": [
+              "mac",
+              "win",
+              "backend"
+            ],
+            "timeout_seconds": 120
+          },
+          {
+            "argv": [
+              "python3",
+              "tools/governance/reconcile.py",
+              "static",
+              "--json"
+            ],
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED",
+              "POST_MERGE_VERIFIED"
+            ],
+            "id": "documentation_structure",
+            "release_units": [
+              "mac",
+              "win",
+              "backend"
+            ],
+            "timeout_seconds": 120
+          },
+          {
+            "argv": [
+              "python3",
+              "tools/governance/reconcile.py",
+              "workflow",
+              "--json"
+            ],
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED",
+              "POST_MERGE_VERIFIED"
+            ],
+            "id": "workflow_definition",
+            "release_units": [
+              "mac",
+              "win",
+              "backend"
+            ],
+            "timeout_seconds": 120
+          },
+          {
+            "argv": [
+              "python3",
+              "tools/governance/reconcile.py",
+              "ci",
+              "--json"
+            ],
+            "gates": [
+              "CI_VERIFIED",
+              "POST_MERGE_VERIFIED"
+            ],
+            "id": "committed_diff_integrity",
+            "release_units": [
+              "mac",
+              "win",
+              "backend"
+            ],
+            "timeout_seconds": 120
+          }
+        ]
+      },
+      "reason": "用户确认最后签一次迁移回执，之后全部使用对话审批",
+      "to_scope_hash": "sha256:e2a53f42de0515a033f5f1cbbc50956f0b14918c500bbbb86ff1fe6a557f2a36",
+      "to_scope_version": 3
+    },
+    {
+      "actor": "Codex",
+      "archived_validation_results": [],
+      "at": "2026-08-19T04:10:07+00:00",
+      "changed_fields": [
+        "allowed_commands",
+        "assumptions",
+        "open_questions"
+      ],
+      "from_scope_hash": "sha256:e2a53f42de0515a033f5f1cbbc50956f0b14918c500bbbb86ff1fe6a557f2a36",
+      "from_scope_version": 3,
+      "previous_scope": {
+        "allowed_commands": [
+          "python3 -m unittest discover -s tools/governance/tests -p test_*.py -v",
+          "python3 -m unittest discover -s .codex/tests -p test_*.py -v",
+          "python3 tools/governance/taskctl.py current --json",
+          "python3 tools/governance/reviewctl.py verify --json",
+          "python3 tools/governance/reviewctl.py prepare GOV-0001",
+          "python3 tools/governance/taskctl.py run-validation GOV-0001",
+          "python3 tools/governance/taskctl.py run-required GOV-0001",
+          "python3 tools/governance/taskctl.py sync-github-run GOV-0001",
+          "python3 tools/governance/reconcile.py session --json",
+          "python3 tools/governance/reconcile.py docs --json",
+          "python3 tools/governance/reconcile.py workflow --json",
+          "python3 tools/governance/reconcile.py static --json",
+          "python3 tools/governance/reconcile.py precommit --json",
+          "python3 tools/governance/reconcile.py ci --json"
+        ],
+        "allowed_paths": [
+          ".codex/**",
+          ".github/**",
+          ".gitignore",
+          "AGENTS.md",
+          "README.md",
+          "docs/**",
+          "project-control/**",
+          "tools/governance/**"
+        ],
+        "allowed_tools": [
+          "apply_patch",
+          "ApplyPatch",
+          "Bash",
+          "Read",
+          "Glob",
+          "Grep",
+          "view_image",
+          "codex_app__read_thread_terminal"
+        ],
+        "assumptions": [
+          {
+            "id": "ASM-0001",
+            "source": "用户确认",
+            "statement": "产品不会自动发布广告，也不会自动调整广告预算。",
+            "status": "confirmed"
+          },
+          {
+            "id": "ASM-0002",
+            "source": "用户确认",
+            "statement": "后端不保存账号数据；个人数据仅保存在客户端本地 SQLite。",
+            "status": "confirmed"
+          },
+          {
+            "id": "ASM-0003",
+            "source": "用户确认",
+            "statement": "macOS 与 Windows 客户端共享代码且业务功能完全一致，但独立构建、发布和回退。",
+            "status": "confirmed"
+          },
+          {
+            "id": "ASM-0004",
+            "source": "用户确认",
+            "statement": "当前不通过应用商店分发，但架构和发布流程需预留后续接入能力。",
+            "status": "confirmed"
+          },
+          {
+            "id": "ASM-0005",
+            "source": "用户确认 2026-08-19",
+            "statement": "高权限审核回执采用用户独占私钥的 OpenSSH detached signature。",
+            "status": "confirmed"
+          },
+          {
+            "id": "ASM-0006",
+            "source": "用户确认 2026-08-19",
+            "statement": "GitHub 仓库为私有仓库，允许用仓库外只读凭据在线核验 Actions run。",
+            "status": "confirmed"
+          }
+        ],
+        "base_branch": "main",
+        "branch": "main",
+        "ci_trust": {
+          "api_base": "https://api.github.com",
+          "api_version": "2026-03-10",
+          "ci_events": [
+            "pull_request",
+            "push"
+          ],
+          "post_merge_events": [
+            "push"
+          ],
+          "private": true,
+          "provider": "github_actions_rest_v1",
+          "repository": "wzhic/material",
+          "required_jobs": {
+            "pull_request": [
+              "Governance (ubuntu-latest)",
+              "Governance (macos-latest)",
+              "Governance (windows-latest)"
+            ],
+            "push": [
+              "Governance (ubuntu-latest)",
+              "Governance (macos-latest)",
+              "Governance (windows-latest)"
+            ]
+          },
+          "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+          "workflow_path": ".github/workflows/governance.yml"
+        },
+        "coordination": {
+          "coordinator_task": "GOV-0001",
+          "mode": "governance-bootstrap",
+          "no_release_artifacts": true,
+          "rationale": "G0 只建立治理控制层，不创建或发布 mac、win、backend 应用产物。"
+        },
+        "dependencies": [],
+        "open_questions": [
+          {
+            "blocking_for": "application_initialization",
+            "id": "OPEN-0001",
+            "question": "登录与鉴权在后端不保存账号数据的前提下采用什么身份模型？",
+            "status": "open"
+          },
+          {
+            "blocking_for": "relevant_feature_design",
+            "id": "OPEN-0002",
+            "question": "素材丢失、账号被盗和错误素材发布的风险上限如何分级？",
+            "status": "deferred_by_user"
+          },
+          {
+            "blocking_for": "application_initialization",
+            "id": "OPEN-0003",
+            "question": "共享客户端与统一后端分别采用哪套官方脚手架和技术栈？",
+            "status": "open"
+          },
+          {
+            "blocking_for": "scope_v2_review",
+            "id": "OPEN-0006",
+            "question": "请用户在仓库外创建专用 OpenSSH 签名密钥，并只提供公钥行与 SHA256 指纹。",
+            "resolution": "用户已在仓库外生成专用 Ed25519 密钥；仅向项目提供公钥与经独立核验一致的 SHA256 指纹，私钥和密码不进入仓库或 Codex。",
+            "status": "confirmed"
+          }
+        ],
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "required_docs": [
+          "README.md",
+          "AGENTS.md",
+          "docs/README.md",
+          "docs/project/项目基线-PROJ-0001-v1.0.md",
+          "docs/requirements/治理基线-REQ-0001/治理基线-REQ-0001-v1.0.md",
+          "docs/requirements/需求文档模板-REQ-TEMPLATE-0001-v1.0.md",
+          "docs/development/开发流程-DEV-0001-v1.0.md",
+          "docs/operations/发布与回退-OPS-0001-v1.0.md",
+          "docs/troubleshooting/治理门禁问题排查-TRB-0001-v1.0.md",
+          "docs/decisions/项目形态与发布单元-ADR-0001.md",
+          "docs/governance/治理总则-GOV-0001-v1.0.md",
+          "docs/governance/假设和未决事项-GOV-0002-v1.0.md",
+          "docs/governance/验证与豁免-GOV-0003-v1.0.md",
+          ".github/workflows/governance.yml",
+          ".github/pull_request_template.md"
+        ],
+        "requirement": {
+          "id": "治理基线-REQ-0001",
+          "interaction_kind": "non_ui",
+          "name": "治理控制层初始化",
+          "version": "v1.0"
+        },
+        "review_authority": {
+          "identity": "material-project-owner",
+          "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E",
+          "namespace": "material-governance-review",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+          "scheme": "ssh-keygen-y-v1"
+        },
+        "scope_version": 3,
+        "summary": "只初始化 G0 治理控制层、记录和 CI 定义；本范围同时将后续所有正式审批从 OpenSSH 签名改为用户对话确认，补齐 LOCAL_VERIFIED 后受控返工入口并修正文档迁移状态；不创建应用脚手架、依赖文件或业务代码。",
+        "task_id": "GOV-0001",
+        "validation_required": [
+          {
+            "argv": [
+              "python3",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tools/governance/tests",
+              "-p",
+              "test_*.py",
+              "-v"
+            ],
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED",
+              "POST_MERGE_VERIFIED"
+            ],
+            "id": "governance_unit_tests",
+            "release_units": [
+              "mac",
+              "win",
+              "backend"
+            ],
+            "timeout_seconds": 600
+          },
+          {
+            "argv": [
+              "python3",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              ".codex/tests",
+              "-p",
+              "test_*.py",
+              "-v"
+            ],
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED",
+              "POST_MERGE_VERIFIED"
+            ],
+            "id": "hook_contract_tests",
+            "release_units": [
+              "mac",
+              "win",
+              "backend"
+            ],
+            "timeout_seconds": 600
+          },
+          {
+            "argv": [
+              "python3",
+              "tools/governance/reconcile.py",
+              "session",
+              "--json"
+            ],
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED"
+            ],
+            "id": "reconcile_session",
+            "release_units": [
+              "mac",
+              "win",
+              "backend"
+            ],
+            "timeout_seconds": 120
+          },
+          {
+            "argv": [
+              "python3",
+              "tools/governance/reconcile.py",
+              "static",
+              "--json"
+            ],
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED",
+              "POST_MERGE_VERIFIED"
+            ],
+            "id": "documentation_structure",
+            "release_units": [
+              "mac",
+              "win",
+              "backend"
+            ],
+            "timeout_seconds": 120
+          },
+          {
+            "argv": [
+              "python3",
+              "tools/governance/reconcile.py",
+              "workflow",
+              "--json"
+            ],
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED",
+              "POST_MERGE_VERIFIED"
+            ],
+            "id": "workflow_definition",
+            "release_units": [
+              "mac",
+              "win",
+              "backend"
+            ],
+            "timeout_seconds": 120
+          },
+          {
+            "argv": [
+              "python3",
+              "tools/governance/reconcile.py",
+              "ci",
+              "--json"
+            ],
+            "gates": [
+              "CI_VERIFIED",
+              "POST_MERGE_VERIFIED"
+            ],
+            "id": "committed_diff_integrity",
+            "release_units": [
+              "mac",
+              "win",
+              "backend"
+            ],
+            "timeout_seconds": 120
+          }
+        ]
+      },
+      "reason": "在 R003 最终签名迁移授权下，将对话审批命令、受控返工命令、审计边界和已完成迁移状态纳入 review-bound scope",
+      "to_scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+      "to_scope_version": 4
+    }
+  ],
+  "scope_version": 4,
+  "status": "LOCAL_VERIFIED",
+  "summary": "只初始化 G0 治理控制层、记录和 CI 定义；本范围同时将后续所有正式审批从 OpenSSH 签名改为用户对话确认，补齐 LOCAL_VERIFIED 后受控返工入口并修正文档迁移状态；不创建应用脚手架、依赖文件或业务代码。",
+  "task_id": "GOV-0001",
+  "updated_at": "2026-08-19T06:03:02+00:00",
+  "validation": {
+    "required": [
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tools/governance/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "governance_unit_tests",
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "timeout_seconds": 600
+      },
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          ".codex/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "hook_contract_tests",
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "timeout_seconds": 600
+      },
+      {
+        "argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "session",
+          "--json"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED"
+        ],
+        "id": "reconcile_session",
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "timeout_seconds": 120
+      },
+      {
+        "argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "static",
+          "--json"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "documentation_structure",
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "timeout_seconds": 120
+      },
+      {
+        "argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "workflow",
+          "--json"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "workflow_definition",
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "timeout_seconds": 120
+      },
+      {
+        "argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "ci",
+          "--json"
+        ],
+        "gates": [
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "committed_diff_integrity",
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "timeout_seconds": 120
+      }
+    ],
+    "results": [
+      {
+        "actor": "controlled-validation-runner",
+        "argv_sha256": "sha256:172ff3eebf492131e51dd423cf1ebcc69cfde1f90cf059130087556fbca2dd1c",
+        "check_id": "governance_unit_tests",
+        "declared_argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tools/governance/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "duration_ms": 17238,
+        "environment": "macos-local-codex-runtime",
+        "evidence": "controlled-validation-runner-v1 derived status from process execution",
+        "executed_argv": [
+          "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tools/governance/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "exit_code": 0,
+        "finished_at": "2026-08-19T06:02:46+00:00",
+        "integrity": {
+          "issues": [],
+          "managed_content_subject_after": "workspace:sha256:3e9a40079597d314fa19562089c389284c254e76d457ff95fe99bca94170d15d",
+          "managed_content_subject_before": "workspace:sha256:3e9a40079597d314fa19562089c389284c254e76d457ff95fe99bca94170d15d",
+          "protected_state_digest_after": "protected-state:sha256:830b4737330ec8f1b9a4de86b0c4c7b4cd28a6874996fc10f47a40f5e9076cd8",
+          "protected_state_digest_before": "protected-state:sha256:830b4737330ec8f1b9a4de86b0c4c7b4cd28a6874996fc10f47a40f5e9076cd8",
+          "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "unchanged": true
+        },
+        "launch_error": null,
+        "phase": "local",
+        "plan_sha256": "sha256:845fb9cf734d282850e7065674b839c1908cbbc76f7b967d1d0243d7a3a11c66",
+        "platform": {
+          "machine": "arm64",
+          "release": "25.5.0",
+          "system": "Darwin"
+        },
+        "python": {
+          "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "implementation": "CPython",
+          "version": "3.12.13"
+        },
+        "recorded_at": "2026-08-19T06:02:46+00:00",
+        "release_unit": null,
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "runner_version": "controlled-validation-runner-v1",
+        "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+        "source": "controlled-validation-runner-v1",
+        "started_at": "2026-08-19T06:02:29+00:00",
+        "status": "passed",
+        "stderr": {
+          "byte_count": 21008,
+          "sha256": "6ddee087d8e68f118cbe88225418554f4592e4d8f85eaeeaf3e471844cc48fb2"
+        },
+        "stdout": {
+          "byte_count": 62970,
+          "sha256": "be933d9b6e058f8818c26d047af2003d726d61b64e3fa7bfa39667203877452b"
+        },
+        "subject": "workspace:sha256:3e9a40079597d314fa19562089c389284c254e76d457ff95fe99bca94170d15d",
+        "timed_out": false,
+        "timeout_seconds": 600.0
+      },
+      {
+        "actor": "controlled-validation-runner",
+        "argv_sha256": "sha256:7719b97ada74195e7b4d5aa7aa09200c6a2ab70d1d4969be668ffc26d7f8a146",
+        "check_id": "hook_contract_tests",
+        "declared_argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          ".codex/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "duration_ms": 2196,
+        "environment": "macos-local-codex-runtime",
+        "evidence": "controlled-validation-runner-v1 derived status from process execution",
+        "executed_argv": [
+          "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          ".codex/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "exit_code": 0,
+        "finished_at": "2026-08-19T06:02:48+00:00",
+        "integrity": {
+          "issues": [],
+          "managed_content_subject_after": "workspace:sha256:3e9a40079597d314fa19562089c389284c254e76d457ff95fe99bca94170d15d",
+          "managed_content_subject_before": "workspace:sha256:3e9a40079597d314fa19562089c389284c254e76d457ff95fe99bca94170d15d",
+          "protected_state_digest_after": "protected-state:sha256:830b4737330ec8f1b9a4de86b0c4c7b4cd28a6874996fc10f47a40f5e9076cd8",
+          "protected_state_digest_before": "protected-state:sha256:830b4737330ec8f1b9a4de86b0c4c7b4cd28a6874996fc10f47a40f5e9076cd8",
+          "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "unchanged": true
+        },
+        "launch_error": null,
+        "phase": "local",
+        "plan_sha256": "sha256:ea8514c9d8c1331c594b2457bc2850ad02f21640411779acff37e8725dce1727",
+        "platform": {
+          "machine": "arm64",
+          "release": "25.5.0",
+          "system": "Darwin"
+        },
+        "python": {
+          "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "implementation": "CPython",
+          "version": "3.12.13"
+        },
+        "recorded_at": "2026-08-19T06:02:48+00:00",
+        "release_unit": null,
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "runner_version": "controlled-validation-runner-v1",
+        "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+        "source": "controlled-validation-runner-v1",
+        "started_at": "2026-08-19T06:02:46+00:00",
+        "status": "passed",
+        "stderr": {
+          "byte_count": 7659,
+          "sha256": "6eee2d0312816ada539ec558d4e74be31edb654a161a2e3a37b1c14f993af39f"
+        },
+        "stdout": {
+          "byte_count": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "subject": "workspace:sha256:3e9a40079597d314fa19562089c389284c254e76d457ff95fe99bca94170d15d",
+        "timed_out": false,
+        "timeout_seconds": 600.0
+      },
+      {
+        "actor": "controlled-validation-runner",
+        "argv_sha256": "sha256:eb4cc4a6665b748d5e82a656b81d7fbad1637f061972ced5a6464dc28049812f",
+        "check_id": "reconcile_session",
+        "declared_argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "session",
+          "--json"
+        ],
+        "duration_ms": 303,
+        "environment": "macos-local-codex-runtime",
+        "evidence": "controlled-validation-runner-v1 derived status from process execution",
+        "executed_argv": [
+          "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "tools/governance/reconcile.py",
+          "session",
+          "--json"
+        ],
+        "exit_code": 0,
+        "finished_at": "2026-08-19T06:02:48+00:00",
+        "integrity": {
+          "issues": [],
+          "managed_content_subject_after": "workspace:sha256:3e9a40079597d314fa19562089c389284c254e76d457ff95fe99bca94170d15d",
+          "managed_content_subject_before": "workspace:sha256:3e9a40079597d314fa19562089c389284c254e76d457ff95fe99bca94170d15d",
+          "protected_state_digest_after": "protected-state:sha256:830b4737330ec8f1b9a4de86b0c4c7b4cd28a6874996fc10f47a40f5e9076cd8",
+          "protected_state_digest_before": "protected-state:sha256:830b4737330ec8f1b9a4de86b0c4c7b4cd28a6874996fc10f47a40f5e9076cd8",
+          "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "unchanged": true
+        },
+        "launch_error": null,
+        "phase": "local",
+        "plan_sha256": "sha256:e25319bdf8c1bbb5866ddc1045421660da4b608972654914d6713e9dec098417",
+        "platform": {
+          "machine": "arm64",
+          "release": "25.5.0",
+          "system": "Darwin"
+        },
+        "python": {
+          "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "implementation": "CPython",
+          "version": "3.12.13"
+        },
+        "recorded_at": "2026-08-19T06:02:48+00:00",
+        "release_unit": null,
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "runner_version": "controlled-validation-runner-v1",
+        "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+        "source": "controlled-validation-runner-v1",
+        "started_at": "2026-08-19T06:02:48+00:00",
+        "status": "passed",
+        "stderr": {
+          "byte_count": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout": {
+          "byte_count": 20139,
+          "sha256": "40dd98e2dff6b5712a564961161be1763a4aa128055d895de949b602203bb0d2"
+        },
+        "subject": "workspace:sha256:3e9a40079597d314fa19562089c389284c254e76d457ff95fe99bca94170d15d",
+        "timed_out": false,
+        "timeout_seconds": 120.0
+      },
+      {
+        "actor": "controlled-validation-runner",
+        "argv_sha256": "sha256:e00bcb3ab83778088a7c5e5a6f63792549dcff2cf5b16922fde245973f5b644c",
+        "check_id": "documentation_structure",
+        "declared_argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "static",
+          "--json"
+        ],
+        "duration_ms": 303,
+        "environment": "macos-local-codex-runtime",
+        "evidence": "controlled-validation-runner-v1 derived status from process execution",
+        "executed_argv": [
+          "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "tools/governance/reconcile.py",
+          "static",
+          "--json"
+        ],
+        "exit_code": 0,
+        "finished_at": "2026-08-19T06:02:49+00:00",
+        "integrity": {
+          "issues": [],
+          "managed_content_subject_after": "workspace:sha256:3e9a40079597d314fa19562089c389284c254e76d457ff95fe99bca94170d15d",
+          "managed_content_subject_before": "workspace:sha256:3e9a40079597d314fa19562089c389284c254e76d457ff95fe99bca94170d15d",
+          "protected_state_digest_after": "protected-state:sha256:830b4737330ec8f1b9a4de86b0c4c7b4cd28a6874996fc10f47a40f5e9076cd8",
+          "protected_state_digest_before": "protected-state:sha256:830b4737330ec8f1b9a4de86b0c4c7b4cd28a6874996fc10f47a40f5e9076cd8",
+          "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "unchanged": true
+        },
+        "launch_error": null,
+        "phase": "local",
+        "plan_sha256": "sha256:fa1a62b36699931ec7d87b101be653fff74aec45419fa9dfe5f1e90857bb5699",
+        "platform": {
+          "machine": "arm64",
+          "release": "25.5.0",
+          "system": "Darwin"
+        },
+        "python": {
+          "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "implementation": "CPython",
+          "version": "3.12.13"
+        },
+        "recorded_at": "2026-08-19T06:02:49+00:00",
+        "release_unit": null,
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "runner_version": "controlled-validation-runner-v1",
+        "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+        "source": "controlled-validation-runner-v1",
+        "started_at": "2026-08-19T06:02:48+00:00",
+        "status": "passed",
+        "stderr": {
+          "byte_count": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout": {
+          "byte_count": 24601,
+          "sha256": "306a956c3bd5feaee781e270d339d412eec62343a7d337ef957eede7da194141"
+        },
+        "subject": "workspace:sha256:3e9a40079597d314fa19562089c389284c254e76d457ff95fe99bca94170d15d",
+        "timed_out": false,
+        "timeout_seconds": 120.0
+      },
+      {
+        "actor": "controlled-validation-runner",
+        "argv_sha256": "sha256:2042cf92c7f4d531ac2e02733ac326a0bed705dfdf4871c315ea938ea0f920fa",
+        "check_id": "workflow_definition",
+        "declared_argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "workflow",
+          "--json"
+        ],
+        "duration_ms": 249,
+        "environment": "macos-local-codex-runtime",
+        "evidence": "controlled-validation-runner-v1 derived status from process execution",
+        "executed_argv": [
+          "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "tools/governance/reconcile.py",
+          "workflow",
+          "--json"
+        ],
+        "exit_code": 0,
+        "finished_at": "2026-08-19T06:02:49+00:00",
+        "integrity": {
+          "issues": [],
+          "managed_content_subject_after": "workspace:sha256:3e9a40079597d314fa19562089c389284c254e76d457ff95fe99bca94170d15d",
+          "managed_content_subject_before": "workspace:sha256:3e9a40079597d314fa19562089c389284c254e76d457ff95fe99bca94170d15d",
+          "protected_state_digest_after": "protected-state:sha256:830b4737330ec8f1b9a4de86b0c4c7b4cd28a6874996fc10f47a40f5e9076cd8",
+          "protected_state_digest_before": "protected-state:sha256:830b4737330ec8f1b9a4de86b0c4c7b4cd28a6874996fc10f47a40f5e9076cd8",
+          "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "unchanged": true
+        },
+        "launch_error": null,
+        "phase": "local",
+        "plan_sha256": "sha256:a8e3d6157ad5e1b09bc1b6e3f075a87bacbb5f04d33304965fbe94152004e0ec",
+        "platform": {
+          "machine": "arm64",
+          "release": "25.5.0",
+          "system": "Darwin"
+        },
+        "python": {
+          "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "implementation": "CPython",
+          "version": "3.12.13"
+        },
+        "recorded_at": "2026-08-19T06:02:49+00:00",
+        "release_unit": null,
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "runner_version": "controlled-validation-runner-v1",
+        "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+        "source": "controlled-validation-runner-v1",
+        "started_at": "2026-08-19T06:02:49+00:00",
+        "status": "passed",
+        "stderr": {
+          "byte_count": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout": {
+          "byte_count": 21969,
+          "sha256": "4be853bb07d6680adfff6d04edf3f6e375b6ee6a058f4172ad6888c19b018f64"
+        },
+        "subject": "workspace:sha256:3e9a40079597d314fa19562089c389284c254e76d457ff95fe99bca94170d15d",
+        "timed_out": false,
+        "timeout_seconds": 120.0
+      }
+    ]
+  }
+}

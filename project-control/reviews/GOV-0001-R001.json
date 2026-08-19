@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "review_id": "GOV-0001-R001",
+  "task_id": "GOV-0001",
+  "kind": "scope",
+  "decision": "approved",
+  "approver": "user",
+  "reason": "用户补充产品边界、数据边界、共享客户端和分发方向后，确认按 G0 方向执行。",
+  "confirmation_source": "conversation:2026-08-18:user-confirmed-g0",
+  "scope_version": 1,
+  "scope_hash": "sha256:49f4f4adf502f635e7115c498df27784683a4fadd16e7fd069d39cf1252520ec",
+  "decided_at": "2026-08-18T12:20:00+00:00",
+  "expires_at": null,
+  "supersedes": null
+}

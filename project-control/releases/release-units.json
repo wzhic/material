@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "topology": "multi",
+  "compatibility_policy": "跨发布单元变更必须记录兼容矩阵、部署顺序和回退顺序。",
+  "units": [
+    {
+      "id": "mac",
+      "version_prefix": "mac-v",
+      "independent_release": true,
+      "independent_rollback_condition": "无依赖阻断且数据兼容"
+    },
+    {
+      "id": "win",
+      "version_prefix": "win-v",
+      "independent_release": true,
+      "independent_rollback_condition": "无依赖阻断且数据兼容"
+    },
+    {
+      "id": "backend",
+      "version_prefix": "backend-v",
+      "independent_release": true,
+      "independent_rollback_condition": "客户端兼容矩阵允许且数据迁移可回退"
+    }
+  ],
+  "application_versions": {
+    "mac": null,
+    "win": null,
+    "backend": null
+  },
+  "note": "G0 不创建应用脚手架，因此尚无应用版本。"
+}

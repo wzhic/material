@@ -1,0 +1,21 @@
+{
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "conversation:2026-08-19:last-signed-migration",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "确认最后签一次迁移回执，之后全部使用对话审批",
+  "decided_at": "2026-08-19T04:10:28+00:00",
+  "decision": "approved",
+  "expires_at": null,
+  "kind": "scope",
+  "project_id": "material",
+  "reason": "批准 scope v4：在 R003 授权边界内补齐 conversation-v1 命令、受控返工命令和迁移后的任务记录",
+  "recorded_by": "Codex",
+  "review_id": "GOV-0001-R004",
+  "schema_version": 3,
+  "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+  "scope_version": 4,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "supersedes": null,
+  "task_id": "GOV-0001"
+}

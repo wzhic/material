@@ -1,0 +1,75 @@
+name: Governance
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: governance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  governance:
+    name: Governance (${{ matrix.os }})
+    if: github.repository == 'wzhic/material'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            release_unit: backend
+          - os: macos-latest
+            release_unit: mac
+          - os: windows-latest
+            release_unit: win
+    env:
+      MATERIAL_RELEASE_UNIT: ${{ matrix.release_unit }}
+      PYTHONDONTWRITEBYTECODE: "1"
+
+    steps:
+      - name: Check out exact commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Attach reviewed validation branch to exact commit
+        run: >-
+          python -c "import json, os, pathlib, subprocess; task_id = json.loads(pathlib.Path('project-control/current-task.json').read_text(encoding='utf-8'))['task_id']; task = json.loads(pathlib.Path('project-control/tasks', task_id + '.json').read_text(encoding='utf-8')); phase = 'post_merge' if os.environ['GITHUB_EVENT_NAME'] == 'push' and task['status'] == 'MERGED' else 'ci'; branch = task['base_branch'] if phase == 'post_merge' else task['branch']; subprocess.check_call(['git', 'checkout', '-B', branch, os.environ['GITHUB_SHA']])"
+
+      - name: Require governance tests
+        run: >-
+          python -c "import unittest; suite = unittest.defaultTestLoader.discover('tools/governance/tests', pattern='test_*.py'); count = suite.countTestCases(); assert count > 0, 'No governance tests discovered'; print(f'Discovered {count} governance tests')"
+
+      - name: Run governance unit tests
+        run: python -m unittest discover -s tools/governance/tests -p "test_*.py" -v
+
+      - name: Require hook contract tests
+        run: >-
+          python -c "import unittest; suite = unittest.defaultTestLoader.discover('.codex/tests', pattern='test_*.py'); count = suite.countTestCases(); assert count > 0, 'No hook contract tests discovered'; print(f'Discovered {count} hook contract tests')"
+
+      - name: Run hook contract tests
+        run: python -m unittest discover -s .codex/tests -p "test_*.py" -v
+
+      - name: Run reviewed checks for release unit
+        run: >-
+          python -c "import json, os, pathlib, subprocess, sys; task_id = json.loads(pathlib.Path('project-control/current-task.json').read_text(encoding='utf-8'))['task_id']; task = json.loads(pathlib.Path('project-control/tasks', task_id + '.json').read_text(encoding='utf-8')); phase = 'post_merge' if os.environ['GITHUB_EVENT_NAME'] == 'push' and task['status'] == 'MERGED' else 'ci'; raise SystemExit(subprocess.call([sys.executable, 'tools/governance/taskctl.py', 'run-required', task_id, '--phase', phase, '--release-unit', '${{ matrix.release_unit }}', '--environment', 'github-actions:${{ github.event_name }}:${{ matrix.release_unit }}', '--bootstrap-first-push']))"
+
+      - name: Reconcile static repository contract
+        run: python tools/governance/reconcile.py static --json
+
+      - name: Reconcile repository state
+        run: python tools/governance/reconcile.py ci --json

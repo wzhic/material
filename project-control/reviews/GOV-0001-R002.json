@@ -1,0 +1,33 @@
+{
+  "approver": "user",
+  "authority": {
+    "identity": "material-project-owner",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E",
+    "namespace": "material-governance-review",
+    "scheme": "ssh-keygen-y-v1"
+  },
+  "confirmation_source": "external-terminal:ssh-signature",
+  "decided_at": "2026-08-19T03:33:56+00:00",
+  "decision": "approved",
+  "expires_at": null,
+  "kind": "scope",
+  "nonce": "OYAQ4aos4PP2C2M3KE7AxiQSYWf_Gpxr",
+  "payload_schema": "material-governance-review/v1",
+  "project_id": "material",
+  "reason": "批准 GOV-0001 scope v2：包含用户公钥信任锚、受控验证、私有 GitHub Actions 在线核验和多发布单元协调合同",
+  "review_id": "GOV-0001-R002",
+  "schema_version": 2,
+  "scope_hash": "sha256:7592656579355e3b7cc2bfd1b96f91fe557613aa06d3cdf010b332f471551ef9",
+  "scope_version": 2,
+  "signature": {
+    "armored": "-----BEGIN SSH SIGNATURE-----\nU1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgU1QQTy/onlpLNaSUP7qaGe7dR9\n/Q/+r2yjSJGy9DHIkAAAAabWF0ZXJpYWwtZ292ZXJuYW5jZS1yZXZpZXcAAAAAAAAABnNo\nYTUxMgAAAFMAAAALc3NoLWVkMjU1MTkAAABAjp+pUWGTpJWxf9iaODiefjwqYz68LDGIKz\nV/Bf7zD9yVrj7tKMwjpBIDEBvaLArVjbiu5L+rITOb5tUzUnKnDg==\n-----END SSH SIGNATURE-----\n",
+    "identity": "material-project-owner",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E",
+    "namespace": "material-governance-review",
+    "payload_sha256": "sha256:a4558da55b3c83d7ad59f432f304baf9855659d28b76739641ffff5f5c3dcccb",
+    "scheme": "ssh-keygen-y-v1"
+  },
+  "source_repository": "git@github.com:wzhic/material.git",
+  "supersedes": null,
+  "task_id": "GOV-0001"
+}

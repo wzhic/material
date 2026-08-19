@@ -1,0 +1,265 @@
+{
+  "task_id": "GOV-0001",
+  "requirement": {
+    "id": "治理基线-REQ-0001",
+    "version": "v1.0",
+    "name": "治理控制层初始化",
+    "interaction_kind": "non_ui"
+  },
+  "base_branch": "main",
+  "allowed_commands": [
+    "python3 -m unittest discover -s tools/governance/tests -p test_*.py -v",
+    "python3 -m unittest discover -s .codex/tests -p test_*.py -v",
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reviewctl.py verify --json",
+    "python3 tools/governance/reviewctl.py prepare GOV-0001",
+    "python3 tools/governance/taskctl.py run-validation GOV-0001",
+    "python3 tools/governance/taskctl.py run-required GOV-0001",
+    "python3 tools/governance/taskctl.py sync-github-run GOV-0001",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py docs --json",
+    "python3 tools/governance/reconcile.py workflow --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/reconcile.py precommit --json",
+    "python3 tools/governance/reconcile.py ci --json"
+  ],
+  "validation": {
+    "required": [
+      {
+        "id": "governance_unit_tests",
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tools/governance/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "timeout_seconds": 600,
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ]
+      },
+      {
+        "id": "hook_contract_tests",
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          ".codex/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "timeout_seconds": 600,
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ]
+      },
+      {
+        "id": "reconcile_session",
+        "argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "session",
+          "--json"
+        ],
+        "timeout_seconds": 120,
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED"
+        ],
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ]
+      },
+      {
+        "id": "documentation_structure",
+        "argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "static",
+          "--json"
+        ],
+        "timeout_seconds": 120,
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ]
+      },
+      {
+        "id": "workflow_definition",
+        "argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "workflow",
+          "--json"
+        ],
+        "timeout_seconds": 120,
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ]
+      },
+      {
+        "id": "committed_diff_integrity",
+        "argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "ci",
+          "--json"
+        ],
+        "timeout_seconds": 120,
+        "gates": [
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ]
+      }
+    ],
+    "results": []
+  },
+  "assumptions": [
+    {
+      "id": "ASM-0001",
+      "source": "用户确认",
+      "statement": "产品不会自动发布广告，也不会自动调整广告预算。",
+      "status": "confirmed"
+    },
+    {
+      "id": "ASM-0002",
+      "source": "用户确认",
+      "statement": "后端不保存账号数据；个人数据仅保存在客户端本地 SQLite。",
+      "status": "confirmed"
+    },
+    {
+      "id": "ASM-0003",
+      "source": "用户确认",
+      "statement": "macOS 与 Windows 客户端共享代码且业务功能完全一致，但独立构建、发布和回退。",
+      "status": "confirmed"
+    },
+    {
+      "id": "ASM-0004",
+      "source": "用户确认",
+      "statement": "当前不通过应用商店分发，但架构和发布流程需预留后续接入能力。",
+      "status": "confirmed"
+    },
+    {
+      "id": "ASM-0005",
+      "source": "用户确认 2026-08-19",
+      "statement": "高权限审核回执采用用户独占私钥的 OpenSSH detached signature。",
+      "status": "confirmed"
+    },
+    {
+      "id": "ASM-0006",
+      "source": "用户确认 2026-08-19",
+      "statement": "GitHub 仓库为私有仓库，允许用仓库外只读凭据在线核验 Actions run。",
+      "status": "confirmed"
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "OPEN-0001",
+      "question": "登录与鉴权在后端不保存账号数据的前提下采用什么身份模型？",
+      "status": "open",
+      "blocking_for": "application_initialization"
+    },
+    {
+      "id": "OPEN-0002",
+      "question": "素材丢失、账号被盗和错误素材发布的风险上限如何分级？",
+      "status": "deferred_by_user",
+      "blocking_for": "relevant_feature_design"
+    },
+    {
+      "id": "OPEN-0003",
+      "question": "共享客户端与统一后端分别采用哪套官方脚手架和技术栈？",
+      "status": "open",
+      "blocking_for": "application_initialization"
+    },
+    {
+      "id": "OPEN-0006",
+      "question": "请用户在仓库外创建专用 OpenSSH 签名密钥，并只提供公钥行与 SHA256 指纹。",
+      "status": "confirmed",
+      "resolution": "用户已在仓库外生成专用 Ed25519 密钥；仅向项目提供公钥与经独立核验一致的 SHA256 指纹，私钥和密码不进入仓库或 Codex。",
+      "blocking_for": "scope_v2_review"
+    }
+  ],
+  "review_authority": {
+    "scheme": "ssh-keygen-y-v1",
+    "identity": "material-project-owner",
+    "namespace": "material-governance-review",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E"
+  },
+  "ci_trust": {
+    "provider": "github_actions_rest_v1",
+    "repository": "wzhic/material",
+    "workflow_path": ".github/workflows/governance.yml",
+    "api_base": "https://api.github.com",
+    "api_version": "2026-03-10",
+    "private": true,
+    "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "ci_events": [
+      "pull_request",
+      "push"
+    ],
+    "post_merge_events": [
+      "push"
+    ],
+    "required_jobs": {
+      "pull_request": [
+        "Governance (ubuntu-latest)",
+        "Governance (macos-latest)",
+        "Governance (windows-latest)"
+      ],
+      "push": [
+        "Governance (ubuntu-latest)",
+        "Governance (macos-latest)",
+        "Governance (windows-latest)"
+      ]
+    }
+  },
+  "coordination": {
+    "mode": "governance-bootstrap",
+    "coordinator_task": "GOV-0001",
+    "no_release_artifacts": true,
+    "rationale": "G0 只建立治理控制层，不创建或发布 mac、win、backend 应用产物。"
+  }
+}
