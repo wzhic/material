@@ -978,18 +978,12 @@ def _subject_path_is_excluded(relative: str) -> bool:
     return filename.endswith((".pyc", ".pyo")) or filename in (".DS_Store", "coverage.xml")
 
 
-def _tracked_git_modes(root: Path) -> Dict[str, str]:
-    """Return stage-zero Git index modes keyed by repository-relative path.
-
-    Git stores the executable distinction independently from the host checkout.
-    A repository must therefore use the index as the portable source of truth;
-    plain fixture directories keep the filesystem fallback used for untracked
-    content.
-    """
+def _git_index_path(root: Path) -> Optional[Path]:
+    """Return the real Git index path, including linked-worktree layouts."""
 
     git_marker = root / ".git"
     if not git_marker.exists():
-        return {}
+        return None
     if git_marker.is_dir():
         index_path = git_marker / "index"
     elif git_marker.is_file():
@@ -1010,11 +1004,19 @@ def _tracked_git_modes(root: Path) -> Dict[str, str]:
         # Hook tests use a synthetic .git marker, while a newly initialized
         # repository has no index until its first add.  Both contain no tracked
         # executable classes and correctly use the untracked fallback.
+        return None
+    return index_path
+
+
+def _tracked_git_entries(root: Path) -> Dict[str, Tuple[str, str]]:
+    """Return stage-zero Git index mode and blob id for each tracked path."""
+
+    if _git_index_path(root) is None:
         return {}
     output, error = run_git(root, ("ls-files", "--stage", "-z"))
     if error:
-        raise GovernanceError("cannot inspect Git index modes: %s" % error)
-    modes: Dict[str, str] = {}
+        raise GovernanceError("cannot inspect Git index entries: %s" % error)
+    entries: Dict[str, Tuple[str, str]] = {}
     for record in (output or "").split("\0"):
         if not record:
             continue
@@ -1023,32 +1025,96 @@ def _tracked_git_modes(root: Path) -> Dict[str, str]:
         except ValueError as exc:
             raise GovernanceError("cannot parse Git index mode record") from exc
         fields = metadata.split()
-        if len(fields) != 3 or not re.fullmatch(r"[0-7]{6}", fields[0]):
+        if (
+            len(fields) != 3
+            or not re.fullmatch(r"[0-7]{6}", fields[0])
+            or not re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", fields[1])
+        ):
             raise GovernanceError("cannot parse Git index mode metadata")
-        mode, _object_id, stage = fields
+        mode, object_id, stage = fields
         if stage != "0":
             raise GovernanceError("cannot calculate subject with unmerged Git index entries")
-        previous = modes.get(relative)
-        if previous is not None and previous != mode:
-            raise GovernanceError("conflicting Git index modes for %s" % relative)
-        modes[relative] = mode
-    return modes
+        if not relative or relative.startswith("/") or ".." in relative.split("/"):
+            raise GovernanceError("cannot parse Git index path")
+        entry = (mode, object_id.lower())
+        previous = entries.get(relative)
+        if previous is not None and previous != entry:
+            raise GovernanceError("conflicting Git index entries for %s" % relative)
+        entries[relative] = entry
+    return entries
+
+
+def _git_worktree_available(root: Path) -> bool:
+    """Distinguish a real Git worktree from synthetic fixture markers."""
+
+    if not (root / ".git").exists():
+        return False
+    output, error = run_git(root, ("rev-parse", "--is-inside-work-tree"))
+    return error is None and (output or "").strip().lower() == "true"
+
+
+def _tracked_git_modes(root: Path) -> Dict[str, str]:
+    """Return portable executable classes keyed by repository-relative path."""
+
+    return {relative: entry[0] for relative, entry in _tracked_git_entries(root).items()}
+
+
+def _git_modified_paths(root: Path) -> frozenset[str]:
+    """Return tracked paths whose worktree form differs from the Git index."""
+
+    output, error = run_git(root, ("diff-files", "--name-only", "-z", "--"))
+    if error:
+        raise GovernanceError("cannot inspect Git worktree differences: %s" % error)
+    paths = []
+    for relative in (output or "").split("\0"):
+        if not relative:
+            continue
+        if relative.startswith("/") or ".." in relative.split("/"):
+            raise GovernanceError("cannot parse Git worktree path")
+        paths.append(relative)
+    return frozenset(paths)
+
+
+def _git_blob_oid(root: Path, relative: str) -> str:
+    """Hash current file bytes through Git's reviewed path clean filters."""
+
+    output, error = run_git(root, ("hash-object", "--path=" + relative, "--", relative))
+    if error:
+        raise GovernanceError("cannot calculate Git blob identity for %s: %s" % (relative, error))
+    object_id = (output or "").strip().lower()
+    if not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", object_id):
+        raise GovernanceError("cannot parse Git blob identity for %s" % relative)
+    return object_id
+
+
+def _unfiltered_git_blob_oid(content: bytes) -> str:
+    """Return the standard SHA-1 Git blob id used before a worktree exists."""
+
+    header = b"blob " + str(len(content)).encode("ascii") + b"\0"
+    return hashlib.sha1(header + content).hexdigest()
 
 
 def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
     """Hash current governed file contents while excluding mutable control state.
 
-    The path, file kind, executable-bit class and bytes are hashed.  Tracked
-    files use Git's 100644/100755 index mode so the same checkout has the same
-    subject on POSIX and Windows; untracked files use host executable bits until
-    they enter the index.  Task/review/current-task records are excluded so
-    appending the validation result does not invalidate itself.  Git metadata
-    and generated caches are excluded as non-project content.
+    The path, file kind, executable-bit class and canonical content identity are
+    hashed.  Clean tracked files use the Git index blob id; modified tracked and
+    untracked files in an indexed repository are hashed through Git's path clean
+    filters.  This also applies before the first index exists, provided the root
+    is a real Git worktree.  It preserves real content changes while making
+    checkout-only representations such as LF versus CRLF portable.  Before a
+    real worktree exists, unfiltered bytes use the standard SHA-1 Git blob
+    identity so first-commit validation remains stable.  Task/review/current-task
+    records are excluded so appending the validation result does not invalidate
+    itself.  Git metadata and generated caches are excluded as non-project
+    content.
     """
 
     root = root.resolve()
     patterns = task.get("allowed_paths", [])
-    tracked_modes = _tracked_git_modes(root)
+    git_worktree = _git_worktree_available(root)
+    tracked_entries = _tracked_git_entries(root)
+    modified_paths = _git_modified_paths(root) if tracked_entries else frozenset()
     entries: List[Tuple[str, str, int, bytes]] = []
     try:
         for directory, directory_names, file_names in os.walk(str(root), topdown=True, followlinks=False):
@@ -1082,14 +1148,22 @@ def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
                     content = os.readlink(str(candidate)).encode("utf-8")
                 elif stat.S_ISREG(mode):
                     kind = "file"
-                    tracked_mode = tracked_modes.get(relative)
+                    tracked_entry = tracked_entries.get(relative)
+                    tracked_mode = tracked_entry[0] if tracked_entry is not None else None
                     if tracked_mode == "100755":
                         executable_bits = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
                     elif tracked_mode in ("100644", "120000"):
                         executable_bits = 0
                     else:
                         executable_bits = mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-                    content = candidate.read_bytes()
+                    if tracked_entry is not None and relative not in modified_paths:
+                        content = ("git-blob:" + tracked_entry[1]).encode("ascii")
+                    elif git_worktree:
+                        content = ("git-blob:" + _git_blob_oid(root, relative)).encode("ascii")
+                    else:
+                        content = (
+                            "git-blob:" + _unfiltered_git_blob_oid(candidate.read_bytes())
+                        ).encode("ascii")
                 else:
                     continue
                 entries.append((relative, kind, executable_bits, content))

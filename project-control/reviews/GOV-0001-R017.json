@@ -1,0 +1,23 @@
+{
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "conversation:2026-08-19:run-32242354843-git-blob-normalization-recovery",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "确认",
+  "decided_at": "2026-08-19T11:22:13+00:00",
+  "decision": "approved",
+  "expires_at": "2026-08-20T12:00:00+00:00",
+  "kind": "irreversible_operation",
+  "operation_id": "GOV-0001-CI-RUN-32242354843-PENDING-CONTENT-RECOVERY",
+  "project_id": "material",
+  "reason": "用户确认最小收口恢复：针对 GitHub Actions Run 32242354843 和失败 content/head c4a3e656f405dcfb7bc6697963057d5bcba3bef6，仅生成一个直接子提交，把受管内容摘要改为 Git clean-filter 规范化 blob 身份，补跨平台换行回归测试与三份相关文档；禁止强推、豁免、业务代码、依赖及 workflow 变更，并要求完整本地验证和三平台 CI。",
+  "recorded_by": "Codex",
+  "review_id": "GOV-0001-R017",
+  "schema_version": 3,
+  "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+  "scope_version": 4,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "supersedes": "GOV-0001-R015",
+  "target_digest": "sha256:f07193616429c5e111e27b9b2b5128a7679c29b1b283669d04023770312b7245",
+  "task_id": "GOV-0001"
+}

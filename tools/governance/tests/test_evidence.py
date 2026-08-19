@@ -101,11 +101,13 @@ class ValidationEvidenceTests(AuthenticatedReceiptTestCase):
 
                 return fake_lstat
 
-            with mock.patch.object(core, "_tracked_git_modes", return_value={relative: "100755"}):
-                with mock.patch.object(core.os, "lstat", side_effect=lstat_with_permissions(0o644)):
-                    non_posix_checkout = managed_content_subject(root, task)
-                with mock.patch.object(core.os, "lstat", side_effect=lstat_with_permissions(0o755)):
-                    posix_checkout = managed_content_subject(root, task)
+            entry = {relative: ("100755", "0" * 40)}
+            with mock.patch.object(core, "_tracked_git_entries", return_value=entry):
+                with mock.patch.object(core, "_git_modified_paths", return_value=frozenset()):
+                    with mock.patch.object(core.os, "lstat", side_effect=lstat_with_permissions(0o644)):
+                        non_posix_checkout = managed_content_subject(root, task)
+                    with mock.patch.object(core.os, "lstat", side_effect=lstat_with_permissions(0o755)):
+                        posix_checkout = managed_content_subject(root, task)
             self.assertEqual(non_posix_checkout, posix_checkout)
 
     def test_git_index_executable_class_changes_subject(self) -> None:
@@ -116,10 +118,15 @@ class ValidationEvidenceTests(AuthenticatedReceiptTestCase):
             governed_file.parent.mkdir(parents=True, exist_ok=True)
             governed_file.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             relative = governed_file.relative_to(root).as_posix()
-            with mock.patch.object(core, "_tracked_git_modes", return_value={relative: "100644"}):
-                regular_subject = managed_content_subject(root, task)
-            with mock.patch.object(core, "_tracked_git_modes", return_value={relative: "100755"}):
-                executable_subject = managed_content_subject(root, task)
+            with mock.patch.object(core, "_git_modified_paths", return_value=frozenset()):
+                with mock.patch.object(
+                    core, "_tracked_git_entries", return_value={relative: ("100644", "0" * 40)}
+                ):
+                    regular_subject = managed_content_subject(root, task)
+                with mock.patch.object(
+                    core, "_tracked_git_entries", return_value={relative: ("100755", "0" * 40)}
+                ):
+                    executable_subject = managed_content_subject(root, task)
             self.assertNotEqual(regular_subject, executable_subject)
 
     def test_tracked_git_modes_parse_stage_zero_records(self) -> None:
@@ -139,6 +146,37 @@ class ValidationEvidenceTests(AuthenticatedReceiptTestCase):
                     },
                     core._tracked_git_modes(root),
                 )
+
+    def test_git_clean_blob_identity_normalizes_stage_and_crlf_but_not_content(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            initialized, error = core.run_git(root, ("init", "--quiet"))
+            self.assertIsNone(error, initialized)
+            attributes = root / ".gitattributes"
+            attributes.write_text("*.txt text eol=lf\n", encoding="utf-8")
+            _added_attributes, error = core.run_git(root, ("add", "--", ".gitattributes"))
+            self.assertIsNone(error)
+
+            governed_file = root / "tools" / "governance" / "subject.txt"
+            governed_file.parent.mkdir(parents=True, exist_ok=True)
+            governed_file.write_bytes(b"first\nsecond\n")
+            task = {"allowed_paths": ["tools/governance/**"]}
+
+            untracked_lf = managed_content_subject(root, task)
+            _added_file, error = core.run_git(
+                root, ("add", "--", "tools/governance/subject.txt")
+            )
+            self.assertIsNone(error)
+            indexed_lf = managed_content_subject(root, task)
+            governed_file.write_bytes(b"first\r\nsecond\r\n")
+            windows_crlf = managed_content_subject(root, task)
+
+            self.assertEqual(untracked_lf, indexed_lf)
+            self.assertEqual(indexed_lf, windows_crlf)
+
+            governed_file.write_bytes(b"first\r\nchanged\r\n")
+            changed_content = managed_content_subject(root, task)
+            self.assertNotEqual(windows_crlf, changed_content)
 
     def test_nonpassing_ci_result_requires_matching_commit_and_environment(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

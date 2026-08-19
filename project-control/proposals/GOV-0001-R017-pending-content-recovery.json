@@ -1,0 +1,35 @@
+{
+  "allowed_paths": [
+    "docs/governance/验证与豁免-GOV-0003-v1.0.md",
+    "docs/requirements/治理基线-REQ-0001/治理基线-REQ-0001-v1.0.md",
+    "docs/troubleshooting/治理门禁问题排查-TRB-0001-v1.0.md",
+    "project-control/proposals/GOV-0001-R017-pending-content-recovery.json",
+    "project-control/reviews/GOV-0001-R016.json",
+    "project-control/reviews/GOV-0001-R017.json",
+    "project-control/tasks/GOV-0001.json",
+    "tools/governance/core.py",
+    "tools/governance/tests/test_evidence.py"
+  ],
+  "commit_message": "fix(governance): canonicalize tracked content through Git",
+  "expected_history_count": 7,
+  "failed_content_sha": "c4a3e656f405dcfb7bc6697963057d5bcba3bef6",
+  "failed_control_head": "c4a3e656f405dcfb7bc6697963057d5bcba3bef6",
+  "failed_run_id": "32242354843",
+  "failure_stage": "content_ci_pending",
+  "from_previous_status": "LOCAL_VERIFIED",
+  "from_status": "BLOCKED",
+  "invariants": [
+    "no_validation_waiver",
+    "no_force_push",
+    "preserve_existing_history",
+    "controlled_local_validation_required",
+    "three_platform_ci_required",
+    "no_business_code_or_dependency_files"
+  ],
+  "operation_id": "GOV-0001-CI-RUN-32242354843-PENDING-CONTENT-RECOVERY",
+  "review_id": "GOV-0001-R017",
+  "rework_review_id": "GOV-0001-R016",
+  "schema_version": 2,
+  "scope_version": 4,
+  "task_id": "GOV-0001"
+}
