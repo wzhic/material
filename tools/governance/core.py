@@ -30,6 +30,7 @@ BOOTSTRAP_REPAIR_REVIEW_ID = "GOV-0001-R007"
 BOOTSTRAP_REPAIR_MESSAGE = "fix(governance): restore Windows bootstrap CI"
 BOOTSTRAP_REPAIR_ALLOWED_PATHS = frozenset((
     "AGENTS.md",
+    "docs/governance/治理总则-GOV-0001-v1.0.md",
     "docs/governance/验证与豁免-GOV-0003-v1.0.md",
     "docs/requirements/治理基线-REQ-0001/治理基线-REQ-0001-v1.0.md",
     "docs/troubleshooting/治理门禁问题排查-TRB-0001-v1.0.md",
@@ -37,6 +38,27 @@ BOOTSTRAP_REPAIR_ALLOWED_PATHS = frozenset((
     "project-control/tasks/GOV-0001.json",
     "tools/governance/core.py",
     "tools/governance/reconcile.py",
+    "tools/governance/taskctl.py",
+    "tools/governance/tests/test_bootstrap_git.py",
+    "tools/governance/tests/test_core.py",
+    "tools/governance/tests/test_reconcile_ci_static.py",
+))
+FAILED_BOOTSTRAP_REPAIR_SHA = "7b18bb4c0b3cc42e078acf5351a19f6760beea0f"
+FAILED_BOOTSTRAP_REPAIR_RUN_ID = "32223213198"
+SECOND_BOOTSTRAP_REPAIR_REVIEW_ID = "GOV-0001-R009"
+SECOND_BOOTSTRAP_REPAIR_MESSAGE = "fix(governance): harden Windows bootstrap runtime"
+SECOND_BOOTSTRAP_REPAIR_ALLOWED_PATHS = frozenset((
+    "AGENTS.md",
+    "docs/governance/治理总则-GOV-0001-v1.0.md",
+    "docs/governance/验证与豁免-GOV-0003-v1.0.md",
+    "docs/requirements/治理基线-REQ-0001/治理基线-REQ-0001-v1.0.md",
+    "docs/troubleshooting/治理门禁问题排查-TRB-0001-v1.0.md",
+    "project-control/reviews/GOV-0001-R008.json",
+    "project-control/reviews/GOV-0001-R009.json",
+    "project-control/tasks/GOV-0001.json",
+    "tools/governance/core.py",
+    "tools/governance/reconcile.py",
+    "tools/governance/reviewctl.py",
     "tools/governance/taskctl.py",
     "tools/governance/tests/test_bootstrap_git.py",
     "tools/governance/tests/test_core.py",
@@ -441,9 +463,18 @@ def _git_candidates() -> List[str]:
     candidates: List[str] = []
     configured = os.environ.get("GOVERNANCE_GIT")
     discovered = shutil.which("git")
-    runtime_roots: List[Path] = [
-        Path.home() / ".cache" / "codex-runtimes" / "codex-primary-runtime" / "dependencies",
-    ]
+    runtime_roots: List[Path] = []
+    try:
+        home = Path.home()
+    except (OSError, RuntimeError):
+        # Windows services and deliberately minimal CI subprocesses may have
+        # neither HOME nor USERPROFILE. Git discovery must keep using PATH and
+        # the active Python runtime instead of crashing before a candidate runs.
+        home = None
+    if home is not None:
+        runtime_roots.append(
+            home / ".cache" / "codex-runtimes" / "codex-primary-runtime" / "dependencies"
+        )
     for parent in Path(sys.executable).resolve().parents:
         if parent.name == "dependencies" and parent not in runtime_roots:
             runtime_roots.append(parent)
@@ -493,36 +524,71 @@ def run_git(root: Path, arguments: Sequence[str]) -> Tuple[Optional[str], Option
     return None, "; ".join(errors)
 
 
-def bootstrap_repair_commit_issues(root: Path, commit: str) -> List[str]:
-    """Validate the one-time, non-force repair child of the failed G0 root.
+def bootstrap_repair_contracts() -> Tuple[Mapping[str, Any], ...]:
+    """Return the finite, immutable-in-practice bootstrap recovery chain."""
 
-    This exception is deliberately bound to the observed failed root, Run #1,
-    fixed commit message and exact reviewed file set.  It cannot be reused by a
-    later task or by another root commit.
-    """
+    return (
+        {
+            "parent_sha": FAILED_BOOTSTRAP_ROOT_SHA,
+            "history_count": 1,
+            "failed_run_id": FAILED_BOOTSTRAP_RUN_ID,
+            "review_id": BOOTSTRAP_REPAIR_REVIEW_ID,
+            "message": BOOTSTRAP_REPAIR_MESSAGE,
+            "allowed_paths": BOOTSTRAP_REPAIR_ALLOWED_PATHS,
+        },
+        {
+            "parent_sha": FAILED_BOOTSTRAP_REPAIR_SHA,
+            "history_count": 2,
+            "failed_run_id": FAILED_BOOTSTRAP_REPAIR_RUN_ID,
+            "review_id": SECOND_BOOTSTRAP_REPAIR_REVIEW_ID,
+            "message": SECOND_BOOTSTRAP_REPAIR_MESSAGE,
+            "allowed_paths": SECOND_BOOTSTRAP_REPAIR_ALLOWED_PATHS,
+        },
+    )
+
+
+def bootstrap_repair_contract_for_parent(parent: str) -> Optional[Mapping[str, Any]]:
+    normalized = str(parent).strip().lower()
+    for contract in bootstrap_repair_contracts():
+        if contract["parent_sha"] == normalized:
+            return contract
+    return None
+
+
+def bootstrap_repair_commit_issues(root: Path, commit: str) -> List[str]:
+    """Validate one exact, non-force child in the finite G0 repair chain."""
 
     normalized = str(commit).strip().lower()
     issues: List[str] = []
-    if normalized == FAILED_BOOTSTRAP_ROOT_SHA or not re.fullmatch(r"[0-9a-f]{40}", normalized):
+    if not re.fullmatch(r"[0-9a-f]{40}", normalized):
         return ["bootstrap repair subject must be a distinct 40-character commit"]
     parents, parents_error = run_git(root, ("rev-list", "--parents", "-n", "1", normalized))
-    expected_parents = [normalized, FAILED_BOOTSTRAP_ROOT_SHA]
-    if parents_error or (parents or "").split() != expected_parents:
-        issues.append(
-            "bootstrap repair must be the sole child of failed root %s from Actions run %s"
-            % (FAILED_BOOTSTRAP_ROOT_SHA, FAILED_BOOTSTRAP_RUN_ID)
+    words = (parents or "").split()
+    if parents_error or len(words) != 2 or words[0] != normalized:
+        return ["bootstrap repair must have exactly one reviewed failed parent"]
+    parent = words[1]
+    contract = bootstrap_repair_contract_for_parent(parent)
+    if contract is None:
+        return ["bootstrap repair parent is not part of the finite reviewed recovery chain"]
+    if parent == FAILED_BOOTSTRAP_ROOT_SHA:
+        root_line, root_error = run_git(
+            root, ("rev-list", "--parents", "-n", "1", FAILED_BOOTSTRAP_ROOT_SHA)
         )
-    root_line, root_error = run_git(
-        root, ("rev-list", "--parents", "-n", "1", FAILED_BOOTSTRAP_ROOT_SHA)
-    )
-    if root_error or (root_line or "").split() != [FAILED_BOOTSTRAP_ROOT_SHA]:
-        issues.append("recorded failed bootstrap commit is unavailable or is not the repository root")
+        if root_error or (root_line or "").split() != [FAILED_BOOTSTRAP_ROOT_SHA]:
+            issues.append("recorded failed bootstrap commit is unavailable or is not the repository root")
+    else:
+        prior_issues = bootstrap_repair_commit_issues(root, parent)
+        if prior_issues:
+            issues.append(
+                "bootstrap repair parent does not satisfy the preceding reviewed recovery: %s"
+                % "; ".join(prior_issues)
+            )
     message, message_error = run_git(root, ("show", "-s", "--format=%s", normalized))
-    if message_error or message != BOOTSTRAP_REPAIR_MESSAGE:
+    if message_error or message != contract["message"]:
         issues.append("bootstrap repair commit message is not the fixed reviewed message")
     changed, changed_error = run_git(
         root,
-        ("diff", "--name-only", "-z", FAILED_BOOTSTRAP_ROOT_SHA + ".." + normalized),
+        ("diff", "--name-only", "-z", parent + ".." + normalized),
     )
     if changed_error:
         issues.append("bootstrap repair paths cannot be inspected: %s" % changed_error)
@@ -530,11 +596,11 @@ def bootstrap_repair_commit_issues(root: Path, commit: str) -> List[str]:
         paths = [path for path in (changed or "").split("\0") if path]
         if not paths:
             issues.append("bootstrap repair commit may not be empty")
-        outside = sorted(set(paths) - set(BOOTSTRAP_REPAIR_ALLOWED_PATHS))
+        outside = sorted(set(paths) - set(contract["allowed_paths"]))
         if outside:
             issues.append(
-                "bootstrap repair changes paths outside the R007 allowlist: %s"
-                % ", ".join(outside)
+                "bootstrap repair changes paths outside the %s allowlist: %s"
+                % (contract["review_id"], ", ".join(outside))
             )
     return issues
 
@@ -2060,3 +2126,25 @@ def status_index(status: str) -> int:
 
 def json_result(payload: Mapping[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def write_output(value: Any, stream: Optional[Any] = None, end: str = "\n") -> None:
+    """Write deterministic UTF-8 output across consoles and redirected streams.
+
+    Windows may expose a legacy text encoding such as CP1252 even though
+    governance JSON contains Chinese.  Writing UTF-8 through the underlying
+    binary buffer avoids locale-dependent UnicodeEncodeError.  StringIO and
+    other text-only test streams remain supported.
+    """
+
+    target = stream if stream is not None else sys.stdout
+    rendered = str(value) + end
+    binary = getattr(target, "buffer", None)
+    if binary is not None:
+        binary.write(rendered.encode("utf-8"))
+        binary.flush()
+        return
+    target.write(rendered)
+    flush = getattr(target, "flush", None)
+    if callable(flush):
+        flush()

@@ -14,7 +14,14 @@ from helpers import (
 
 import taskctl
 import core
-from core import BOOTSTRAP_REPAIR_MESSAGE, BOOTSTRAP_REPAIR_REVIEW_ID, read_json, run_git
+from core import (
+    BOOTSTRAP_REPAIR_MESSAGE,
+    BOOTSTRAP_REPAIR_REVIEW_ID,
+    SECOND_BOOTSTRAP_REPAIR_MESSAGE,
+    SECOND_BOOTSTRAP_REPAIR_REVIEW_ID,
+    read_json,
+    run_git,
+)
 
 
 def git(root: Path, *arguments: str) -> str:
@@ -90,9 +97,9 @@ class BootstrapGitTransportTests(AuthenticatedReceiptTestCase):
 
     def commit_repair(self, root: Path, failed_root: str) -> str:
         self.prepare_repair(root)
-        with mock.patch.object(core, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root), mock.patch.object(
-            taskctl, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root
-        ), mock.patch("reconcile.run_reconcile", return_value={"ok": True, "checks": []}):
+        with mock.patch.object(core, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root), mock.patch(
+            "reconcile.run_reconcile", return_value={"ok": True, "checks": []}
+        ):
             code = taskctl.main([
                 "bootstrap-commit", "GOV-0001",
                 "--stage", "content",
@@ -108,6 +115,45 @@ class BootstrapGitTransportTests(AuthenticatedReceiptTestCase):
         )
         self.assertEqual(BOOTSTRAP_REPAIR_MESSAGE, git(root, "show", "-s", "--format=%s", repair_sha))
         return repair_sha
+
+    def commit_second_repair(self, root: Path, failed_root: str, first_repair: str) -> str:
+        governed = root / "tools" / "governance" / "reviewctl.py"
+        governed.write_text("# locale-independent governance output\n", encoding="utf-8")
+        governance_doc = root / "docs" / "governance" / "治理总则-GOV-0001-v1.0.md"
+        governance_doc.parent.mkdir(parents=True, exist_ok=True)
+        governance_doc.write_text("# finite second repair contract\n", encoding="utf-8")
+        task_path = root / "project-control" / "tasks" / "GOV-0001.json"
+        task = read_json(task_path)
+        task.setdefault("rework_history", []).append({
+            "review_id": SECOND_BOOTSTRAP_REPAIR_REVIEW_ID,
+        })
+        task["validation"]["results"] = [valid_local_pass(root, task)]
+        write_json(task_path, task)
+        with mock.patch.object(core, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root), mock.patch.object(
+            core, "FAILED_BOOTSTRAP_REPAIR_SHA", first_repair
+        ), mock.patch("reconcile.run_reconcile", return_value={"ok": True, "checks": []}):
+            code = taskctl.main([
+                "bootstrap-commit", "GOV-0001",
+                "--stage", "content",
+                "--actor", "Codex",
+                "--root", str(root),
+                "--json",
+            ])
+        self.assertEqual(0, code)
+        second_repair = git(root, "rev-parse", "HEAD")
+        self.assertEqual(
+            [second_repair, first_repair],
+            git(root, "rev-list", "--parents", "-n", "1", second_repair).split(),
+        )
+        self.assertEqual(
+            SECOND_BOOTSTRAP_REPAIR_MESSAGE,
+            git(root, "show", "-s", "--format=%s", second_repair),
+        )
+        self.assertIn(
+            "docs/governance/治理总则-GOV-0001-v1.0.md",
+            git(root, "diff", "--name-only", first_repair + ".." + second_repair).splitlines(),
+        )
+        return second_repair
 
     def transition_and_commit_control(self, root: Path, content_sha: str) -> str:
         code = taskctl.main([
@@ -219,14 +265,52 @@ class BootstrapGitTransportTests(AuthenticatedReceiptTestCase):
                 ]))
             repair_sha = self.commit_repair(root, failed_root)
             with mock.patch.object(core, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root), mock.patch.object(
-                taskctl, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root
-            ), mock.patch.object(taskctl, "_BOOTSTRAP_PUSH_URL", str(remote)):
+                taskctl, "_BOOTSTRAP_PUSH_URL", str(remote)
+            ):
                 self.assertEqual(0, taskctl.main([
                     "bootstrap-push", "GOV-0001", "--stage", "content",
                     "--actor", "Codex", "--root", str(root), "--json",
                 ]))
                 self.assertEqual(repair_sha, git(remote, "rev-parse", "refs/heads/main"))
                 control_sha = self.transition_and_commit_control(root, repair_sha)
+                self.assertEqual(0, taskctl.main([
+                    "bootstrap-push", "GOV-0001", "--stage", "control",
+                    "--actor", "Codex", "--root", str(root), "--json",
+                ]))
+                self.assertEqual(control_sha, git(remote, "rev-parse", "refs/heads/main"))
+
+    def test_second_windows_repair_is_exact_non_force_and_exhausts_chain(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "work"
+            remote = Path(temporary) / "remote.git"
+            root.mkdir()
+            remote.mkdir()
+            git(remote, "init", "--bare")
+            self.prepare(root)
+            failed_root = self.commit_content(root)
+            with mock.patch.object(taskctl, "_BOOTSTRAP_PUSH_URL", str(remote)):
+                self.assertEqual(0, taskctl.main([
+                    "bootstrap-push", "GOV-0001", "--stage", "content",
+                    "--actor", "Codex", "--root", str(root), "--json",
+                ]))
+            first_repair = self.commit_repair(root, failed_root)
+            with mock.patch.object(core, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root), mock.patch.object(
+                taskctl, "_BOOTSTRAP_PUSH_URL", str(remote)
+            ):
+                self.assertEqual(0, taskctl.main([
+                    "bootstrap-push", "GOV-0001", "--stage", "content",
+                    "--actor", "Codex", "--root", str(root), "--json",
+                ]))
+            second_repair = self.commit_second_repair(root, failed_root, first_repair)
+            with mock.patch.object(core, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root), mock.patch.object(
+                core, "FAILED_BOOTSTRAP_REPAIR_SHA", first_repair
+            ), mock.patch.object(taskctl, "_BOOTSTRAP_PUSH_URL", str(remote)):
+                self.assertEqual(0, taskctl.main([
+                    "bootstrap-push", "GOV-0001", "--stage", "content",
+                    "--actor", "Codex", "--root", str(root), "--json",
+                ]))
+                self.assertEqual(second_repair, git(remote, "rev-parse", "refs/heads/main"))
+                control_sha = self.transition_and_commit_control(root, second_repair)
                 self.assertEqual(0, taskctl.main([
                     "bootstrap-push", "GOV-0001", "--stage", "control",
                     "--actor", "Codex", "--root", str(root), "--json",

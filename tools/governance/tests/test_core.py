@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import io
 import sys
 import tempfile
 import unittest
@@ -26,9 +27,11 @@ from core import (  # noqa: E402
     review_validity,
     task_path,
     validate_task,
+    write_output,
 )
 from helpers import AuthenticatedReceiptTestCase, base_task, initialize_root, write_json  # noqa: E402
 import core  # noqa: E402
+import taskctl  # noqa: E402
 
 
 class GitEncodingTests(unittest.TestCase):
@@ -42,6 +45,31 @@ class GitEncodingTests(unittest.TestCase):
         self.assertIsNone(error)
         self.assertEqual("utf-8", run.call_args.kwargs["encoding"])
         self.assertEqual("strict", run.call_args.kwargs["errors"])
+
+    def test_git_candidates_keep_path_discovery_when_home_is_unavailable(self) -> None:
+        with mock.patch.dict(core.os.environ, {}, clear=True), mock.patch.object(
+            core.Path, "home", side_effect=RuntimeError("no home directory")
+        ), mock.patch.object(core.shutil, "which", return_value="git"):
+            candidates = core._git_candidates()
+        self.assertEqual("git", candidates[0])
+
+    def test_output_uses_utf8_bytes_when_console_text_encoding_is_cp1252(self) -> None:
+        raw = io.BytesIO()
+        stream = io.TextIOWrapper(raw, encoding="cp1252")
+        write_output("治理输出", stream=stream)
+        stream.detach()
+        self.assertEqual("治理输出\n".encode("utf-8"), raw.getvalue())
+
+    def test_taskctl_routes_json_through_locale_independent_output(self) -> None:
+        raw = io.BytesIO()
+        stream = io.TextIOWrapper(raw, encoding="cp1252")
+        with mock.patch.object(core.sys, "stdout", stream):
+            taskctl._emit({"message": "治理输出"}, as_json=True)
+        stream.detach()
+        self.assertEqual(
+            (core.json_result({"message": "治理输出"}) + "\n").encode("utf-8"),
+            raw.getvalue(),
+        )
 
 
 class CanonicalScopeTests(unittest.TestCase):

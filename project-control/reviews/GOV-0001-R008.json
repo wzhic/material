@@ -1,0 +1,23 @@
+{
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "conversation:2026-08-19:windows-ci-second-rework-confirmation",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "确认",
+  "decided_at": "2026-08-19T06:28:07+00:00",
+  "decision": "approved",
+  "expires_at": "2026-08-26T23:59:59+08:00",
+  "from_status": "LOCAL_VERIFIED",
+  "kind": "rework",
+  "project_id": "material",
+  "reason": "批准修复 GitHub Actions Run 32223213198 在提交 7b18bb4c0b3cc42e078acf5351a19f6760beea0f 暴露的 Windows CP1252 标准输出编码失败与无 HOME 时 Git 候选发现失败；仅允许绑定该提交、该 Run 和 R008 的第二次非强制恢复提交，禁止强推或改写历史",
+  "recorded_by": "Codex",
+  "review_id": "GOV-0001-R008",
+  "schema_version": 3,
+  "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+  "scope_version": 4,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "subject": "workspace:sha256:425900e7fbc1f760f3e8703a6178b44a17d75f463e2144a3646b008858568317",
+  "supersedes": "GOV-0001-R007",
+  "task_id": "GOV-0001"
+}

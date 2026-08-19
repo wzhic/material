@@ -1,0 +1,23 @@
+{
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "conversation:2026-08-19:minimal-close-r009",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "纠正当前溢出的内容，确认按最小收口方案执行",
+  "decided_at": "2026-08-19T07:07:07+00:00",
+  "decision": "approved",
+  "expires_at": "2026-08-26T23:59:59+08:00",
+  "from_status": "LOCAL_VERIFIED",
+  "kind": "rework",
+  "project_id": "material",
+  "reason": "批准按最小收口方案纠正 R008 第二恢复链白名单遗漏：仅将当前已审核且已验证的治理总则文档纳入第二恢复提交的精确允许路径，并同步固定回执标识及必要测试/机器记录；不得新增治理能力、业务代码、依赖、第三段恢复链、强推或历史改写",
+  "recorded_by": "Codex",
+  "review_id": "GOV-0001-R009",
+  "schema_version": 3,
+  "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+  "scope_version": 4,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "subject": "workspace:sha256:96bc73a29966fb2e60e2353575f2422f3ae09a663aadd4aac360563c3d3f2028",
+  "supersedes": "GOV-0001-R008",
+  "task_id": "GOV-0001"
+}

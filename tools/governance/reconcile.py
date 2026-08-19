@@ -15,7 +15,6 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from core import (
     BOOTSTRAP_TASK_ID,
-    FAILED_BOOTSTRAP_ROOT_SHA,
     GITHUB_REPOSITORY,
     GITHUB_WORKFLOW_PATH,
     GovernanceError,
@@ -23,6 +22,7 @@ from core import (
     PROJECT_ID,
     SOURCE_REPOSITORY,
     branch_validity,
+    bootstrap_repair_contract_for_parent,
     bootstrap_repair_commit_issues,
     canonical_scope_hash,
     ci_trust_issues,
@@ -46,6 +46,7 @@ from core import (
     validation_gate_status,
     validation_plan_issues,
     validation_result_provenance_issues,
+    write_output,
 )
 
 
@@ -1162,10 +1163,11 @@ def _ci_commit_protocol_check(
         and task_index < status_index("COMMITTED")
         and not task.get("git", {}).get("committed_sha")
     )
+    repair_contract = bootstrap_repair_contract_for_parent(base)
     bootstrap_repair = (
         event_name == "push"
         and not created
-        and base == FAILED_BOOTSTRAP_ROOT_SHA
+        and repair_contract is not None
         and bootstrap_tasks == [BOOTSTRAP_TASK_ID]
         and task.get("task_id") == BOOTSTRAP_TASK_ID
         and branch == task.get("branch") == task.get("base_branch") == "main"
@@ -1189,21 +1191,25 @@ def _ci_commit_protocol_check(
             result_context,
         ), result_context
     if bootstrap_repair:
+        assert repair_contract is not None
         repair_issues = bootstrap_repair_commit_issues(root, str(head))
         if repair_issues:
             return _check(
                 "ci_commit_protocol",
                 False,
-                "failed-bootstrap repair does not match the exact R007 contract: %s"
-                % "; ".join(repair_issues),
+                "failed-bootstrap repair does not match the exact %s contract: %s"
+                % (repair_contract["review_id"], "; ".join(repair_issues)),
                 result_context,
             ), result_context
         result_context["mode"] = "bootstrap_repair_pending"
-        result_context["failed_root_sha"] = FAILED_BOOTSTRAP_ROOT_SHA
+        result_context["failed_parent_sha"] = repair_contract["parent_sha"]
+        result_context["failed_run_id"] = repair_contract["failed_run_id"]
+        result_context["rework_review_id"] = repair_contract["review_id"]
         return _check(
             "ci_commit_protocol",
             True,
-            "exact R007 repair was fast-forwarded from the failed root; CI evidence remains pending",
+            "exact %s repair was fast-forwarded from its failed parent; CI evidence remains pending"
+            % repair_contract["review_id"],
             result_context,
         ), result_context
     git_evidence = task.get("git", {}) if isinstance(task.get("git"), dict) else {}
@@ -1677,15 +1683,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
     except GovernanceError as exc:
         payload = {"ok": False, "profile": args.profile, "read_only": True, "error": str(exc), "checks": []}
-        print(json_result(payload) if args.json else "ERROR: %s" % exc, file=sys.stderr)
+        write_output(
+            json_result(payload) if args.json else "ERROR: %s" % exc,
+            stream=sys.stderr,
+        )
         return 2
 
     if args.json:
-        print(json_result(report))
+        write_output(json_result(report))
     else:
-        print("reconcile %s: %s" % (args.profile, "PASS" if report["ok"] else "FAIL"))
+        write_output("reconcile %s: %s" % (args.profile, "PASS" if report["ok"] else "FAIL"))
         for item in report["checks"]:
-            print("[%s] %s: %s" % (item["status"].upper(), item["id"], item["message"]))
+            write_output("[%s] %s: %s" % (item["status"].upper(), item["id"], item["message"]))
     return 0 if report["ok"] else 1
 
 

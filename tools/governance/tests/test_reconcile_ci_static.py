@@ -20,7 +20,13 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 
 import core  # noqa: E402
 import reconcile  # noqa: E402
-from core import BOOTSTRAP_REPAIR_MESSAGE, canonical_scope_hash, read_json, run_git  # noqa: E402
+from core import (  # noqa: E402
+    BOOTSTRAP_REPAIR_MESSAGE,
+    SECOND_BOOTSTRAP_REPAIR_MESSAGE,
+    canonical_scope_hash,
+    read_json,
+    run_git,
+)
 from helpers import AuthenticatedReceiptTestCase, base_task, initialize_root, write_json  # noqa: E402
 from reconcile import run_reconcile  # noqa: E402
 import taskctl  # noqa: E402
@@ -690,7 +696,7 @@ class TrustedCiContextTests(AuthenticatedReceiptTestCase):
             self.assertEqual("pending", report["context"]["ci"]["evidence_status"])
             self.assertIsNone(report["context"]["ci"]["content_subject_sha"])
 
-    def test_failed_root_repair_stays_pending_then_allows_protected_control_head(self) -> None:
+    def test_exact_two_repair_chain_stays_pending_then_allows_protected_control_head(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             task = prepare_static_root(root, task_id="GOV-0001")
@@ -715,22 +721,45 @@ class TrustedCiContextTests(AuthenticatedReceiptTestCase):
             store_controlled_local_pass(root, task)
             repair_sha = commit_all(root, BOOTSTRAP_REPAIR_MESSAGE)
             repair_environment = github_push_environment(root, failed_root, repair_sha, "main")
-            with mock.patch.object(core, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root), mock.patch.object(
-                reconcile, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root
-            ), mock.patch.dict(os.environ, repair_environment, clear=False):
+            with mock.patch.object(core, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root), mock.patch.dict(
+                os.environ, repair_environment, clear=False
+            ):
                 repair_report = run_reconcile(root, "ci")
             self.assertTrue(repair_report["ok"], repair_report)
             self.assertEqual("bootstrap_repair_pending", repair_report["context"]["ci"]["mode"])
             Path(repair_environment["GITHUB_EVENT_PATH"]).unlink()
 
+            second_governed = root / "tools" / "governance" / "reviewctl.py"
+            second_governed.write_text("# portable UTF-8 output\n", encoding="utf-8")
+            task = read_json(task_file)
+            store_controlled_local_pass(root, task)
+            second_repair_sha = commit_all(root, SECOND_BOOTSTRAP_REPAIR_MESSAGE)
+            second_environment = github_push_environment(
+                root, repair_sha, second_repair_sha, "main"
+            )
+            with mock.patch.object(core, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root), mock.patch.object(
+                core, "FAILED_BOOTSTRAP_REPAIR_SHA", repair_sha
+            ), mock.patch.dict(os.environ, second_environment, clear=False):
+                second_report = run_reconcile(root, "ci")
+            self.assertTrue(second_report["ok"], second_report)
+            self.assertEqual(
+                "bootstrap_repair_pending", second_report["context"]["ci"]["mode"]
+            )
+            self.assertEqual(
+                "GOV-0001-R009", second_report["context"]["ci"]["rework_review_id"]
+            )
+            Path(second_environment["GITHUB_EVENT_PATH"]).unlink()
+
             task = read_json(task_file)
             task["status"] = "COMMITTED"
-            task["git"] = {"committed_sha": repair_sha}
+            task["git"] = {"committed_sha": second_repair_sha}
             write_json(task_file, task)
             control_sha = commit_all(root, "protected control state")
-            control_environment = github_push_environment(root, repair_sha, control_sha, "main")
+            control_environment = github_push_environment(
+                root, second_repair_sha, control_sha, "main"
+            )
             with mock.patch.object(core, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root), mock.patch.object(
-                reconcile, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root
+                core, "FAILED_BOOTSTRAP_REPAIR_SHA", repair_sha
             ), mock.patch.dict(os.environ, control_environment, clear=False):
                 control_report = run_reconcile(root, "ci")
             self.assertTrue(control_report["ok"], control_report)

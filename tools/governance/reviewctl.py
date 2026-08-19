@@ -39,6 +39,7 @@ from core import (
     normalize_commit,
     read_json,
     review_path,
+    write_output,
     write_json_exclusive_atomic,
 )
 
@@ -203,7 +204,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     if effective_argv and effective_argv[0] == "waive":
         wants_json = "--json" in effective_argv
         payload = {"ok": False, "error": LEGACY_RECORD_DISABLED}
-        print(json_result(payload) if wants_json else "ERROR: %s" % LEGACY_RECORD_DISABLED, file=sys.stderr)
+        write_output(
+            json_result(payload) if wants_json else "ERROR: %s" % LEGACY_RECORD_DISABLED,
+            stream=sys.stderr,
+        )
         return 2
 
     args = build_parser().parse_args(effective_argv)
@@ -212,7 +216,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.command == "list":
             receipts = list_reviews(root, args.task_id)
             payload = {"ok": True, "reviews": receipts}
-            print(json_result(payload) if args.json else "\n".join(
+            write_output(json_result(payload) if args.json else "\n".join(
                 "%s\t%s\t%s" % (item.get("review_id"), item.get("decision"), item.get("task_id"))
                 for item in receipts
             ))
@@ -220,7 +224,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         if args.command == "show":
             receipt = _find_by_id(root, args.review_id)
-            print(json_result({"ok": True, "review": receipt}) if args.json else json_result(receipt))
+            write_output(json_result({"ok": True, "review": receipt}) if args.json else json_result(receipt))
             return 0
 
         if args.command == "verify":
@@ -287,7 +291,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "reason": reason,
                 "review": receipt,
             }
-            print(json_result(payload) if args.json else ("VALID: " if ok else "INVALID: ") + reason)
+            write_output(json_result(payload) if args.json else ("VALID: " if ok else "INVALID: ") + reason)
             return 0 if ok else 1
 
         if args.command == "prepare":
@@ -328,9 +332,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "identity": authority["identity"],
                     "key_fingerprint": authority["key_fingerprint"],
                 }
-                print(json_result(result) if args.json else "PREPARED: %s" % output)
+                write_output(json_result(result) if args.json else "PREPARED: %s" % output)
             elif args.json:
-                print(json_result({
+                write_output(json_result({
                     "ok": True,
                     "payload": canonical_payload.decode("utf-8"),
                     "payload_sha256": digest,
@@ -341,7 +345,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             else:
                 # Text mode is intentionally only the exact bytes to sign so
                 # the user can redirect stdout from an external terminal.
-                sys.stdout.write(canonical_payload.decode("utf-8"))
+                write_output(canonical_payload.decode("utf-8"), end="")
             return 0
 
         if args.command == "import-signed":
@@ -363,7 +367,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "payload_sha256": receipt["signature"]["payload_sha256"],
                 "key_fingerprint": receipt["signature"]["key_fingerprint"],
             }
-            print(json_result(result) if args.json else "IMPORTED: %s" % receipt["review_id"])
+            write_output(json_result(result) if args.json else "IMPORTED: %s" % receipt["review_id"])
             return 0
 
         if args.command == "record-conversation":
@@ -424,14 +428,17 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "path": str(destination),
                 "warning": "audit-only conversation receipt; no cryptographic identity proof",
             }
-            print(json_result(result) if args.json else "RECORDED: %s" % receipt["review_id"])
+            write_output(json_result(result) if args.json else "RECORDED: %s" % receipt["review_id"])
             return 0
 
         if args.command == "record":
             raise GovernanceError(LEGACY_RECORD_DISABLED)
     except GovernanceError as exc:
         payload = {"ok": False, "error": str(exc)}
-        print(json_result(payload) if getattr(args, "json", False) else "ERROR: %s" % exc, file=sys.stderr)
+        write_output(
+            json_result(payload) if getattr(args, "json", False) else "ERROR: %s" % exc,
+            stream=sys.stderr,
+        )
         return 2
     return 2
 

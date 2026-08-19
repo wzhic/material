@@ -10,14 +10,10 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 from core import (
-    BOOTSTRAP_REPAIR_ALLOWED_PATHS,
-    BOOTSTRAP_REPAIR_MESSAGE,
-    BOOTSTRAP_REPAIR_REVIEW_ID,
     GATE_PHASES,
-    FAILED_BOOTSTRAP_ROOT_SHA,
     GovernanceError,
     NORMAL_STATES,
     SCOPE_EDITABLE_FIELDS,
@@ -27,6 +23,7 @@ from core import (
     allowed_transition,
     branch_validity,
     BOOTSTRAP_TASK_ID,
+    bootstrap_repair_contract_for_parent,
     bootstrap_repair_commit_issues,
     canonical_scope,
     canonical_scope_hash,
@@ -53,6 +50,7 @@ from core import (
     validation_gate_status,
     validate_task,
     validation_plan_issues,
+    write_output,
     write_json_atomic,
 )
 from github_evidence import GitHubEvidenceError, verify_workflow_run
@@ -143,13 +141,18 @@ def _require_root_commit(root: Path, commit: str) -> None:
         raise GovernanceError("bootstrap content commit must be the repository root commit")
 
 
-def _require_repair_authorization(task: Dict[str, Any]) -> None:
+def _require_repair_authorization(
+    task: Dict[str, Any], contract: Mapping[str, Any]
+) -> None:
+    review_id = str(contract["review_id"])
     history = task.get("rework_history", [])
     if not isinstance(history, list) or not any(
-        isinstance(item, dict) and item.get("review_id") == BOOTSTRAP_REPAIR_REVIEW_ID
+        isinstance(item, dict) and item.get("review_id") == review_id
         for item in history
     ):
-        raise GovernanceError("failed bootstrap repair requires recorded R007 rework authorization")
+        raise GovernanceError(
+            "failed bootstrap repair requires recorded %s rework authorization" % review_id
+        )
 
 
 def _bootstrap_content_subject_mode(root: Path, commit: str) -> str:
@@ -197,22 +200,38 @@ def _bootstrap_commit(root: Path, task: Dict[str, Any], stage: str) -> Dict[str,
     expected_status = "LOCAL_VERIFIED" if stage == "content" else "COMMITTED"
     _require_exact_bootstrap_task(root, task, expected_status)
     content_mode = "control"
+    repair_contract: Optional[Mapping[str, Any]] = None
     if stage == "content":
         if task.get("git", {}).get("committed_sha"):
             raise GovernanceError("content commit is already recorded")
         count = _git(root, ("rev-list", "--all", "--count"), "cannot inspect repository history")
-        recovery = count == "1"
-        if count not in ("0", "1"):
-            raise GovernanceError("bootstrap content commit allows only an unborn repository or exact R007 repair")
+        recovery = count != "0"
+        if count not in ("0", "1", "2"):
+            raise GovernanceError(
+                "bootstrap content commit allows only an unborn repository or the finite R007/R009 repair chain"
+            )
         if recovery:
             head = normalize_commit(
                 _git(root, ("rev-parse", "HEAD"), "cannot resolve failed bootstrap root"),
                 "HEAD",
             )
-            if head != FAILED_BOOTSTRAP_ROOT_SHA:
-                raise GovernanceError("R007 repair must start at the exact failed bootstrap root")
-            _require_root_commit(root, head)
-            _require_repair_authorization(task)
+            repair_contract = bootstrap_repair_contract_for_parent(head)
+            if repair_contract is None:
+                raise GovernanceError(
+                    "bootstrap repair must start at an exact reviewed failed content head"
+                )
+            if int(count) != int(repair_contract["history_count"]):
+                raise GovernanceError("bootstrap repair history contains an unexpected side branch")
+            if int(count) == 1:
+                _require_root_commit(root, head)
+            else:
+                prior_issues = bootstrap_repair_commit_issues(root, head)
+                if prior_issues:
+                    raise GovernanceError(
+                        "R009 repair parent is not the exact R007 content commit: %s"
+                        % "; ".join(prior_issues)
+                    )
+            _require_repair_authorization(task, repair_contract)
         gate = validation_gate_status(root, task, "LOCAL_VERIFIED")
         if gate["missing"]:
             raise GovernanceError("bootstrap content commit requires complete local validation")
@@ -245,7 +264,8 @@ def _bootstrap_commit(root: Path, task: Dict[str, Any], stage: str) -> Dict[str,
         if not candidates:
             raise GovernanceError("bootstrap content commit has no reviewed files")
         if recovery:
-            outside = sorted(set(candidates) - set(BOOTSTRAP_REPAIR_ALLOWED_PATHS))
+            assert repair_contract is not None
+            outside = sorted(set(candidates) - set(repair_contract["allowed_paths"]))
         else:
             outside = [path for path in candidates if not path_is_allowed(root, path, task["allowed_paths"])]
         if outside:
@@ -253,7 +273,7 @@ def _bootstrap_commit(root: Path, task: Dict[str, Any], stage: str) -> Dict[str,
                 "bootstrap content contains paths outside reviewed scope: %s"
                 % ", ".join(sorted(outside))
             )
-        message = BOOTSTRAP_REPAIR_MESSAGE if recovery else _BOOTSTRAP_CONTENT_MESSAGE
+        message = str(repair_contract["message"]) if recovery else _BOOTSTRAP_CONTENT_MESSAGE
         content_mode = "repair" if recovery else "root"
     else:
         content_sha = normalize_commit(task.get("git", {}).get("committed_sha"), "task.git.committed_sha")
@@ -286,7 +306,8 @@ def _bootstrap_commit(root: Path, task: Dict[str, Any], stage: str) -> Dict[str,
     if not staged:
         raise GovernanceError("bootstrap commit staging produced an empty commit")
     if stage == "content" and content_mode == "repair":
-        invalid = sorted(set(staged) - set(BOOTSTRAP_REPAIR_ALLOWED_PATHS))
+        assert repair_contract is not None
+        invalid = sorted(set(staged) - set(repair_contract["allowed_paths"]))
     elif stage == "content":
         invalid = [path for path in staged if not path_is_allowed(root, path, task["allowed_paths"])]
     else:
@@ -350,15 +371,28 @@ def _bootstrap_push(root: Path, task: Dict[str, Any], stage: str) -> Dict[str, A
         content_mode = _bootstrap_content_subject_mode(root, head)
         _require_allowed_snapshot(root, task, head)
         if content_mode == "repair":
-            _require_repair_authorization(task)
+            parents = _git(
+                root,
+                ("rev-list", "--parents", "-n", "1", head),
+                "cannot inspect failed-bootstrap repair parent",
+            ).split()
+            if len(parents) != 2 or parents[0] != head:
+                raise GovernanceError("failed-bootstrap repair must have exactly one parent")
+            repair_contract = bootstrap_repair_contract_for_parent(parents[1])
+            if repair_contract is None:
+                raise GovernanceError("repair push is outside the finite reviewed recovery chain")
+            _require_repair_authorization(task, repair_contract)
             remote_state = _git(
                 root,
                 ("ls-remote", _BOOTSTRAP_PUSH_URL, "refs/heads/main"),
                 "cannot verify failed bootstrap remote",
             )
             expected_before = _remote_branch_sha(remote_state)
-            if expected_before != FAILED_BOOTSTRAP_ROOT_SHA:
-                raise GovernanceError("R007 repair push requires remote main at the exact failed root")
+            if expected_before != repair_contract["parent_sha"]:
+                raise GovernanceError(
+                    "%s repair push requires remote main at its exact failed parent"
+                    % repair_contract["review_id"]
+                )
         else:
             remote_state = _git(root, ("ls-remote", _BOOTSTRAP_PUSH_URL), "cannot verify empty remote")
             if remote_state:
@@ -429,22 +463,22 @@ def _root(value: str) -> Path:
 
 def _emit(payload: Dict[str, Any], as_json: bool) -> None:
     if as_json:
-        print(json_result(payload))
+        write_output(json_result(payload))
         return
     if "task" in payload:
         task = payload["task"]
         if "status" not in task:
-            print(json_result(task))
+            write_output(json_result(task))
             return
-        print("%s %s (%s@%s)" % (
+        write_output("%s %s (%s@%s)" % (
             task["task_id"], task["status"], task["requirement"]["id"], task["requirement"]["version"]
         ))
         return
     if "tasks" in payload:
         for task in payload["tasks"]:
-            print("%s\t%s\t%s" % (task["task_id"], task["status"], task.get("summary", "")))
+            write_output("%s\t%s\t%s" % (task["task_id"], task["status"], task.get("summary", "")))
         return
-    print(payload.get("message", json_result(payload)))
+    write_output(payload.get("message", json_result(payload)))
 
 
 def _load_requested(root: Path, task_id: Optional[str]) -> Dict[str, Any]:
@@ -786,7 +820,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.command == "scope-hash":
             task = _load_requested(root, args.task_id)
             payload = {"ok": True, "task_id": task["task_id"], "scope_hash": canonical_scope_hash(task)}
-            print(json_result(payload) if args.json else payload["scope_hash"])
+            write_output(json_result(payload) if args.json else payload["scope_hash"])
             return 0
 
         if args.command == "transition":
@@ -1333,7 +1367,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
     except GovernanceError as exc:
         payload = {"ok": False, "error": str(exc)}
-        print(json_result(payload) if getattr(args, "json", False) else "ERROR: %s" % exc, file=sys.stderr)
+        write_output(
+            json_result(payload) if getattr(args, "json", False) else "ERROR: %s" % exc,
+            stream=sys.stderr,
+        )
         return 2
     return 2
 
