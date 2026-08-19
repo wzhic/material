@@ -407,6 +407,127 @@ class BootstrapGitTransportTests(AuthenticatedReceiptTestCase):
                         root, task, proposal, expected_digest=digest
                     )
 
+    def test_pending_content_contract_binds_same_head_and_history_count(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = self.prepare(root)
+            head = "c" * 40
+            proposal = {
+                "allowed_paths": ["tools/governance/core.py"],
+                "commit_message": "fix(governance): seal migration root",
+                "expected_history_count": 5,
+                "failed_content_sha": head,
+                "failed_control_head": head,
+                "failed_run_id": "32230013274",
+                "failure_stage": "content_ci_pending",
+                "from_previous_status": "LOCAL_VERIFIED",
+                "from_status": "BLOCKED",
+                "invariants": [
+                    "no_validation_waiver",
+                    "no_force_push",
+                    "preserve_existing_history",
+                    "controlled_local_validation_required",
+                    "three_platform_ci_required",
+                    "no_business_code_or_dependency_files",
+                ],
+                "operation_id": "GOV-0001-PENDING-CONTENT",
+                "review_id": "GOV-0001-R012",
+                "rework_review_id": "GOV-0001-R011",
+                "schema_version": 2,
+                "scope_version": task["scope_version"],
+                "task_id": task["task_id"],
+            }
+            with mock.patch(
+                "core.find_effective_irreversible_operation_review",
+                return_value=({"review_id": "GOV-0001-R012"}, "approved"),
+            ):
+                normalized = core.validate_bootstrap_recovery_contract(root, task, proposal)
+                self.assertEqual(5, normalized["expected_history_count"])
+                changed = dict(proposal)
+                changed["failed_control_head"] = "d" * 40
+                with self.assertRaisesRegex(core.GovernanceError, "same failed content"):
+                    core.validate_bootstrap_recovery_contract(root, task, changed)
+
+    def test_pending_content_recovery_replaces_only_reviewed_active_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.prepare(root)
+            head = self.commit_content(root)
+            task_path = root / "project-control" / "tasks" / "GOV-0001.json"
+            task = read_json(task_path)
+            task["status"] = "IN_PROGRESS"
+            task["validation"]["results"] = []
+            task["git"] = {}
+            task["bootstrap_recovery"] = {
+                "activated_at": "2026-08-19T00:00:00+00:00",
+                "activated_by": "Codex",
+                "failed_content_sha": "a" * 40,
+                "failed_control_head": "b" * 40,
+                "failed_run_id": "1",
+                "history_count": 1,
+                "operation_id": "PRIOR-RECOVERY",
+                "proposal_path": "project-control/proposals/prior.json",
+                "review_id": "GOV-0001-R010",
+                "state": "active",
+                "target_digest": "sha256:" + "1" * 64,
+            }
+            subject = core.managed_content_subject(root, task)
+            task["rework_history"] = [{
+                "review_id": "GOV-0001-R011",
+                "subject": subject,
+                "to_status": "IN_PROGRESS",
+            }]
+            write_json(task_path, task)
+            write_json(root / "project-control" / "reviews" / "GOV-0001-R011.json", {
+                "review_id": "GOV-0001-R011",
+                "task_id": "GOV-0001",
+                "kind": "rework",
+                "decision": "approved",
+                "approver": "user",
+                "scope_version": task["scope_version"],
+                "scope_hash": canonical_scope_hash(task),
+                "subject": subject,
+                "from_status": "LOCAL_VERIFIED",
+                "decided_at": "2026-08-19T00:00:00+00:00",
+                "expires_at": "2099-08-20T00:00:00+00:00",
+            })
+            proposal_relative = "project-control/proposals/pending.json"
+            write_json(root / proposal_relative, {})
+            contract = {
+                "schema_version": 2,
+                "failure_stage": "content_ci_pending",
+                "failed_content_sha": head,
+                "failed_control_head": head,
+                "failed_run_id": "32230013274",
+                "expected_history_count": 1,
+                "rework_review_id": "GOV-0001-R011",
+                "review_id": "GOV-0001-R012",
+                "operation_id": "PENDING-CONTENT-RECOVERY",
+                "target_digest": "sha256:" + "2" * 64,
+            }
+            prior = {"recovery_state": "active"}
+            with (
+                mock.patch("taskctl.validate_bootstrap_recovery_contract", return_value=contract),
+                mock.patch("taskctl.active_bootstrap_recovery_contract", return_value=prior),
+                mock.patch("taskctl.bootstrap_repair_commit_issues", return_value=[]),
+            ):
+                code = taskctl.main([
+                    "recover-pending-content", "GOV-0001",
+                    "--proposal", proposal_relative,
+                    "--actor", "Codex",
+                    "--reason", "replace failed pending content recovery",
+                    "--root", str(root),
+                    "--json",
+                ])
+            self.assertEqual(0, code)
+            stored = read_json(task_path)
+            self.assertEqual("GOV-0001-R012", stored["bootstrap_recovery"]["review_id"])
+            self.assertEqual(head, stored["bootstrap_recovery"]["failed_control_head"])
+            self.assertEqual(
+                "receipt_bound_pending_content_recovery",
+                stored["history"][-1]["event"],
+            )
+
     def test_control_commit_rejects_ordinary_content(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

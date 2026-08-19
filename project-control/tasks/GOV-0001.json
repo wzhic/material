@@ -83,17 +83,17 @@
   "base_branch": "main",
   "blockers": [],
   "bootstrap_recovery": {
-    "activated_at": "2026-08-19T07:40:34+00:00",
+    "activated_at": "2026-08-19T08:30:53+00:00",
     "activated_by": "Codex",
-    "failed_content_sha": "d5e868de165ff4cd31459e13b4bb12535e0876a1",
-    "failed_control_head": "3e5e3e4dd9c2dcd5b76ef081913ba979dd94b762",
-    "failed_run_id": "32226753649",
-    "history_count": 4,
-    "operation_id": "GOV-0001-CI-RUN-32226753649-BREAK-GLASS",
-    "proposal_path": "project-control/proposals/GOV-0001-R010-break-glass.json",
-    "review_id": "GOV-0001-R010",
+    "failed_content_sha": "63b6de3b4e85b6cd6c2be8bbd43586197cec57ba",
+    "failed_control_head": "63b6de3b4e85b6cd6c2be8bbd43586197cec57ba",
+    "failed_run_id": "32230013274",
+    "history_count": 5,
+    "operation_id": "GOV-0001-CI-RUN-32230013274-PENDING-CONTENT-RECOVERY",
+    "proposal_path": "project-control/proposals/GOV-0001-R012-pending-content-recovery.json",
+    "review_id": "GOV-0001-R012",
     "state": "active",
-    "target_digest": "sha256:185e4655ea890c5ddf04bc764ef902e5a25e594373ef2682b19cd3e547346784"
+    "target_digest": "sha256:505517b3c40868fd5ad6efa64339f1ac2eea1a494c4451405f74c0d9b2a0fb05"
   },
   "bootstrap_recovery_history": [
     {
@@ -476,6 +476,32 @@
       "review_id": "GOV-0001-R010",
       "target_digest": "sha256:185e4655ea890c5ddf04bc764ef902e5a25e594373ef2682b19cd3e547346784",
       "to_status": "IN_PROGRESS"
+    },
+    {
+      "activated_at": "2026-08-19T08:30:53+00:00",
+      "actor": "Codex",
+      "failed_run_id": "32230013274",
+      "failure_stage": "content_ci_pending",
+      "from_previous_status": "LOCAL_VERIFIED",
+      "from_status": "BLOCKED",
+      "reason": "Run 32230013274 在内容提交阶段仅 Windows 因跨平台 OpenSSH 复验失败；按用户确认的 R011/R012 最小收口合同替换活动恢复标记并重新执行全部本地验证",
+      "review_id": "GOV-0001-R012",
+      "rework_review_id": "GOV-0001-R011",
+      "superseded_recovery": {
+        "activated_at": "2026-08-19T07:40:34+00:00",
+        "activated_by": "Codex",
+        "failed_content_sha": "d5e868de165ff4cd31459e13b4bb12535e0876a1",
+        "failed_control_head": "3e5e3e4dd9c2dcd5b76ef081913ba979dd94b762",
+        "failed_run_id": "32226753649",
+        "history_count": 4,
+        "operation_id": "GOV-0001-CI-RUN-32226753649-BREAK-GLASS",
+        "proposal_path": "project-control/proposals/GOV-0001-R010-break-glass.json",
+        "review_id": "GOV-0001-R010",
+        "state": "active",
+        "target_digest": "sha256:185e4655ea890c5ddf04bc764ef902e5a25e594373ef2682b19cd3e547346784"
+      },
+      "target_digest": "sha256:505517b3c40868fd5ad6efa64339f1ac2eea1a494c4451405f74c0d9b2a0fb05",
+      "to_status": "IN_PROGRESS"
     }
   ],
   "branch": "main",
@@ -816,6 +842,48 @@
       "at": "2026-08-19T07:53:13+00:00",
       "from": "IN_PROGRESS",
       "reason": "R010 精确范围已由受控 runner 完成全部本地验证，precommit 无阻断且无豁免",
+      "to": "LOCAL_VERIFIED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T07:58:13+00:00",
+      "from": "LOCAL_VERIFIED",
+      "reason": "GitHub Actions Run 32230013274：Ubuntu 与 macOS 成功，Windows 在 run-required 前核验 conversation-v1 迁移根时由系统 ssh-keygen -Y verify 返回非零；当前实现只输出泛化错误，R010 内容提交 63b6de3 已推送但三平台 CI 未通过，禁止记录内容 SHA 或继续控制提交",
+      "to": "BLOCKED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T08:16:52+00:00",
+      "from": "BLOCKED",
+      "reason": "R011 已绑定当前冻结摘要，先恢复到受控 reopen 的前置状态",
+      "to": "LOCAL_VERIFIED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T08:16:52+00:00",
+      "event": "same_scope_rework",
+      "from": "LOCAL_VERIFIED",
+      "reason": "执行用户同意的 R011 最小返工；归档 Run 5 前的本地证据并重新验证全部检查",
+      "review_id": "GOV-0001-R011",
+      "to": "IN_PROGRESS"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T08:30:53+00:00",
+      "event": "receipt_bound_pending_content_recovery",
+      "failed_run_id": "32230013274",
+      "from": "IN_PROGRESS",
+      "reason": "Run 32230013274 在内容提交阶段仅 Windows 因跨平台 OpenSSH 复验失败；按用户确认的 R011/R012 最小收口合同替换活动恢复标记并重新执行全部本地验证",
+      "review_id": "GOV-0001-R012",
+      "rework_review_id": "GOV-0001-R011",
+      "target_digest": "sha256:505517b3c40868fd5ad6efa64339f1ac2eea1a494c4451405f74c0d9b2a0fb05",
+      "to": "IN_PROGRESS"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T08:32:27+00:00",
+      "from": "IN_PROGRESS",
+      "reason": "R012 最小收口范围内的 5 项受控本地验证全部通过，precommit 无阻断且无验证豁免",
       "to": "LOCAL_VERIFIED"
     }
   ],
@@ -3101,6 +3169,378 @@
       "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
       "subject": "workspace:sha256:96bc73a29966fb2e60e2353575f2422f3ae09a663aadd4aac360563c3d3f2028",
       "to_status": "IN_PROGRESS"
+    },
+    {
+      "actor": "Codex",
+      "archived_validation_results": [
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:172ff3eebf492131e51dd423cf1ebcc69cfde1f90cf059130087556fbca2dd1c",
+          "check_id": "governance_unit_tests",
+          "declared_argv": [
+            "python3",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tools/governance/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "duration_ms": 37098,
+          "environment": "local:codex-bundled-python3.12",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tools/governance/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T07:52:15+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+            "managed_content_subject_before": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+            "protected_state_digest_after": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
+            "protected_state_digest_before": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:845fb9cf734d282850e7065674b839c1908cbbc76f7b967d1d0243d7a3a11c66",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T07:52:15+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T07:51:38+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 22761,
+            "sha256": "a04ae49db63c2b842377ea362d001f8abfd302b2dd99e119b12187c274919cbd"
+          },
+          "stdout": {
+            "byte_count": 131435,
+            "sha256": "6cc3e0e4fa9bf21c3e0517958b34f15d28ee7678eabce218db5b4bfd75c862a7"
+          },
+          "subject": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+          "timed_out": false,
+          "timeout_seconds": 600.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:7719b97ada74195e7b4d5aa7aa09200c6a2ab70d1d4969be668ffc26d7f8a146",
+          "check_id": "hook_contract_tests",
+          "declared_argv": [
+            "python3",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            ".codex/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "duration_ms": 2854,
+          "environment": "local:codex-bundled-python3.12",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            ".codex/tests",
+            "-p",
+            "test_*.py",
+            "-v"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T07:52:18+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+            "managed_content_subject_before": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+            "protected_state_digest_after": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
+            "protected_state_digest_before": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:ea8514c9d8c1331c594b2457bc2850ad02f21640411779acff37e8725dce1727",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T07:52:18+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T07:52:15+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 7969,
+            "sha256": "4805ed26de7a356a403ff3fe610551240d9741d41917b5b8f3812042afa5a70f"
+          },
+          "stdout": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "subject": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+          "timed_out": false,
+          "timeout_seconds": 600.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:eb4cc4a6665b748d5e82a656b81d7fbad1637f061972ced5a6464dc28049812f",
+          "check_id": "reconcile_session",
+          "declared_argv": [
+            "python3",
+            "tools/governance/reconcile.py",
+            "session",
+            "--json"
+          ],
+          "duration_ms": 305,
+          "environment": "local:codex-bundled-python3.12",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "tools/governance/reconcile.py",
+            "session",
+            "--json"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T07:52:18+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+            "managed_content_subject_before": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+            "protected_state_digest_after": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
+            "protected_state_digest_before": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:e25319bdf8c1bbb5866ddc1045421660da4b608972654914d6713e9dec098417",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T07:52:18+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T07:52:18+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stdout": {
+            "byte_count": 18026,
+            "sha256": "a5da8376917840d78b419fe1b3478b3c6f2bd9d1520d913a7682622893a79b91"
+          },
+          "subject": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+          "timed_out": false,
+          "timeout_seconds": 120.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:e00bcb3ab83778088a7c5e5a6f63792549dcff2cf5b16922fde245973f5b644c",
+          "check_id": "documentation_structure",
+          "declared_argv": [
+            "python3",
+            "tools/governance/reconcile.py",
+            "static",
+            "--json"
+          ],
+          "duration_ms": 300,
+          "environment": "local:codex-bundled-python3.12",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "tools/governance/reconcile.py",
+            "static",
+            "--json"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T07:52:18+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+            "managed_content_subject_before": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+            "protected_state_digest_after": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
+            "protected_state_digest_before": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:fa1a62b36699931ec7d87b101be653fff74aec45419fa9dfe5f1e90857bb5699",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T07:52:18+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T07:52:18+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stdout": {
+            "byte_count": 22488,
+            "sha256": "1ccddda069bb121f60ad09b704fd5ceedf1995d1593e53882262cf559cf2daa4"
+          },
+          "subject": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+          "timed_out": false,
+          "timeout_seconds": 120.0
+        },
+        {
+          "actor": "controlled-validation-runner",
+          "argv_sha256": "sha256:2042cf92c7f4d531ac2e02733ac326a0bed705dfdf4871c315ea938ea0f920fa",
+          "check_id": "workflow_definition",
+          "declared_argv": [
+            "python3",
+            "tools/governance/reconcile.py",
+            "workflow",
+            "--json"
+          ],
+          "duration_ms": 302,
+          "environment": "local:codex-bundled-python3.12",
+          "evidence": "controlled-validation-runner-v1 derived status from process execution",
+          "executed_argv": [
+            "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "tools/governance/reconcile.py",
+            "workflow",
+            "--json"
+          ],
+          "exit_code": 0,
+          "finished_at": "2026-08-19T07:52:19+00:00",
+          "integrity": {
+            "issues": [],
+            "managed_content_subject_after": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+            "managed_content_subject_before": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+            "protected_state_digest_after": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
+            "protected_state_digest_before": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
+            "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+            "unchanged": true
+          },
+          "launch_error": null,
+          "phase": "local",
+          "plan_sha256": "sha256:a8e3d6157ad5e1b09bc1b6e3f075a87bacbb5f04d33304965fbe94152004e0ec",
+          "platform": {
+            "machine": "arm64",
+            "release": "25.5.0",
+            "system": "Darwin"
+          },
+          "python": {
+            "executable": "/Users/wzhic/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+            "implementation": "CPython",
+            "version": "3.12.13"
+          },
+          "recorded_at": "2026-08-19T07:52:19+00:00",
+          "release_unit": null,
+          "release_units": [
+            "mac",
+            "win",
+            "backend"
+          ],
+          "runner_version": "controlled-validation-runner-v1",
+          "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+          "source": "controlled-validation-runner-v1",
+          "started_at": "2026-08-19T07:52:18+00:00",
+          "status": "passed",
+          "stderr": {
+            "byte_count": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stdout": {
+            "byte_count": 19856,
+            "sha256": "9bfc0ec0f543e669f8a6ab0b0ee07c561bd477344843bd6f17d3f2c0afa3fd4d"
+          },
+          "subject": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+          "timed_out": false,
+          "timeout_seconds": 120.0
+        }
+      ],
+      "at": "2026-08-19T08:16:52+00:00",
+      "from_status": "LOCAL_VERIFIED",
+      "reason": "执行用户同意的 R011 最小返工；归档 Run 5 前的本地证据并重新验证全部检查",
+      "review_id": "GOV-0001-R011",
+      "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+      "subject": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+      "to_status": "IN_PROGRESS"
     }
   ],
   "schema_version": 1,
@@ -4295,7 +4735,7 @@
   "status": "LOCAL_VERIFIED",
   "summary": "只初始化 G0 治理控制层、记录和 CI 定义；本范围同时将后续所有正式审批从 OpenSSH 签名改为用户对话确认，补齐 LOCAL_VERIFIED 后受控返工入口并修正文档迁移状态；不创建应用脚手架、依赖文件或业务代码。",
   "task_id": "GOV-0001",
-  "updated_at": "2026-08-19T07:53:13+00:00",
+  "updated_at": "2026-08-19T08:32:27+00:00",
   "validation": {
     "required": [
       {
@@ -4443,7 +4883,7 @@
           "test_*.py",
           "-v"
         ],
-        "duration_ms": 37098,
+        "duration_ms": 35454,
         "environment": "local:codex-bundled-python3.12",
         "evidence": "controlled-validation-runner-v1 derived status from process execution",
         "executed_argv": [
@@ -4458,13 +4898,13 @@
           "-v"
         ],
         "exit_code": 0,
-        "finished_at": "2026-08-19T07:52:15+00:00",
+        "finished_at": "2026-08-19T08:31:58+00:00",
         "integrity": {
           "issues": [],
-          "managed_content_subject_after": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
-          "managed_content_subject_before": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
-          "protected_state_digest_after": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
-          "protected_state_digest_before": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
+          "managed_content_subject_after": "workspace:sha256:1fffe657571136e793a23b8a54136710b0c18b3b587b021bdbd025522f899b76",
+          "managed_content_subject_before": "workspace:sha256:1fffe657571136e793a23b8a54136710b0c18b3b587b021bdbd025522f899b76",
+          "protected_state_digest_after": "protected-state:sha256:c33f8da673cb40fcce729b8f76e3af33ab28895f0f1cf1a882030290c613b5ac",
+          "protected_state_digest_before": "protected-state:sha256:c33f8da673cb40fcce729b8f76e3af33ab28895f0f1cf1a882030290c613b5ac",
           "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
           "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
           "unchanged": true
@@ -4482,7 +4922,7 @@
           "implementation": "CPython",
           "version": "3.12.13"
         },
-        "recorded_at": "2026-08-19T07:52:15+00:00",
+        "recorded_at": "2026-08-19T08:31:58+00:00",
         "release_unit": null,
         "release_units": [
           "mac",
@@ -4492,17 +4932,17 @@
         "runner_version": "controlled-validation-runner-v1",
         "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
         "source": "controlled-validation-runner-v1",
-        "started_at": "2026-08-19T07:51:38+00:00",
+        "started_at": "2026-08-19T08:31:22+00:00",
         "status": "passed",
         "stderr": {
-          "byte_count": 22761,
-          "sha256": "a04ae49db63c2b842377ea362d001f8abfd302b2dd99e119b12187c274919cbd"
+          "byte_count": 23453,
+          "sha256": "faa4cd98cc28f59ab049b1e48d50e5037ee1377af1337c7a9208d6cdfe1321b1"
         },
         "stdout": {
-          "byte_count": 131435,
-          "sha256": "6cc3e0e4fa9bf21c3e0517958b34f15d28ee7678eabce218db5b4bfd75c862a7"
+          "byte_count": 138524,
+          "sha256": "c614b9317f8c00788fd531a0d178cf4a7b732d2740e85b2bc9a763875991fc41"
         },
-        "subject": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+        "subject": "workspace:sha256:1fffe657571136e793a23b8a54136710b0c18b3b587b021bdbd025522f899b76",
         "timed_out": false,
         "timeout_seconds": 600.0
       },
@@ -4521,7 +4961,7 @@
           "test_*.py",
           "-v"
         ],
-        "duration_ms": 2854,
+        "duration_ms": 2251,
         "environment": "local:codex-bundled-python3.12",
         "evidence": "controlled-validation-runner-v1 derived status from process execution",
         "executed_argv": [
@@ -4536,13 +4976,13 @@
           "-v"
         ],
         "exit_code": 0,
-        "finished_at": "2026-08-19T07:52:18+00:00",
+        "finished_at": "2026-08-19T08:32:00+00:00",
         "integrity": {
           "issues": [],
-          "managed_content_subject_after": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
-          "managed_content_subject_before": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
-          "protected_state_digest_after": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
-          "protected_state_digest_before": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
+          "managed_content_subject_after": "workspace:sha256:1fffe657571136e793a23b8a54136710b0c18b3b587b021bdbd025522f899b76",
+          "managed_content_subject_before": "workspace:sha256:1fffe657571136e793a23b8a54136710b0c18b3b587b021bdbd025522f899b76",
+          "protected_state_digest_after": "protected-state:sha256:c33f8da673cb40fcce729b8f76e3af33ab28895f0f1cf1a882030290c613b5ac",
+          "protected_state_digest_before": "protected-state:sha256:c33f8da673cb40fcce729b8f76e3af33ab28895f0f1cf1a882030290c613b5ac",
           "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
           "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
           "unchanged": true
@@ -4560,7 +5000,7 @@
           "implementation": "CPython",
           "version": "3.12.13"
         },
-        "recorded_at": "2026-08-19T07:52:18+00:00",
+        "recorded_at": "2026-08-19T08:32:00+00:00",
         "release_unit": null,
         "release_units": [
           "mac",
@@ -4570,17 +5010,17 @@
         "runner_version": "controlled-validation-runner-v1",
         "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
         "source": "controlled-validation-runner-v1",
-        "started_at": "2026-08-19T07:52:15+00:00",
+        "started_at": "2026-08-19T08:31:58+00:00",
         "status": "passed",
         "stderr": {
           "byte_count": 7969,
-          "sha256": "4805ed26de7a356a403ff3fe610551240d9741d41917b5b8f3812042afa5a70f"
+          "sha256": "2673dd4b67f562f6bb9c4c6a3cef431f50ebb6f7fb5ff0bcfcea782dd4f34cdf"
         },
         "stdout": {
           "byte_count": 0,
           "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         },
-        "subject": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+        "subject": "workspace:sha256:1fffe657571136e793a23b8a54136710b0c18b3b587b021bdbd025522f899b76",
         "timed_out": false,
         "timeout_seconds": 600.0
       },
@@ -4594,7 +5034,7 @@
           "session",
           "--json"
         ],
-        "duration_ms": 305,
+        "duration_ms": 246,
         "environment": "local:codex-bundled-python3.12",
         "evidence": "controlled-validation-runner-v1 derived status from process execution",
         "executed_argv": [
@@ -4604,13 +5044,13 @@
           "--json"
         ],
         "exit_code": 0,
-        "finished_at": "2026-08-19T07:52:18+00:00",
+        "finished_at": "2026-08-19T08:32:00+00:00",
         "integrity": {
           "issues": [],
-          "managed_content_subject_after": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
-          "managed_content_subject_before": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
-          "protected_state_digest_after": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
-          "protected_state_digest_before": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
+          "managed_content_subject_after": "workspace:sha256:1fffe657571136e793a23b8a54136710b0c18b3b587b021bdbd025522f899b76",
+          "managed_content_subject_before": "workspace:sha256:1fffe657571136e793a23b8a54136710b0c18b3b587b021bdbd025522f899b76",
+          "protected_state_digest_after": "protected-state:sha256:c33f8da673cb40fcce729b8f76e3af33ab28895f0f1cf1a882030290c613b5ac",
+          "protected_state_digest_before": "protected-state:sha256:c33f8da673cb40fcce729b8f76e3af33ab28895f0f1cf1a882030290c613b5ac",
           "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
           "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
           "unchanged": true
@@ -4628,7 +5068,7 @@
           "implementation": "CPython",
           "version": "3.12.13"
         },
-        "recorded_at": "2026-08-19T07:52:18+00:00",
+        "recorded_at": "2026-08-19T08:32:00+00:00",
         "release_unit": null,
         "release_units": [
           "mac",
@@ -4638,17 +5078,17 @@
         "runner_version": "controlled-validation-runner-v1",
         "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
         "source": "controlled-validation-runner-v1",
-        "started_at": "2026-08-19T07:52:18+00:00",
+        "started_at": "2026-08-19T08:32:00+00:00",
         "status": "passed",
         "stderr": {
           "byte_count": 0,
           "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         },
         "stdout": {
-          "byte_count": 18026,
-          "sha256": "a5da8376917840d78b419fe1b3478b3c6f2bd9d1520d913a7682622893a79b91"
+          "byte_count": 17895,
+          "sha256": "a6aa6e363094c61342ffbade0eb8ed821221d225200fdf9741ccbac662e5f1aa"
         },
-        "subject": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+        "subject": "workspace:sha256:1fffe657571136e793a23b8a54136710b0c18b3b587b021bdbd025522f899b76",
         "timed_out": false,
         "timeout_seconds": 120.0
       },
@@ -4662,7 +5102,7 @@
           "static",
           "--json"
         ],
-        "duration_ms": 300,
+        "duration_ms": 305,
         "environment": "local:codex-bundled-python3.12",
         "evidence": "controlled-validation-runner-v1 derived status from process execution",
         "executed_argv": [
@@ -4672,13 +5112,13 @@
           "--json"
         ],
         "exit_code": 0,
-        "finished_at": "2026-08-19T07:52:18+00:00",
+        "finished_at": "2026-08-19T08:32:00+00:00",
         "integrity": {
           "issues": [],
-          "managed_content_subject_after": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
-          "managed_content_subject_before": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
-          "protected_state_digest_after": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
-          "protected_state_digest_before": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
+          "managed_content_subject_after": "workspace:sha256:1fffe657571136e793a23b8a54136710b0c18b3b587b021bdbd025522f899b76",
+          "managed_content_subject_before": "workspace:sha256:1fffe657571136e793a23b8a54136710b0c18b3b587b021bdbd025522f899b76",
+          "protected_state_digest_after": "protected-state:sha256:c33f8da673cb40fcce729b8f76e3af33ab28895f0f1cf1a882030290c613b5ac",
+          "protected_state_digest_before": "protected-state:sha256:c33f8da673cb40fcce729b8f76e3af33ab28895f0f1cf1a882030290c613b5ac",
           "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
           "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
           "unchanged": true
@@ -4696,7 +5136,7 @@
           "implementation": "CPython",
           "version": "3.12.13"
         },
-        "recorded_at": "2026-08-19T07:52:18+00:00",
+        "recorded_at": "2026-08-19T08:32:00+00:00",
         "release_unit": null,
         "release_units": [
           "mac",
@@ -4706,17 +5146,17 @@
         "runner_version": "controlled-validation-runner-v1",
         "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
         "source": "controlled-validation-runner-v1",
-        "started_at": "2026-08-19T07:52:18+00:00",
+        "started_at": "2026-08-19T08:32:00+00:00",
         "status": "passed",
         "stderr": {
           "byte_count": 0,
           "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         },
         "stdout": {
-          "byte_count": 22488,
-          "sha256": "1ccddda069bb121f60ad09b704fd5ceedf1995d1593e53882262cf559cf2daa4"
+          "byte_count": 22357,
+          "sha256": "bdc3170492c55d3b867dd29a2a090260285acf9e1d95b9200035846ed0692b25"
         },
-        "subject": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+        "subject": "workspace:sha256:1fffe657571136e793a23b8a54136710b0c18b3b587b021bdbd025522f899b76",
         "timed_out": false,
         "timeout_seconds": 120.0
       },
@@ -4730,7 +5170,7 @@
           "workflow",
           "--json"
         ],
-        "duration_ms": 302,
+        "duration_ms": 250,
         "environment": "local:codex-bundled-python3.12",
         "evidence": "controlled-validation-runner-v1 derived status from process execution",
         "executed_argv": [
@@ -4740,13 +5180,13 @@
           "--json"
         ],
         "exit_code": 0,
-        "finished_at": "2026-08-19T07:52:19+00:00",
+        "finished_at": "2026-08-19T08:32:01+00:00",
         "integrity": {
           "issues": [],
-          "managed_content_subject_after": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
-          "managed_content_subject_before": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
-          "protected_state_digest_after": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
-          "protected_state_digest_before": "protected-state:sha256:5d8c292ec98479f13aa5dbccaddcdd0dcc1e4459f0e3bdb4a626597fcf840b02",
+          "managed_content_subject_after": "workspace:sha256:1fffe657571136e793a23b8a54136710b0c18b3b587b021bdbd025522f899b76",
+          "managed_content_subject_before": "workspace:sha256:1fffe657571136e793a23b8a54136710b0c18b3b587b021bdbd025522f899b76",
+          "protected_state_digest_after": "protected-state:sha256:c33f8da673cb40fcce729b8f76e3af33ab28895f0f1cf1a882030290c613b5ac",
+          "protected_state_digest_before": "protected-state:sha256:c33f8da673cb40fcce729b8f76e3af33ab28895f0f1cf1a882030290c613b5ac",
           "scope_hash_after": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
           "scope_hash_before": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
           "unchanged": true
@@ -4764,7 +5204,7 @@
           "implementation": "CPython",
           "version": "3.12.13"
         },
-        "recorded_at": "2026-08-19T07:52:19+00:00",
+        "recorded_at": "2026-08-19T08:32:01+00:00",
         "release_unit": null,
         "release_units": [
           "mac",
@@ -4774,17 +5214,17 @@
         "runner_version": "controlled-validation-runner-v1",
         "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
         "source": "controlled-validation-runner-v1",
-        "started_at": "2026-08-19T07:52:18+00:00",
+        "started_at": "2026-08-19T08:32:00+00:00",
         "status": "passed",
         "stderr": {
           "byte_count": 0,
           "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         },
         "stdout": {
-          "byte_count": 19856,
-          "sha256": "9bfc0ec0f543e669f8a6ab0b0ee07c561bd477344843bd6f17d3f2c0afa3fd4d"
+          "byte_count": 19725,
+          "sha256": "d36af9d68931019aa8c875cee8c3e144aa5c6979f827c6b8be8fedfa2d0c022a"
         },
-        "subject": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+        "subject": "workspace:sha256:1fffe657571136e793a23b8a54136710b0c18b3b587b021bdbd025522f899b76",
         "timed_out": false,
         "timeout_seconds": 120.0
       }

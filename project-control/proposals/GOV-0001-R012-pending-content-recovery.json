@@ -1,0 +1,40 @@
+{
+  "allowed_paths": [
+    ".codex/hooks/_governance.py",
+    ".codex/tests/test_hooks.py",
+    "AGENTS.md",
+    "docs/governance/验证与豁免-GOV-0003-v1.0.md",
+    "docs/requirements/治理基线-REQ-0001/治理基线-REQ-0001-v1.0.md",
+    "docs/troubleshooting/治理门禁问题排查-TRB-0001-v1.0.md",
+    "project-control/proposals/GOV-0001-R012-pending-content-recovery.json",
+    "project-control/reviews/GOV-0001-R011.json",
+    "project-control/reviews/GOV-0001-R012.json",
+    "project-control/tasks/GOV-0001.json",
+    "tools/governance/core.py",
+    "tools/governance/taskctl.py",
+    "tools/governance/tests/test_bootstrap_git.py",
+    "tools/governance/tests/test_conversation_approval.py"
+  ],
+  "commit_message": "fix(governance): seal R003 conversation migration root",
+  "expected_history_count": 5,
+  "failed_content_sha": "63b6de3b4e85b6cd6c2be8bbd43586197cec57ba",
+  "failed_control_head": "63b6de3b4e85b6cd6c2be8bbd43586197cec57ba",
+  "failed_run_id": "32230013274",
+  "failure_stage": "content_ci_pending",
+  "from_previous_status": "LOCAL_VERIFIED",
+  "from_status": "BLOCKED",
+  "invariants": [
+    "no_validation_waiver",
+    "no_force_push",
+    "preserve_existing_history",
+    "controlled_local_validation_required",
+    "three_platform_ci_required",
+    "no_business_code_or_dependency_files"
+  ],
+  "operation_id": "GOV-0001-CI-RUN-32230013274-PENDING-CONTENT-RECOVERY",
+  "review_id": "GOV-0001-R012",
+  "rework_review_id": "GOV-0001-R011",
+  "schema_version": 2,
+  "scope_version": 4,
+  "task_id": "GOV-0001"
+}

@@ -16,6 +16,7 @@ if str(GOVERNANCE_DIR) not in sys.path:
 
 import reviewctl  # noqa: E402
 import taskctl  # noqa: E402
+import core  # noqa: E402
 from core import (  # noqa: E402
     canonical_scope_hash,
     find_effective_code_review,
@@ -33,6 +34,45 @@ from helpers import (  # noqa: E402
 
 
 VERIFIED_COMMIT = "c" * 40
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+
+
+class SealedMigrationRootTests(unittest.TestCase):
+    def test_exact_r003_is_sealed_without_runtime_openssh(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            initialize_root(root, base_task(), approved=False)
+            source = REPOSITORY_ROOT / "project-control" / "reviews" / "GOV-0001-R003.json"
+            receipt = read_json(source)
+            write_json(
+                root / "project-control" / "reviews" / "GOV-0001-R003.json",
+                receipt,
+            )
+            with mock.patch(
+                "authority.verify_signed_receipt",
+                side_effect=AssertionError("sealed migration must not invoke OpenSSH"),
+            ):
+                valid, reason = core._conversation_migration_authorized(root)
+            self.assertTrue(valid, reason)
+            self.assertIn("sealed signed R003", reason)
+
+    def test_any_r003_signature_change_breaks_the_seal(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            initialize_root(root, base_task(), approved=False)
+            source = REPOSITORY_ROOT / "project-control" / "reviews" / "GOV-0001-R003.json"
+            receipt = read_json(source)
+            receipt["signature"] = dict(receipt["signature"])
+            receipt["signature"]["armored"] = receipt["signature"]["armored"].replace(
+                "U1NIU0lH", "V1NIU0lH", 1
+            )
+            write_json(
+                root / "project-control" / "reviews" / "GOV-0001-R003.json",
+                receipt,
+            )
+            valid, reason = core._conversation_migration_authorized(root)
+            self.assertFalse(valid)
+            self.assertIn("sealed signed R003", reason)
 
 
 class ConversationReceiptTests(unittest.TestCase):

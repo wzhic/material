@@ -46,6 +46,7 @@ from core import (
     path_is_allowed,
     read_json,
     recovery_proposal_path,
+    review_validity,
     run_git,
     task_path,
     utc_now,
@@ -811,6 +812,16 @@ def build_parser() -> argparse.ArgumentParser:
     committed_recovery.add_argument("--reason", required=True)
     common(committed_recovery)
 
+    pending_content_recovery = subparsers.add_parser(
+        "recover-pending-content",
+        help="replace an active bootstrap recovery after its pushed content CI fails",
+    )
+    pending_content_recovery.add_argument("task_id")
+    pending_content_recovery.add_argument("--proposal", required=True)
+    pending_content_recovery.add_argument("--actor", required=True)
+    pending_content_recovery.add_argument("--reason", required=True)
+    common(pending_content_recovery)
+
     create = subparsers.add_parser("create", help="create a DRAFT task from a reviewed JSON specification")
     create.add_argument("--file", required=True, type=Path)
     common(create)
@@ -1216,6 +1227,162 @@ def main(argv: Optional[List[str]] = None) -> int:
                 }
             _emit(payload, args.json)
             return 0 if batch["status"] == "passed" else 1
+
+        if args.command == "recover-pending-content":
+            task = load_task(root, args.task_id)
+            _require_current_task(root, task)
+            _require_complete_validation_plan(task)
+            _require_scope_review(root, task)
+            _require_work_branch(root, task)
+            if args.actor != "Codex":
+                raise GovernanceError(
+                    "recover-pending-content must record --actor Codex exactly"
+                )
+            if not args.reason.strip():
+                raise GovernanceError("recover-pending-content reason must be non-empty")
+            if task.get("status") != "IN_PROGRESS":
+                raise GovernanceError(
+                    "recover-pending-content requires task status IN_PROGRESS after reviewed reopen"
+                )
+            if task.get("validation", {}).get("results"):
+                raise GovernanceError(
+                    "recover-pending-content requires all prior validation results to be archived"
+                )
+            if task.get("git"):
+                raise GovernanceError(
+                    "recover-pending-content requires no active Git phase evidence"
+                )
+            prior_contract = active_bootstrap_recovery_contract(root, task)
+            if prior_contract is None or prior_contract.get("recovery_state") != "active":
+                raise GovernanceError(
+                    "recover-pending-content requires one active prior recovery contract"
+                )
+            proposal_argument = Path(args.proposal)
+            proposal_candidate = (
+                proposal_argument if proposal_argument.is_absolute() else root / proposal_argument
+            ).resolve()
+            try:
+                proposal_relative = proposal_candidate.relative_to(root.resolve()).as_posix()
+            except ValueError as exc:
+                raise GovernanceError("recovery proposal must be inside the repository") from exc
+            proposal = recovery_proposal_path(root, proposal_relative)
+            contract = validate_bootstrap_recovery_contract(root, task, read_json(proposal))
+            if (
+                contract.get("schema_version") != 2
+                or contract.get("failure_stage") != "content_ci_pending"
+            ):
+                raise GovernanceError(
+                    "recover-pending-content requires a schema v2 content_ci_pending proposal"
+                )
+            head = normalize_commit(
+                _git(root, ("rev-parse", "HEAD"), "cannot resolve failed content HEAD"),
+                "HEAD",
+            )
+            if head != contract["failed_content_sha"]:
+                raise GovernanceError(
+                    "pending-content proposal does not match the current failed content HEAD"
+                )
+            history_count_text = _git(
+                root,
+                ("rev-list", "--all", "--count"),
+                "cannot inspect pending-content recovery history",
+            )
+            if (
+                not history_count_text.isdigit()
+                or int(history_count_text) != contract["expected_history_count"]
+            ):
+                raise GovernanceError(
+                    "pending-content recovery history count differs from the reviewed proposal"
+                )
+            prior_issues = bootstrap_repair_commit_issues(root, head, task)
+            if prior_issues:
+                raise GovernanceError(
+                    "failed pending content is not the exact prior recovery child: %s"
+                    % "; ".join(prior_issues)
+                )
+            rework_history = task.get("rework_history", [])
+            latest_rework = rework_history[-1] if isinstance(rework_history, list) and rework_history else None
+            if (
+                not isinstance(latest_rework, Mapping)
+                or latest_rework.get("review_id") != contract["rework_review_id"]
+                or latest_rework.get("to_status") != "IN_PROGRESS"
+            ):
+                raise GovernanceError(
+                    "pending-content recovery is not bound to the latest consumed rework receipt"
+                )
+            matching_rework = [
+                receipt for receipt in list_reviews(root, task["task_id"])
+                if receipt.get("review_id") == contract["rework_review_id"]
+                and receipt.get("kind") == "rework"
+                and receipt.get("subject") == latest_rework.get("subject")
+            ]
+            if len(matching_rework) != 1:
+                raise GovernanceError("pending-content rework receipt is missing or ambiguous")
+            rework_valid, rework_reason = review_validity(
+                matching_rework[0], task, root=root
+            )
+            if not rework_valid:
+                raise GovernanceError(
+                    "pending-content rework receipt is invalid: %s" % rework_reason
+                )
+            timestamp = utc_now()
+            prior_marker = copy.deepcopy(task.get("bootstrap_recovery"))
+            marker = {
+                "activated_at": timestamp,
+                "activated_by": args.actor,
+                "failed_content_sha": contract["failed_content_sha"],
+                "failed_control_head": contract["failed_control_head"],
+                "failed_run_id": contract["failed_run_id"],
+                "history_count": contract["expected_history_count"],
+                "operation_id": contract["operation_id"],
+                "proposal_path": proposal_relative,
+                "review_id": contract["review_id"],
+                "state": "active",
+                "target_digest": contract["target_digest"],
+            }
+            task.setdefault("bootstrap_recovery_history", []).append({
+                "activated_at": timestamp,
+                "actor": args.actor,
+                "reason": args.reason,
+                "review_id": contract["review_id"],
+                "rework_review_id": contract["rework_review_id"],
+                "target_digest": contract["target_digest"],
+                "failed_run_id": contract["failed_run_id"],
+                "failure_stage": contract["failure_stage"],
+                "from_status": "BLOCKED",
+                "from_previous_status": "LOCAL_VERIFIED",
+                "to_status": "IN_PROGRESS",
+                "superseded_recovery": prior_marker,
+            })
+            task.setdefault("history", []).append({
+                "event": "receipt_bound_pending_content_recovery",
+                "from": "IN_PROGRESS",
+                "to": "IN_PROGRESS",
+                "at": timestamp,
+                "actor": args.actor,
+                "reason": args.reason,
+                "review_id": contract["review_id"],
+                "rework_review_id": contract["rework_review_id"],
+                "target_digest": contract["target_digest"],
+                "failed_run_id": contract["failed_run_id"],
+            })
+            task["bootstrap_recovery"] = marker
+            task["updated_at"] = timestamp
+            validate_task(task)
+            active_bootstrap_recovery_contract(root, task)
+            write_json_atomic(task_path(root, args.task_id), task)
+            _emit({
+                "ok": True,
+                "task": task,
+                "recovery_review_id": contract["review_id"],
+                "rework_review_id": contract["rework_review_id"],
+                "target_digest": contract["target_digest"],
+                "message": (
+                    "receipt-bound pending-content recovery replaced the prior active contract; "
+                    "all validation must rerun"
+                ),
+            }, args.json)
+            return 0
 
         if args.command == "recover-committed":
             task = load_task(root, args.task_id)

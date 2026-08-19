@@ -110,6 +110,9 @@ CONVERSATION_MIGRATION_RECEIPT_ID = "GOV-0001-R003"
 CONVERSATION_MIGRATION_PAYLOAD_SHA256 = (
     "sha256:80b72baede7e7e81c06e095d9e88ea87209d764a2e8977b7b85b85fc850e8b15"
 )
+CONVERSATION_MIGRATION_RECEIPT_SHA256 = (
+    "sha256:e69a6208c58999a7c69389fbd27318c1bd9ae88dc89c6a5034f363f276dfa6d8"
+)
 CONVERSATION_REVIEW_POLICY = {
     "approvers": ["user"],
     "agent_may_approve": False,
@@ -489,7 +492,7 @@ def validate_bootstrap_recovery_contract(
 ) -> Dict[str, Any]:
     """Validate a user-digested, one-operation bootstrap recovery contract."""
 
-    required_fields = frozenset((
+    base_fields = frozenset((
         "allowed_paths",
         "commit_message",
         "failed_content_sha",
@@ -504,6 +507,17 @@ def validate_bootstrap_recovery_contract(
         "scope_version",
         "task_id",
     ))
+    schema_version = contract.get("schema_version")
+    if schema_version == 1:
+        required_fields = base_fields
+    elif schema_version == 2:
+        required_fields = base_fields | frozenset((
+            "expected_history_count",
+            "failure_stage",
+            "rework_review_id",
+        ))
+    else:
+        raise GovernanceError("bootstrap recovery contract schema_version must be 1 or 2")
     if set(contract) != required_fields:
         missing = sorted(required_fields - set(contract))
         extra = sorted(set(contract) - required_fields)
@@ -513,22 +527,46 @@ def validate_bootstrap_recovery_contract(
         if extra:
             details.append("unsupported %s" % ", ".join(extra))
         raise GovernanceError("bootstrap recovery contract fields are invalid: %s" % "; ".join(details))
-    if contract.get("schema_version") != 1:
-        raise GovernanceError("bootstrap recovery contract schema_version must be 1")
     if contract.get("task_id") != task.get("task_id"):
         raise GovernanceError("bootstrap recovery contract belongs to another task")
     if contract.get("scope_version") != task.get("scope_version"):
         raise GovernanceError("bootstrap recovery contract scope_version is stale")
-    if contract.get("from_status") != "BLOCKED" or contract.get("from_previous_status") != "COMMITTED":
-        raise GovernanceError("bootstrap recovery contract must bind BLOCKED from COMMITTED")
+    if schema_version == 1:
+        if (
+            contract.get("from_status") != "BLOCKED"
+            or contract.get("from_previous_status") != "COMMITTED"
+        ):
+            raise GovernanceError("schema v1 recovery must bind BLOCKED from COMMITTED")
+    else:
+        if contract.get("failure_stage") != "content_ci_pending":
+            raise GovernanceError("schema v2 recovery failure_stage must be content_ci_pending")
+        if (
+            contract.get("from_status") != "BLOCKED"
+            or contract.get("from_previous_status") != "LOCAL_VERIFIED"
+        ):
+            raise GovernanceError(
+                "pending-content recovery must bind BLOCKED from LOCAL_VERIFIED"
+            )
+        validate_review_id(contract.get("rework_review_id"))
+        expected_count = contract.get("expected_history_count")
+        if (
+            not isinstance(expected_count, int)
+            or isinstance(expected_count, bool)
+            or expected_count < 1
+        ):
+            raise GovernanceError("pending-content recovery expected_history_count must be positive")
     validate_review_id(contract.get("review_id"))
     operation_id = contract.get("operation_id")
     if not isinstance(operation_id, str) or not operation_id.strip():
         raise GovernanceError("bootstrap recovery operation_id must be non-empty")
     failed_content = normalize_commit(contract.get("failed_content_sha"), "failed_content_sha")
     failed_head = normalize_commit(contract.get("failed_control_head"), "failed_control_head")
-    if failed_content == failed_head:
+    if schema_version == 1 and failed_content == failed_head:
         raise GovernanceError("bootstrap recovery content and control commits must be distinct")
+    if schema_version == 2 and failed_content != failed_head:
+        raise GovernanceError(
+            "pending-content recovery must bind the same failed content and current head"
+        )
     failed_run_id = contract.get("failed_run_id")
     if not isinstance(failed_run_id, str) or not re.fullmatch(r"[1-9][0-9]*", failed_run_id):
         raise GovernanceError("bootstrap recovery failed_run_id must be a positive decimal id")
@@ -646,6 +684,12 @@ def active_bootstrap_recovery_contract(
     history_count = marker.get("history_count")
     if not isinstance(history_count, int) or isinstance(history_count, bool) or history_count < 1:
         raise GovernanceError("bootstrap recovery history_count must be a positive integer")
+    if normalized.get("schema_version") == 2 and (
+        history_count != normalized.get("expected_history_count")
+    ):
+        raise GovernanceError(
+            "pending-content recovery history_count differs from the reviewed proposal"
+        )
     if marker.get("state") == "consumed":
         consumed_content = normalize_commit(
             marker.get("consumed_content_sha"),
@@ -1534,14 +1578,15 @@ def _conversation_migration_authorized(root: Path) -> Tuple[bool, str]:
             or receipt.get("scope_version") != 3
         ):
             return False, "conversation migration receipt bindings are not the approved R003 contract"
-        from authority import authority_from_task, receipt_payload_digest, verify_signed_receipt
+        from authority import receipt_payload_digest
         if receipt_payload_digest(receipt) != CONVERSATION_MIGRATION_PAYLOAD_SHA256:
             return False, "conversation migration receipt canonical payload digest changed"
-        migration_task = load_task(root, BOOTSTRAP_TASK_ID)
-        valid, reason = verify_signed_receipt(receipt, authority_from_task(migration_task))
-        if not valid:
-            return False, reason
-        return True, "R003 authorizes conversation-v1 approvals"
+        sealed_digest = "sha256:" + hashlib.sha256(
+            canonical_json(receipt).encode("utf-8")
+        ).hexdigest()
+        if sealed_digest != CONVERSATION_MIGRATION_RECEIPT_SHA256:
+            return False, "conversation migration receipt differs from the sealed signed R003"
+        return True, "sealed signed R003 authorizes conversation-v1 approvals"
     except (GovernanceError, ImportError) as exc:
         return False, str(exc)
 

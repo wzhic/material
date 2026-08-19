@@ -1,0 +1,23 @@
+{
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "conversation:2026-08-19:r011-minimal-rework",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "同意",
+  "decided_at": "2026-08-19T08:16:41+00:00",
+  "decision": "approved",
+  "expires_at": "2026-08-20T12:00:00+00:00",
+  "from_status": "LOCAL_VERIFIED",
+  "kind": "rework",
+  "project_id": "material",
+  "reason": "用户同意 R011 最小返工：仅重新打开 Run 32230013274 失败后的 LOCAL_VERIFIED 冻结快照，以封存 R003 迁移根并补失败内容 push 的受控恢复；保留历史、禁止豁免和强推",
+  "recorded_by": "Codex",
+  "review_id": "GOV-0001-R011",
+  "schema_version": 3,
+  "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+  "scope_version": 4,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "subject": "workspace:sha256:cee29c4405be85cbea66b8812b8f180cf53212917fd7515cf3a7cd6af05f27db",
+  "supersedes": null,
+  "task_id": "GOV-0001"
+}

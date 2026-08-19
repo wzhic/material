@@ -1458,22 +1458,29 @@ class HookPolicyTests(unittest.TestCase):
             )
 
     def test_receipt_bound_recovery_cli_is_narrowly_reachable(self) -> None:
-        proposal = self.fixture.root / "project-control" / "proposals" / "GOV-0001-R010.json"
-        proposal.parent.mkdir(parents=True)
-        proposal.write_text("{}\n", encoding="utf-8")
-        command = (
-            "python3 tools/governance/taskctl.py recover-committed GOV-0001 "
-            "--proposal project-control/proposals/GOV-0001-R010.json "
-            "--actor Codex --reason confirmed --root " + shlex.quote(str(self.fixture.root))
-        )
-        self.assertIsNone(
-            pre_tool_use.evaluate(self.fixture.payload("Bash", {"command": command}))
-        )
+        proposals = self.fixture.root / "project-control" / "proposals"
+        proposals.mkdir(parents=True)
+        for subcommand, name in (
+            ("recover-committed", "GOV-0001-R010.json"),
+            ("recover-pending-content", "GOV-0001-R012.json"),
+        ):
+            (proposals / name).write_text("{}\n", encoding="utf-8")
+            command = (
+                "python3 tools/governance/taskctl.py %s GOV-0001 "
+                "--proposal project-control/proposals/%s "
+                "--actor Codex --reason confirmed --root %s"
+                % (subcommand, name, shlex.quote(str(self.fixture.root)))
+            )
+            with self.subTest(subcommand=subcommand):
+                self.assertIsNone(
+                    pre_tool_use.evaluate(self.fixture.payload("Bash", {"command": command}))
+                )
         outside = self.fixture.root / "outside-recovery.json"
         outside.write_text("{}\n", encoding="utf-8")
-        denied = command.replace(
-            "project-control/proposals/GOV-0001-R010.json",
-            "outside-recovery.json",
+        denied = (
+            "python3 tools/governance/taskctl.py recover-pending-content GOV-0001 "
+            "--proposal outside-recovery.json --actor Codex --reason confirmed --root "
+            + shlex.quote(str(self.fixture.root))
         )
         self.assert_denied(
             pre_tool_use.evaluate(self.fixture.payload("Bash", {"command": denied})),
