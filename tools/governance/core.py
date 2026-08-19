@@ -457,6 +457,231 @@ def load_current_task(root: Path) -> Dict[str, Any]:
     return load_task(root, current_task_id(root))
 
 
+def recovery_proposal_path(root: Path, relative_path: Any) -> Path:
+    """Resolve one machine-readable recovery proposal inside the proposal registry."""
+
+    if not isinstance(relative_path, str) or not relative_path.strip():
+        raise GovernanceError("bootstrap recovery proposal_path must be a non-empty string")
+    normalized = relative_path.strip().replace("\\", "/")
+    prefix = "project-control/proposals/"
+    if not normalized.startswith(prefix) or not normalized.endswith(".json"):
+        raise GovernanceError("bootstrap recovery proposal must be a JSON file in project-control/proposals")
+    candidate = (root.resolve() / normalized).resolve()
+    proposals = (control_dir(root) / "proposals").resolve()
+    try:
+        candidate.relative_to(proposals)
+    except ValueError as exc:
+        raise GovernanceError("bootstrap recovery proposal escapes project-control/proposals") from exc
+    return candidate
+
+
+def recovery_contract_digest(contract: Mapping[str, Any]) -> str:
+    return "sha256:" + hashlib.sha256(canonical_json(contract).encode("utf-8")).hexdigest()
+
+
+def validate_bootstrap_recovery_contract(
+    root: Path,
+    task: Mapping[str, Any],
+    contract: Mapping[str, Any],
+    *,
+    expected_digest: Optional[str] = None,
+    approval_at: Optional[_datetime.datetime] = None,
+) -> Dict[str, Any]:
+    """Validate a user-digested, one-operation bootstrap recovery contract."""
+
+    required_fields = frozenset((
+        "allowed_paths",
+        "commit_message",
+        "failed_content_sha",
+        "failed_control_head",
+        "failed_run_id",
+        "from_previous_status",
+        "from_status",
+        "invariants",
+        "operation_id",
+        "review_id",
+        "schema_version",
+        "scope_version",
+        "task_id",
+    ))
+    if set(contract) != required_fields:
+        missing = sorted(required_fields - set(contract))
+        extra = sorted(set(contract) - required_fields)
+        details = []
+        if missing:
+            details.append("missing %s" % ", ".join(missing))
+        if extra:
+            details.append("unsupported %s" % ", ".join(extra))
+        raise GovernanceError("bootstrap recovery contract fields are invalid: %s" % "; ".join(details))
+    if contract.get("schema_version") != 1:
+        raise GovernanceError("bootstrap recovery contract schema_version must be 1")
+    if contract.get("task_id") != task.get("task_id"):
+        raise GovernanceError("bootstrap recovery contract belongs to another task")
+    if contract.get("scope_version") != task.get("scope_version"):
+        raise GovernanceError("bootstrap recovery contract scope_version is stale")
+    if contract.get("from_status") != "BLOCKED" or contract.get("from_previous_status") != "COMMITTED":
+        raise GovernanceError("bootstrap recovery contract must bind BLOCKED from COMMITTED")
+    validate_review_id(contract.get("review_id"))
+    operation_id = contract.get("operation_id")
+    if not isinstance(operation_id, str) or not operation_id.strip():
+        raise GovernanceError("bootstrap recovery operation_id must be non-empty")
+    failed_content = normalize_commit(contract.get("failed_content_sha"), "failed_content_sha")
+    failed_head = normalize_commit(contract.get("failed_control_head"), "failed_control_head")
+    if failed_content == failed_head:
+        raise GovernanceError("bootstrap recovery content and control commits must be distinct")
+    failed_run_id = contract.get("failed_run_id")
+    if not isinstance(failed_run_id, str) or not re.fullmatch(r"[1-9][0-9]*", failed_run_id):
+        raise GovernanceError("bootstrap recovery failed_run_id must be a positive decimal id")
+    message = contract.get("commit_message")
+    if not isinstance(message, str) or not message.strip() or "\n" in message or "\r" in message:
+        raise GovernanceError("bootstrap recovery commit_message must be one non-empty line")
+    allowed_paths = contract.get("allowed_paths")
+    if (
+        not isinstance(allowed_paths, list)
+        or not allowed_paths
+        or len(set(allowed_paths)) != len(allowed_paths)
+        or any(
+            not isinstance(path, str)
+            or not path.strip()
+            or path.startswith("/")
+            or ".." in path.replace("\\", "/").split("/")
+            or any(char in path for char in "*?[")
+            for path in allowed_paths
+        )
+    ):
+        raise GovernanceError("bootstrap recovery allowed_paths must be unique exact repository paths")
+    outside_scope = sorted(
+        path for path in allowed_paths
+        if not path_is_allowed(root, path, task.get("allowed_paths", []))
+    )
+    if outside_scope:
+        raise GovernanceError(
+            "bootstrap recovery paths are outside the reviewed task scope: %s"
+            % ", ".join(outside_scope)
+        )
+    invariants = contract.get("invariants")
+    required_invariants = frozenset((
+        "no_validation_waiver",
+        "no_force_push",
+        "preserve_existing_history",
+        "controlled_local_validation_required",
+        "three_platform_ci_required",
+        "no_business_code_or_dependency_files",
+    ))
+    if not isinstance(invariants, list) or frozenset(invariants) != required_invariants:
+        raise GovernanceError("bootstrap recovery contract is missing a required safety invariant")
+    digest = recovery_contract_digest(contract)
+    if expected_digest is not None and digest != validate_target_digest(expected_digest):
+        raise GovernanceError("bootstrap recovery proposal digest does not match its activation record")
+    if approval_at is None:
+        receipt, reason = find_effective_irreversible_operation_review(
+            root,
+            task,
+            str(operation_id),
+            digest,
+        )
+    else:
+        matching = [
+            item for item in list_reviews(root, str(task.get("task_id")))
+            if item.get("review_id") == contract.get("review_id")
+            and item.get("kind") == "irreversible_operation"
+            and item.get("operation_id") == operation_id
+            and item.get("target_digest") == digest
+            and item.get("scope_hash") == canonical_scope_hash(task)
+        ]
+        receipt = matching[0] if len(matching) == 1 else None
+        if receipt is None:
+            reason = "consumed recovery receipt is missing or ambiguous"
+        else:
+            valid, reason = review_validity(receipt, task, now=approval_at, root=root)
+            if not valid:
+                receipt = None
+    if receipt is None or receipt.get("review_id") != contract.get("review_id"):
+        raise GovernanceError("bootstrap recovery has no matching user receipt: %s" % reason)
+    normalized = dict(contract)
+    normalized["failed_content_sha"] = failed_content
+    normalized["failed_control_head"] = failed_head
+    normalized["target_digest"] = digest
+    return normalized
+
+
+def active_bootstrap_recovery_contract(
+    root: Path,
+    task: Optional[Mapping[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Return the active receipt-bound recovery contract, or fail on drift."""
+
+    selected = task if task is not None else load_current_task(root)
+    marker = selected.get("bootstrap_recovery")
+    if marker is None:
+        return None
+    if not isinstance(marker, Mapping) or marker.get("state") not in ("active", "consumed"):
+        raise GovernanceError("bootstrap_recovery must be active or consumed while present")
+    approval_at = None
+    if marker.get("state") == "consumed":
+        approval_at = parse_timestamp(marker.get("consumed_at"))
+        if approval_at is None:
+            raise GovernanceError("consumed bootstrap recovery is missing consumed_at")
+    proposal = recovery_proposal_path(root, marker.get("proposal_path"))
+    contract = read_json(proposal)
+    normalized = validate_bootstrap_recovery_contract(
+        root,
+        selected,
+        contract,
+        expected_digest=marker.get("target_digest"),
+        approval_at=approval_at,
+    )
+    binding_fields = (
+        "review_id",
+        "operation_id",
+        "failed_content_sha",
+        "failed_control_head",
+        "failed_run_id",
+    )
+    drift = [field for field in binding_fields if marker.get(field) != normalized.get(field)]
+    if drift:
+        raise GovernanceError(
+            "bootstrap recovery activation drifted from its proposal: %s" % ", ".join(drift)
+        )
+    history_count = marker.get("history_count")
+    if not isinstance(history_count, int) or isinstance(history_count, bool) or history_count < 1:
+        raise GovernanceError("bootstrap recovery history_count must be a positive integer")
+    if marker.get("state") == "consumed":
+        consumed_content = normalize_commit(
+            marker.get("consumed_content_sha"),
+            "bootstrap_recovery.consumed_content_sha",
+        )
+        consumed_head = normalize_commit(
+            marker.get("consumed_control_head"),
+            "bootstrap_recovery.consumed_control_head",
+        )
+        consumed_run = str(marker.get("consumed_run_id"))
+        if selected.get("git", {}).get("committed_sha") != consumed_content:
+            raise GovernanceError("consumed recovery content SHA differs from task.git.committed_sha")
+        matching_results = [
+            result for result in selected.get("validation", {}).get("results", [])
+            if isinstance(result, Mapping)
+            and result.get("status") == "passed"
+            and result.get("phase") == "ci"
+            and result.get("source") == "github_actions_rest_v1"
+            and result.get("run_id") == consumed_run
+            and result.get("subject") == "commit:" + consumed_content
+            and isinstance(result.get("github"), Mapping)
+            and result["github"].get("control_head_sha") == consumed_head
+        ]
+        if not matching_results:
+            raise GovernanceError(
+                "consumed bootstrap recovery has no matching REST-verified CI evidence"
+            )
+    normalized["history_count"] = history_count
+    normalized["proposal_path"] = marker.get("proposal_path")
+    normalized["authorization_kind"] = "irreversible_operation"
+    normalized["recovery_state"] = marker.get("state")
+    normalized["parent_sha"] = normalized["failed_control_head"]
+    normalized["message"] = normalized["commit_message"]
+    return normalized
+
+
 def _git_candidates() -> List[str]:
     """Return Git candidates in preference order, including Codex fallbacks."""
 
@@ -555,8 +780,28 @@ def bootstrap_repair_contract_for_parent(parent: str) -> Optional[Mapping[str, A
     return None
 
 
-def bootstrap_repair_commit_issues(root: Path, commit: str) -> List[str]:
-    """Validate one exact, non-force child in the finite G0 repair chain."""
+def bootstrap_recovery_contract_for_parent(
+    root: Path,
+    parent: str,
+    task: Optional[Mapping[str, Any]] = None,
+) -> Optional[Mapping[str, Any]]:
+    """Resolve a historical finite repair or the active receipt-bound recovery."""
+
+    static = bootstrap_repair_contract_for_parent(parent)
+    if static is not None:
+        return static
+    active = active_bootstrap_recovery_contract(root, task)
+    if active is not None and active.get("failed_control_head") == str(parent).strip().lower():
+        return active
+    return None
+
+
+def bootstrap_repair_commit_issues(
+    root: Path,
+    commit: str,
+    task: Optional[Mapping[str, Any]] = None,
+) -> List[str]:
+    """Validate one exact, non-force child in a reviewed G0 recovery chain."""
 
     normalized = str(commit).strip().lower()
     issues: List[str] = []
@@ -567,17 +812,32 @@ def bootstrap_repair_commit_issues(root: Path, commit: str) -> List[str]:
     if parents_error or len(words) != 2 or words[0] != normalized:
         return ["bootstrap repair must have exactly one reviewed failed parent"]
     parent = words[1]
-    contract = bootstrap_repair_contract_for_parent(parent)
+    try:
+        contract = bootstrap_recovery_contract_for_parent(root, parent, task)
+    except GovernanceError as exc:
+        return ["bootstrap recovery contract is invalid: %s" % exc]
     if contract is None:
-        return ["bootstrap repair parent is not part of the finite reviewed recovery chain"]
-    if parent == FAILED_BOOTSTRAP_ROOT_SHA:
+        return ["bootstrap repair parent has no finite or receipt-bound recovery contract"]
+    dynamic = contract.get("authorization_kind") == "irreversible_operation"
+    if dynamic:
+        failed_content = str(contract.get("failed_content_sha", ""))
+        _coverage, coverage_error = run_git(
+            root,
+            ("merge-base", "--is-ancestor", failed_content, parent),
+        )
+        if coverage_error:
+            issues.append(
+                "receipt-bound recovery control head does not contain its failed content commit: %s"
+                % coverage_error
+            )
+    elif parent == FAILED_BOOTSTRAP_ROOT_SHA:
         root_line, root_error = run_git(
             root, ("rev-list", "--parents", "-n", "1", FAILED_BOOTSTRAP_ROOT_SHA)
         )
         if root_error or (root_line or "").split() != [FAILED_BOOTSTRAP_ROOT_SHA]:
             issues.append("recorded failed bootstrap commit is unavailable or is not the repository root")
     else:
-        prior_issues = bootstrap_repair_commit_issues(root, parent)
+        prior_issues = bootstrap_repair_commit_issues(root, parent, task)
         if prior_issues:
             issues.append(
                 "bootstrap repair parent does not satisfy the preceding reviewed recovery: %s"
@@ -897,6 +1157,7 @@ def legacy_g0_v1_migration(task: Mapping[str, Any]) -> bool:
         and isinstance(branch_exception, Mapping)
         and branch_exception.get("kind") == "bootstrap-main"
         and branch_exception.get("applies_only_to_task") == BOOTSTRAP_TASK_ID
+        and task.get("bootstrap_recovery") is None
         and not task.get("git", {}).get("committed_sha")
     )
 
@@ -1074,6 +1335,78 @@ def validate_task(task: Mapping[str, Any]) -> None:
         )
         if contract_issues:
             raise GovernanceError("; ".join(contract_issues))
+    recovery = task.get("bootstrap_recovery")
+    if recovery is not None:
+        base_recovery_fields = frozenset((
+            "activated_at",
+            "activated_by",
+            "failed_content_sha",
+            "failed_control_head",
+            "failed_run_id",
+            "history_count",
+            "operation_id",
+            "proposal_path",
+            "review_id",
+            "state",
+            "target_digest",
+        ))
+        consumed_recovery_fields = frozenset((
+            "consumed_at",
+            "consumed_content_sha",
+            "consumed_control_head",
+            "consumed_run_id",
+        ))
+        state = recovery.get("state") if isinstance(recovery, Mapping) else None
+        required_recovery_fields = (
+            base_recovery_fields | consumed_recovery_fields
+            if state == "consumed" else base_recovery_fields
+        )
+        if not isinstance(recovery, Mapping) or set(recovery) != required_recovery_fields:
+            raise GovernanceError("bootstrap_recovery has an invalid activation shape")
+        if state not in ("active", "consumed") or recovery.get("activated_by") != "Codex":
+            raise GovernanceError("bootstrap_recovery must be active/consumed and recorded by Codex")
+        parse_timestamp(recovery.get("activated_at"))
+        normalize_commit(recovery.get("failed_content_sha"), "bootstrap_recovery.failed_content_sha")
+        normalize_commit(recovery.get("failed_control_head"), "bootstrap_recovery.failed_control_head")
+        validate_review_id(recovery.get("review_id"))
+        validate_target_digest(recovery.get("target_digest"))
+        if not isinstance(recovery.get("operation_id"), str) or not recovery.get("operation_id", "").strip():
+            raise GovernanceError("bootstrap_recovery.operation_id must be non-empty")
+        if not isinstance(recovery.get("failed_run_id"), str) or not re.fullmatch(
+            r"[1-9][0-9]*", recovery.get("failed_run_id", "")
+        ):
+            raise GovernanceError("bootstrap_recovery.failed_run_id must be a positive decimal id")
+        if (
+            not isinstance(recovery.get("history_count"), int)
+            or isinstance(recovery.get("history_count"), bool)
+            or recovery.get("history_count") < 1
+        ):
+            raise GovernanceError("bootstrap_recovery.history_count must be positive")
+        proposal = recovery.get("proposal_path")
+        if (
+            not isinstance(proposal, str)
+            or not proposal.startswith("project-control/proposals/")
+            or not proposal.endswith(".json")
+            or ".." in proposal.split("/")
+        ):
+            raise GovernanceError("bootstrap_recovery.proposal_path is invalid")
+        if state == "consumed":
+            consumed_at = parse_timestamp(recovery.get("consumed_at"))
+            activated_at = parse_timestamp(recovery.get("activated_at"))
+            if consumed_at is None or activated_at is None or consumed_at < activated_at:
+                raise GovernanceError("bootstrap_recovery consumed_at precedes activation")
+            normalize_commit(
+                recovery.get("consumed_content_sha"),
+                "bootstrap_recovery.consumed_content_sha",
+            )
+            normalize_commit(
+                recovery.get("consumed_control_head"),
+                "bootstrap_recovery.consumed_control_head",
+            )
+            if not isinstance(recovery.get("consumed_run_id"), str) or not re.fullmatch(
+                r"[1-9][0-9]*", recovery.get("consumed_run_id", "")
+            ):
+                raise GovernanceError("bootstrap_recovery.consumed_run_id must be positive")
     for result in validation.get("results", []):
         if not isinstance(result, dict):
             raise GovernanceError("validation.results entries must be objects")

@@ -21,9 +21,10 @@ from core import (
     VALIDATION_STATUSES,
     VALIDATION_PHASES,
     allowed_transition,
+    active_bootstrap_recovery_contract,
     branch_validity,
     BOOTSTRAP_TASK_ID,
-    bootstrap_repair_contract_for_parent,
+    bootstrap_recovery_contract_for_parent,
     bootstrap_repair_commit_issues,
     canonical_scope,
     canonical_scope_hash,
@@ -44,11 +45,13 @@ from core import (
     normalize_commit,
     path_is_allowed,
     read_json,
+    recovery_proposal_path,
     run_git,
     task_path,
     utc_now,
     validation_gate_status,
     validate_task,
+    validate_bootstrap_recovery_contract,
     validation_plan_issues,
     write_output,
     write_json_atomic,
@@ -144,6 +147,15 @@ def _require_root_commit(root: Path, commit: str) -> None:
 def _require_repair_authorization(
     task: Dict[str, Any], contract: Mapping[str, Any]
 ) -> None:
+    if contract.get("authorization_kind") == "irreversible_operation":
+        marker = task.get("bootstrap_recovery", {})
+        if (
+            not isinstance(marker, Mapping)
+            or marker.get("review_id") != contract.get("review_id")
+            or marker.get("target_digest") != contract.get("target_digest")
+        ):
+            raise GovernanceError("receipt-bound recovery activation is missing or drifted")
+        return
     review_id = str(contract["review_id"])
     history = task.get("rework_history", [])
     if not isinstance(history, list) or not any(
@@ -155,11 +167,15 @@ def _require_repair_authorization(
         )
 
 
-def _bootstrap_content_subject_mode(root: Path, commit: str) -> str:
+def _bootstrap_content_subject_mode(
+    root: Path,
+    commit: str,
+    task: Optional[Mapping[str, Any]] = None,
+) -> str:
     line = _git(root, ("rev-list", "--parents", "-n", "1", commit), "cannot inspect content parents")
     if line.split() == [commit]:
         return "root"
-    issues = bootstrap_repair_commit_issues(root, commit)
+    issues = bootstrap_repair_commit_issues(root, commit, task)
     if issues:
         raise GovernanceError("invalid failed-bootstrap repair content: %s" % "; ".join(issues))
     return "repair"
@@ -206,26 +222,27 @@ def _bootstrap_commit(root: Path, task: Dict[str, Any], stage: str) -> Dict[str,
             raise GovernanceError("content commit is already recorded")
         count = _git(root, ("rev-list", "--all", "--count"), "cannot inspect repository history")
         recovery = count != "0"
-        if count not in ("0", "1", "2"):
-            raise GovernanceError(
-                "bootstrap content commit allows only an unborn repository or the finite R007/R009 repair chain"
-            )
         if recovery:
             head = normalize_commit(
                 _git(root, ("rev-parse", "HEAD"), "cannot resolve failed bootstrap root"),
                 "HEAD",
             )
-            repair_contract = bootstrap_repair_contract_for_parent(head)
+            repair_contract = bootstrap_recovery_contract_for_parent(root, head, task)
             if repair_contract is None:
                 raise GovernanceError(
                     "bootstrap repair must start at an exact reviewed failed content head"
                 )
             if int(count) != int(repair_contract["history_count"]):
                 raise GovernanceError("bootstrap repair history contains an unexpected side branch")
-            if int(count) == 1:
+            if repair_contract.get("authorization_kind") == "irreversible_operation":
+                if head != repair_contract.get("failed_control_head"):
+                    raise GovernanceError(
+                        "receipt-bound recovery must start at its exact failed control head"
+                    )
+            elif int(count) == 1:
                 _require_root_commit(root, head)
             else:
-                prior_issues = bootstrap_repair_commit_issues(root, head)
+                prior_issues = bootstrap_repair_commit_issues(root, head, task)
                 if prior_issues:
                     raise GovernanceError(
                         "R009 repair parent is not the exact R007 content commit: %s"
@@ -283,7 +300,7 @@ def _bootstrap_commit(root: Path, task: Dict[str, Any], stage: str) -> Dict[str,
         )
         if head != content_sha:
             raise GovernanceError("control commit must start directly from the recorded content commit")
-        _bootstrap_content_subject_mode(root, content_sha)
+        _bootstrap_content_subject_mode(root, content_sha, task)
         candidates = list(dict.fromkeys(
             _nul_paths(_git(root, ("diff", "--name-only", "-z"), "cannot inspect unstaged changes"))
             + _nul_paths(_git(root, ("diff", "--cached", "--name-only", "-z"), "cannot inspect staged changes"))
@@ -327,7 +344,7 @@ def _bootstrap_commit(root: Path, task: Dict[str, Any], stage: str) -> Dict[str,
     )
     commit = normalize_commit(_git(root, ("rev-parse", "HEAD"), "cannot resolve created commit"), "HEAD")
     if stage == "content":
-        actual_mode = _bootstrap_content_subject_mode(root, commit)
+        actual_mode = _bootstrap_content_subject_mode(root, commit, task)
         if actual_mode != content_mode:
             raise GovernanceError("created bootstrap content does not match the selected transport mode")
         _require_allowed_snapshot(root, task, commit)
@@ -368,7 +385,7 @@ def _bootstrap_push(root: Path, task: Dict[str, Any], stage: str) -> Dict[str, A
     if stage == "content":
         if task.get("git", {}).get("committed_sha"):
             raise GovernanceError("content push must occur before the content SHA is recorded")
-        content_mode = _bootstrap_content_subject_mode(root, head)
+        content_mode = _bootstrap_content_subject_mode(root, head, task)
         _require_allowed_snapshot(root, task, head)
         if content_mode == "repair":
             parents = _git(
@@ -378,9 +395,11 @@ def _bootstrap_push(root: Path, task: Dict[str, Any], stage: str) -> Dict[str, A
             ).split()
             if len(parents) != 2 or parents[0] != head:
                 raise GovernanceError("failed-bootstrap repair must have exactly one parent")
-            repair_contract = bootstrap_repair_contract_for_parent(parents[1])
+            repair_contract = bootstrap_recovery_contract_for_parent(root, parents[1], task)
             if repair_contract is None:
-                raise GovernanceError("repair push is outside the finite reviewed recovery chain")
+                raise GovernanceError(
+                    "repair push is outside the finite or receipt-bound recovery chain"
+                )
             _require_repair_authorization(task, repair_contract)
             remote_state = _git(
                 root,
@@ -402,7 +421,7 @@ def _bootstrap_push(root: Path, task: Dict[str, Any], stage: str) -> Dict[str, A
         content_sha = normalize_commit(task.get("git", {}).get("committed_sha"), "task.git.committed_sha")
         if head == content_sha:
             raise GovernanceError("control push requires a distinct protected control commit")
-        _bootstrap_content_subject_mode(root, content_sha)
+        _bootstrap_content_subject_mode(root, content_sha, task)
         _verify_content_control_commits(root, content_sha, head)
         remote_state = _git(
             root,
@@ -782,6 +801,16 @@ def build_parser() -> argparse.ArgumentParser:
     reopen.add_argument("--reason", required=True)
     common(reopen)
 
+    committed_recovery = subparsers.add_parser(
+        "recover-committed",
+        help="activate one receipt-bound recovery after a committed bootstrap CI failure",
+    )
+    committed_recovery.add_argument("task_id")
+    committed_recovery.add_argument("--proposal", required=True)
+    committed_recovery.add_argument("--actor", required=True)
+    committed_recovery.add_argument("--reason", required=True)
+    common(committed_recovery)
+
     create = subparsers.add_parser("create", help="create a DRAFT task from a reviewed JSON specification")
     create.add_argument("--file", required=True, type=Path)
     common(create)
@@ -1006,6 +1035,20 @@ def main(argv: Optional[List[str]] = None) -> int:
                 results.append(result)
             if not results:
                 raise GovernanceError("reviewed validation plan has no checks for %s" % gate)
+            recovery_marker = task.get("bootstrap_recovery")
+            if (
+                args.phase == "ci"
+                and isinstance(recovery_marker, dict)
+                and recovery_marker.get("state") == "active"
+            ):
+                active_bootstrap_recovery_contract(root, task)
+                recovery_marker.update({
+                    "state": "consumed",
+                    "consumed_at": timestamp,
+                    "consumed_content_sha": content_sha,
+                    "consumed_control_head": args.head_sha,
+                    "consumed_run_id": args.run_id,
+                })
             task["updated_at"] = timestamp
             validate_task(task)
             write_json_atomic(task_path(root, args.task_id), task)
@@ -1173,6 +1216,116 @@ def main(argv: Optional[List[str]] = None) -> int:
                 }
             _emit(payload, args.json)
             return 0 if batch["status"] == "passed" else 1
+
+        if args.command == "recover-committed":
+            task = load_task(root, args.task_id)
+            _require_current_task(root, task)
+            _require_complete_validation_plan(task)
+            _require_scope_review(root, task)
+            _require_work_branch(root, task)
+            if args.actor != "Codex":
+                raise GovernanceError("recover-committed must record --actor Codex exactly")
+            if not args.reason.strip():
+                raise GovernanceError("recover-committed reason must be non-empty")
+            if task.get("status") != "BLOCKED" or task.get("exception", {}).get(
+                "previous_status"
+            ) != "COMMITTED":
+                raise GovernanceError(
+                    "recover-committed requires a BLOCKED task whose previous status is COMMITTED"
+                )
+            if task.get("bootstrap_recovery") is not None:
+                raise GovernanceError("a bootstrap recovery is already active")
+            proposal_argument = Path(args.proposal)
+            proposal_candidate = (
+                proposal_argument if proposal_argument.is_absolute() else root / proposal_argument
+            ).resolve()
+            try:
+                proposal_relative = proposal_candidate.relative_to(root.resolve()).as_posix()
+            except ValueError as exc:
+                raise GovernanceError("recovery proposal must be inside the repository") from exc
+            proposal = recovery_proposal_path(root, proposal_relative)
+            contract = validate_bootstrap_recovery_contract(root, task, read_json(proposal))
+            current_content = normalize_commit(
+                task.get("git", {}).get("committed_sha"),
+                "task.git.committed_sha",
+            )
+            if current_content != contract["failed_content_sha"]:
+                raise GovernanceError("recovery proposal does not match task.git.committed_sha")
+            head = normalize_commit(
+                _git(root, ("rev-parse", "HEAD"), "cannot resolve failed control HEAD"),
+                "HEAD",
+            )
+            if head != contract["failed_control_head"]:
+                raise GovernanceError("recovery proposal does not match the current control HEAD")
+            if contract["failed_run_id"] not in str(task.get("exception", {}).get("reason", "")):
+                raise GovernanceError("recovery proposal run id is absent from the BLOCKED reason")
+            history_count_text = _git(
+                root,
+                ("rev-list", "--all", "--count"),
+                "cannot inspect recovery history",
+            )
+            if not history_count_text.isdigit() or int(history_count_text) < 1:
+                raise GovernanceError("recovery Git history count is invalid")
+            timestamp = utc_now()
+            archived_results = copy.deepcopy(task.get("validation", {}).get("results", []))
+            archived_git = copy.deepcopy(task.get("git", {}))
+            archived_exception = copy.deepcopy(task.get("exception", {}))
+            marker = {
+                "activated_at": timestamp,
+                "activated_by": args.actor,
+                "failed_content_sha": contract["failed_content_sha"],
+                "failed_control_head": contract["failed_control_head"],
+                "failed_run_id": contract["failed_run_id"],
+                "history_count": int(history_count_text),
+                "operation_id": contract["operation_id"],
+                "proposal_path": proposal_relative,
+                "review_id": contract["review_id"],
+                "state": "active",
+                "target_digest": contract["target_digest"],
+            }
+            task.setdefault("bootstrap_recovery_history", []).append({
+                "activated_at": timestamp,
+                "actor": args.actor,
+                "reason": args.reason,
+                "review_id": contract["review_id"],
+                "target_digest": contract["target_digest"],
+                "failed_run_id": contract["failed_run_id"],
+                "from_status": task.get("status"),
+                "from_previous_status": task.get("exception", {}).get("previous_status"),
+                "to_status": "IN_PROGRESS",
+                "archived_git": archived_git,
+                "archived_exception": archived_exception,
+                "archived_validation_results": archived_results,
+            })
+            task.setdefault("history", []).append({
+                "event": "receipt_bound_committed_recovery",
+                "from": task.get("status"),
+                "to": "IN_PROGRESS",
+                "at": timestamp,
+                "actor": args.actor,
+                "reason": args.reason,
+                "review_id": contract["review_id"],
+                "target_digest": contract["target_digest"],
+                "failed_run_id": contract["failed_run_id"],
+            })
+            task["bootstrap_recovery"] = marker
+            task["validation"]["results"] = []
+            task["git"] = {}
+            task["status"] = "IN_PROGRESS"
+            task.pop("exception", None)
+            task["updated_at"] = timestamp
+            validate_task(task)
+            active_bootstrap_recovery_contract(root, task)
+            write_json_atomic(task_path(root, args.task_id), task)
+            _emit({
+                "ok": True,
+                "task": task,
+                "recovery_review_id": contract["review_id"],
+                "target_digest": contract["target_digest"],
+                "archived_result_count": len(archived_results),
+                "message": "receipt-bound committed recovery activated; all validation must rerun",
+            }, args.json)
+            return 0
 
         if args.command == "reopen":
             task = load_task(root, args.task_id)

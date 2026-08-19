@@ -629,6 +629,10 @@ def load_snapshot(repo_root: Path) -> GovernanceSnapshot:
         task = core.load_current_task(repo_root)
         if not isinstance(task, dict):
             raise GovernanceError("canonical governance core returned an invalid task")
+        if task.get("bootstrap_recovery") is not None:
+            active_recovery = core.active_bootstrap_recovery_contract(repo_root, task)
+            if not isinstance(active_recovery, dict):
+                raise GovernanceError("active bootstrap recovery contract is unavailable")
         reasons.extend(_validate_task(task))
         reasons.extend(_validate_branch_policy(repo_root, task))
     except Exception as exc:
@@ -813,9 +817,16 @@ def shell_words(command: str) -> Optional[List[str]]:
     if not isinstance(command, str) or not command.strip() or _has_shell_control(command):
         return None
     try:
-        words = shlex.split(command, posix=True)
+        words = shlex.split(command, posix=os.name != "nt")
     except ValueError:
         return None
+    if os.name == "nt":
+        words = [
+            word[1:-1]
+            if len(word) >= 2 and word[0] == word[-1] and word[0] in ("'", '"')
+            else word
+            for word in words
+        ]
     if not words or any("\x00" in word for word in words):
         return None
     return words
@@ -935,7 +946,7 @@ def command_is_reviewed(command: str, allowed_commands: Sequence[Any]) -> bool:
 
 
 def _is_python_executable(value: str) -> bool:
-    name = Path(value).name.lower()
+    name = value.strip().strip("'\"").replace("\\", "/").rsplit("/", 1)[-1].lower()
     return re.fullmatch(r"python(?:3(?:\.\d+)?)?(?:\.exe)?", name) is not None
 
 
@@ -1107,6 +1118,20 @@ def _taskctl_controlled_shape(
         if values["--stage"] not in {"content", "control"}:
             return None, "--stage must be content or control"
         if values["--actor"] != "Codex":
+            return None, "--actor must be Codex exactly"
+        return parsed, None
+    if subcommand == "recover-committed":
+        parsed, error = _exact_cli_shape(
+            arguments,
+            positional_count=1,
+            required_value_options=("--proposal", "--actor", "--reason"),
+            optional_value_options=("--root",),
+        )
+        if error is not None or parsed is None:
+            return parsed, error
+        if parsed["positionals"] != ["GOV-0001"]:
+            return None, "committed bootstrap recovery is limited to GOV-0001"
+        if parsed["values"]["--actor"] != "Codex":
             return None, "--actor must be Codex exactly"
         return parsed, None
     return None, "controlled taskctl subcommand is not recognized"
@@ -1307,17 +1332,31 @@ def governance_cli_policy(
         "sync-github-run",
         "bootstrap-commit",
         "bootstrap-push",
+        "recover-committed",
     }
     if subcommand not in write_subcommands:
         return False, f"taskctl subcommand is not lifecycle-approved: {subcommand}"
 
     if subcommand in {
         "run-validation", "run-required", "sync-github-run",
-        "bootstrap-commit", "bootstrap-push",
+        "bootstrap-commit", "bootstrap-push", "recover-committed",
     }:
-        _parsed, error = _taskctl_controlled_shape(subcommand, arguments)
+        parsed, error = _taskctl_controlled_shape(subcommand, arguments)
         if error is not None:
             return False, f"taskctl {subcommand} arguments are invalid: {error}"
+        if subcommand == "recover-committed":
+            assert parsed is not None
+            proposal = _resolved_argument_path(
+                parsed["values"]["--proposal"], cwd, strict=True
+            )
+            expected_directory = (repo_root / "project-control" / "proposals").resolve()
+            if proposal is None:
+                return False, "receipt-bound recovery proposal does not exist"
+            try:
+                proposal.relative_to(expected_directory)
+            except ValueError:
+                return False, "receipt-bound recovery proposal must stay in project-control/proposals"
+            return True, "taskctl recover-committed delegates the R010 contract to the governance CLI"
         if subcommand.startswith("bootstrap-"):
             return True, f"taskctl {subcommand} uses the exact GOV-0001 Git transport path"
         return True, f"taskctl {subcommand} uses the controlled validation evidence path"

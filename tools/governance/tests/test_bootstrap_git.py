@@ -1,8 +1,18 @@
 from __future__ import annotations
 
 import tempfile
+import sys
+import os
 from pathlib import Path
 from unittest import mock
+
+
+GOVERNANCE_DIR = Path(__file__).resolve().parents[1]
+if str(GOVERNANCE_DIR) not in sys.path:
+    sys.path.insert(0, str(GOVERNANCE_DIR))
+TESTS_DIR = Path(__file__).resolve().parent
+if str(TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(TESTS_DIR))
 
 from helpers import (
     AuthenticatedReceiptTestCase,
@@ -14,11 +24,14 @@ from helpers import (
 
 import taskctl
 import core
+from reconcile import run_reconcile
 from core import (
     BOOTSTRAP_REPAIR_MESSAGE,
     BOOTSTRAP_REPAIR_REVIEW_ID,
     SECOND_BOOTSTRAP_REPAIR_MESSAGE,
     SECOND_BOOTSTRAP_REPAIR_REVIEW_ID,
+    canonical_scope_hash,
+    recovery_contract_digest,
     read_json,
     run_git,
 )
@@ -186,6 +199,213 @@ class BootstrapGitTransportTests(AuthenticatedReceiptTestCase):
             control_sha = self.transition_and_commit_control(root, content_sha)
             self.assertNotEqual(content_sha, control_sha)
             self.assertEqual("", git(root, "status", "--porcelain", "--untracked-files=all"))
+
+    def test_receipt_bound_committed_recovery_reruns_validation_before_direct_child(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.prepare(root)
+            failed_content = self.commit_content(root)
+            failed_control = self.transition_and_commit_control(root, failed_content)
+            task_path = root / "project-control" / "tasks" / "GOV-0001.json"
+            task = read_json(task_path)
+            task["status"] = "BLOCKED"
+            task["exception"] = {
+                "previous_status": "COMMITTED",
+                "reason": "GitHub Actions Run 987654 failed on every required runner",
+                "recorded_at": "2026-08-19T00:00:00+00:00",
+            }
+            write_json(task_path, task)
+            proposal_relative = "project-control/proposals/GOV-0001-R010-break-glass.json"
+            contract = {
+                "allowed_paths": [
+                    "project-control/proposals/GOV-0001-R010-break-glass.json",
+                    "project-control/reviews/GOV-0001-R010.json",
+                    "project-control/tasks/GOV-0001.json",
+                    "tools/governance/core.py",
+                ],
+                "commit_message": "fix(governance): recover receipt-bound bootstrap CI",
+                "failed_content_sha": failed_content,
+                "failed_control_head": failed_control,
+                "failed_run_id": "987654",
+                "from_previous_status": "COMMITTED",
+                "from_status": "BLOCKED",
+                "invariants": [
+                    "no_validation_waiver",
+                    "no_force_push",
+                    "preserve_existing_history",
+                    "controlled_local_validation_required",
+                    "three_platform_ci_required",
+                    "no_business_code_or_dependency_files",
+                ],
+                "operation_id": "GOV-0001-CI-RUN-987654-BREAK-GLASS",
+                "review_id": "GOV-0001-R010",
+                "schema_version": 1,
+                "scope_version": task["scope_version"],
+                "task_id": "GOV-0001",
+            }
+            digest = recovery_contract_digest(contract)
+            write_json(root / proposal_relative, contract)
+            write_json(root / "project-control" / "reviews" / "GOV-0001-R010.json", {
+                "review_id": "GOV-0001-R010",
+                "task_id": "GOV-0001",
+                "kind": "irreversible_operation",
+                "decision": "approved",
+                "approver": "user",
+                "scope_version": task["scope_version"],
+                "scope_hash": canonical_scope_hash(task),
+                "decided_at": "2026-08-19T00:00:00+00:00",
+                "expires_at": "2099-08-20T00:00:00+00:00",
+                "operation_id": contract["operation_id"],
+                "target_digest": digest,
+            })
+
+            code = taskctl.main([
+                "recover-committed", "GOV-0001",
+                "--proposal", proposal_relative,
+                "--actor", "Codex",
+                "--reason", "exercise exact receipt-bound recovery",
+                "--root", str(root),
+                "--json",
+            ])
+            self.assertEqual(0, code)
+            recovered = read_json(task_path)
+            self.assertEqual("IN_PROGRESS", recovered["status"])
+            self.assertEqual({}, recovered["git"])
+            self.assertEqual([], recovered["validation"]["results"])
+            self.assertEqual(digest, recovered["bootstrap_recovery"]["target_digest"])
+            self.assertEqual(2, recovered["bootstrap_recovery"]["history_count"])
+            self.assertTrue(run_reconcile(root, "session")["ok"])
+            drifted = dict(contract)
+            drifted["commit_message"] = "fix(governance): unreviewed drift"
+            write_json(root / proposal_relative, drifted)
+            drift_report = run_reconcile(root, "session")
+            self.assertFalse(drift_report["ok"])
+            self.assertIn(
+                "bootstrap_recovery",
+                [item["id"] for item in drift_report["checks"] if item["status"] == "failed"],
+            )
+            write_json(root / proposal_relative, contract)
+
+            governed = root / "tools" / "governance" / "core.py"
+            governed.parent.mkdir(parents=True, exist_ok=True)
+            governed.write_text("# receipt-bound CI recovery\n", encoding="utf-8")
+            recovered["validation"]["results"] = [valid_local_pass(root, recovered)]
+            recovered["status"] = "LOCAL_VERIFIED"
+            write_json(task_path, recovered)
+            with mock.patch("reconcile.run_reconcile", return_value={"ok": True, "checks": []}):
+                code = taskctl.main([
+                    "bootstrap-commit", "GOV-0001",
+                    "--stage", "content",
+                    "--actor", "Codex",
+                    "--root", str(root),
+                    "--json",
+                ])
+            self.assertEqual(0, code)
+            recovered_content = git(root, "rev-parse", "HEAD")
+            self.assertEqual(
+                [recovered_content, failed_control],
+                git(root, "rev-list", "--parents", "-n", "1", recovered_content).split(),
+            )
+            self.assertEqual(contract["commit_message"], git(root, "show", "-s", "--format=%s"))
+            self.assertEqual([], core.bootstrap_repair_commit_issues(root, recovered_content, recovered))
+            recovered_control = self.transition_and_commit_control(root, recovered_content)
+            required_jobs = [
+                "Governance (ubuntu-latest)",
+                "Governance (macos-latest)",
+                "Governance (windows-latest)",
+            ]
+            github = {
+                "provider": "github_actions_rest_v1",
+                "repository": "wzhic/material",
+                "workflow_path": ".github/workflows/governance.yml",
+                "workflow_id": 77,
+                "run_id": "12345",
+                "run_attempt": 1,
+                "event": "push",
+                "head_sha": recovered_control,
+                "head_branch": "main",
+                "status": "completed",
+                "conclusion": "success",
+                "run_url": "https://github.com/wzhic/material/actions/runs/12345",
+                "job_names": required_jobs,
+                "required_job_names": required_jobs,
+                "api_version": "2026-03-10",
+                "verified_at": "2026-08-19T01:00:00+00:00",
+            }
+            with (
+                mock.patch.dict(os.environ, {"MATERIAL_GITHUB_ACTIONS_READ_TOKEN": "secret"}),
+                mock.patch("taskctl.verify_workflow_run", return_value=github),
+            ):
+                code = taskctl.main([
+                    "sync-github-run", "GOV-0001",
+                    "--phase", "ci",
+                    "--run-id", "12345",
+                    "--run-attempt", "1",
+                    "--event", "push",
+                    "--head-sha", recovered_control,
+                    "--actor", "Codex",
+                    "--root", str(root),
+                    "--json",
+                ])
+            self.assertEqual(0, code)
+            consumed = read_json(task_path)["bootstrap_recovery"]
+            self.assertEqual("consumed", consumed["state"])
+            self.assertEqual(recovered_content, consumed["consumed_content_sha"])
+            self.assertEqual(recovered_control, consumed["consumed_control_head"])
+            self.assertEqual("12345", consumed["consumed_run_id"])
+            self.assertIsNotNone(core.active_bootstrap_recovery_contract(root, read_json(task_path)))
+            consumed_task = read_json(task_path)
+            consumed_task["bootstrap_recovery"]["activated_at"] = "2018-08-19T00:00:00+00:00"
+            consumed_task["bootstrap_recovery"]["consumed_at"] = "2019-08-19T00:00:00+00:00"
+            write_json(task_path, consumed_task)
+            receipt_path = root / "project-control" / "reviews" / "GOV-0001-R010.json"
+            historical_receipt = read_json(receipt_path)
+            historical_receipt["decided_at"] = "2018-08-18T00:00:00+00:00"
+            historical_receipt["expires_at"] = "2020-08-20T00:00:00+00:00"
+            write_json(receipt_path, historical_receipt)
+            self.assertIsNotNone(
+                core.active_bootstrap_recovery_contract(root, read_json(task_path))
+            )
+
+    def test_receipt_bound_recovery_rejects_proposal_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = self.prepare(root)
+            proposal = {
+                "allowed_paths": ["tools/governance/core.py"],
+                "commit_message": "fix(governance): rejected drift",
+                "failed_content_sha": "a" * 40,
+                "failed_control_head": "b" * 40,
+                "failed_run_id": "1",
+                "from_previous_status": "COMMITTED",
+                "from_status": "BLOCKED",
+                "invariants": [
+                    "no_validation_waiver",
+                    "no_force_push",
+                    "preserve_existing_history",
+                    "controlled_local_validation_required",
+                    "three_platform_ci_required",
+                    "no_business_code_or_dependency_files",
+                ],
+                "operation_id": "GOV-0001-DRIFT",
+                "review_id": "GOV-0001-R010",
+                "schema_version": 1,
+                "scope_version": task["scope_version"],
+                "task_id": "GOV-0001",
+            }
+            with mock.patch(
+                "core.find_effective_irreversible_operation_review",
+                return_value=({"review_id": "GOV-0001-R010"}, "approved"),
+            ):
+                digest = recovery_contract_digest(proposal)
+                core.validate_bootstrap_recovery_contract(
+                    root, task, proposal, expected_digest=digest
+                )
+                proposal["commit_message"] = "fix(governance): tampered"
+                with self.assertRaisesRegex(core.GovernanceError, "digest"):
+                    core.validate_bootstrap_recovery_contract(
+                        root, task, proposal, expected_digest=digest
+                    )
 
     def test_control_commit_rejects_ordinary_content(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

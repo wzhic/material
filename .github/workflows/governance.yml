@@ -66,7 +66,7 @@ jobs:
 
       - name: Run reviewed checks for release unit
         run: >-
-          python -c "import json, os, pathlib, subprocess, sys; task_id = json.loads(pathlib.Path('project-control/current-task.json').read_text(encoding='utf-8'))['task_id']; task = json.loads(pathlib.Path('project-control/tasks', task_id + '.json').read_text(encoding='utf-8')); phase = 'post_merge' if os.environ['GITHUB_EVENT_NAME'] == 'push' and task['status'] == 'MERGED' else 'ci'; raise SystemExit(subprocess.call([sys.executable, 'tools/governance/taskctl.py', 'run-required', task_id, '--phase', phase, '--release-unit', '${{ matrix.release_unit }}', '--environment', 'github-actions:${{ github.event_name }}:${{ matrix.release_unit }}', '--bootstrap-first-push']))"
+          python -c "import json, os, pathlib, subprocess, sys; task_id = json.loads(pathlib.Path('project-control/current-task.json').read_text(encoding='utf-8'))['task_id']; task = json.loads(pathlib.Path('project-control/tasks', task_id + '.json').read_text(encoding='utf-8')); phase = 'post_merge' if os.environ['GITHUB_EVENT_NAME'] == 'push' and task['status'] == 'MERGED' else 'ci'; raise SystemExit(subprocess.call([sys.executable, 'tools/governance/taskctl.py', 'run-required', task_id, '--phase', phase, '--release-unit', '${{ matrix.release_unit }}', '--environment', 'github-actions:${{ github.event_name }}:${{ matrix.release_unit }}', '--bootstrap-first-push', '--json']))"
 
       - name: Reconcile static repository contract
         run: python tools/governance/reconcile.py static --json

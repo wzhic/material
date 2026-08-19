@@ -1,0 +1,41 @@
+{
+  "allowed_paths": [
+    ".codex/hooks/_governance.py",
+    ".codex/tests/test_hooks.py",
+    ".github/workflows/governance.yml",
+    "AGENTS.md",
+    "docs/governance/验证与豁免-GOV-0003-v1.0.md",
+    "docs/requirements/治理基线-REQ-0001/治理基线-REQ-0001-v1.0.md",
+    "docs/troubleshooting/治理门禁问题排查-TRB-0001-v1.0.md",
+    "project-control/proposals/GOV-0001-R010-break-glass.json",
+    "project-control/reviews/GOV-0001-R010.json",
+    "project-control/tasks/GOV-0001.json",
+    "tools/governance/core.py",
+    "tools/governance/reconcile.py",
+    "tools/governance/taskctl.py",
+    "tools/governance/tests/test_bootstrap_git.py",
+    "tools/governance/tests/test_cli.py",
+    "tools/governance/tests/test_reconcile_ci_static.py",
+    "tools/governance/tests/test_validation_runner.py",
+    "tools/governance/validation_runner.py"
+  ],
+  "commit_message": "fix(governance): recover receipt-bound bootstrap CI",
+  "failed_content_sha": "d5e868de165ff4cd31459e13b4bb12535e0876a1",
+  "failed_control_head": "3e5e3e4dd9c2dcd5b76ef081913ba979dd94b762",
+  "failed_run_id": "32226753649",
+  "from_previous_status": "COMMITTED",
+  "from_status": "BLOCKED",
+  "invariants": [
+    "no_validation_waiver",
+    "no_force_push",
+    "preserve_existing_history",
+    "controlled_local_validation_required",
+    "three_platform_ci_required",
+    "no_business_code_or_dependency_files"
+  ],
+  "operation_id": "GOV-0001-CI-RUN-32226753649-BREAK-GLASS",
+  "review_id": "GOV-0001-R010",
+  "schema_version": 1,
+  "scope_version": 4,
+  "task_id": "GOV-0001"
+}

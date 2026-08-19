@@ -187,6 +187,8 @@ class ControlledValidationRunnerTests(unittest.TestCase):
                 "GITHUB_RUN_ATTEMPT": "2",
                 "GITHUB_SERVER_URL": "https://github.com",
                 "GITHUB_REPOSITORY": "wzhic/material",
+                "GITHUB_WORKFLOW_REF": "wzhic/material/.github/workflows/governance.yml@refs/heads/main",
+                "MATERIAL_RELEASE_UNIT": "backend",
                 "RUNNER_OS": "Linux",
             }
             blocked = {

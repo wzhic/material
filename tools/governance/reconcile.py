@@ -21,8 +21,9 @@ from core import (
     NORMAL_STATES,
     PROJECT_ID,
     SOURCE_REPOSITORY,
+    active_bootstrap_recovery_contract,
     branch_validity,
-    bootstrap_repair_contract_for_parent,
+    bootstrap_recovery_contract_for_parent,
     bootstrap_repair_commit_issues,
     canonical_scope_hash,
     ci_trust_issues,
@@ -761,6 +762,7 @@ def _workflow_check(root: Path) -> Dict[str, Any]:
         "controlled required validation": (
             "taskctl.py" in text and "run-required" in text and "--phase', phase" in text
             and "--release-unit', '${{ matrix.release_unit }}'" in text
+            and "'--json'" in text
         ),
         "explicit bootstrap first-push PENDING path": (
             "--bootstrap-first-push" in text
@@ -1163,7 +1165,7 @@ def _ci_commit_protocol_check(
         and task_index < status_index("COMMITTED")
         and not task.get("git", {}).get("committed_sha")
     )
-    repair_contract = bootstrap_repair_contract_for_parent(base)
+    repair_contract = bootstrap_recovery_contract_for_parent(root, base, task)
     bootstrap_repair = (
         event_name == "push"
         and not created
@@ -1192,7 +1194,7 @@ def _ci_commit_protocol_check(
         ), result_context
     if bootstrap_repair:
         assert repair_contract is not None
-        repair_issues = bootstrap_repair_commit_issues(root, str(head))
+        repair_issues = bootstrap_repair_commit_issues(root, str(head), task)
         if repair_issues:
             return _check(
                 "ci_commit_protocol",
@@ -1260,7 +1262,7 @@ def _ci_commit_protocol_check(
                 root, ("rev-list", "--parents", "-n", "1", subject)
             )
             subject_is_root = not parents_error and len((parents or "").split()) == 1
-            repair_issues = bootstrap_repair_commit_issues(root, subject)
+            repair_issues = bootstrap_repair_commit_issues(root, subject, task)
             subject_is_repair = not repair_issues
             if not exact_bootstrap_control or not (subject_is_root or subject_is_repair):
                 return _check(
@@ -1423,6 +1425,22 @@ def run_reconcile(
         },
     ))
     checks.extend(_reviewed_task_contract_checks(task, legacy_g0_v1_migration(task)))
+
+    if task.get("bootstrap_recovery") is not None:
+        try:
+            recovery_contract = active_bootstrap_recovery_contract(root, task)
+            checks.append(_check(
+                "bootstrap_recovery",
+                recovery_contract is not None,
+                "receipt-bound bootstrap recovery proposal and user receipt are valid",
+                {
+                    "review_id": recovery_contract.get("review_id") if recovery_contract else None,
+                    "failed_run_id": recovery_contract.get("failed_run_id") if recovery_contract else None,
+                    "target_digest": recovery_contract.get("target_digest") if recovery_contract else None,
+                },
+            ))
+        except GovernanceError as exc:
+            checks.append(_check("bootstrap_recovery", False, str(exc)))
 
     receipt, review_reason = find_effective_review(root, task)
     checks.append(_check(

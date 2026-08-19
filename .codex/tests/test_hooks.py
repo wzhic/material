@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 HOOKS_DIR = Path(__file__).resolve().parents[1] / "hooks"
@@ -1436,6 +1437,49 @@ class HookPolicyTests(unittest.TestCase):
         payload = self.fixture.payload("Bash", {"command": command})
         self.assertIsNone(pre_tool_use.evaluate(payload))
 
+    def test_windows_runtime_path_keeps_backslashes_for_reviewed_command(self) -> None:
+        command = (
+            r"C:\hostedtoolcache\windows\Python\3.13.11\x64\python.exe "
+            r"-m unittest discover -s .codex/tests -p test_*.py"
+        )
+        with mock.patch.object(_governance.os, "name", "nt"):
+            words = _governance.shell_words(command)
+            self.assertIsNotNone(words)
+            assert words is not None
+            self.assertEqual(
+                r"C:\hostedtoolcache\windows\Python\3.13.11\x64\python.exe",
+                words[0],
+            )
+            self.assertTrue(
+                _governance.command_is_reviewed(
+                    command,
+                    ["python3 -m unittest discover -s .codex/tests -p test_*.py"],
+                )
+            )
+
+    def test_receipt_bound_recovery_cli_is_narrowly_reachable(self) -> None:
+        proposal = self.fixture.root / "project-control" / "proposals" / "GOV-0001-R010.json"
+        proposal.parent.mkdir(parents=True)
+        proposal.write_text("{}\n", encoding="utf-8")
+        command = (
+            "python3 tools/governance/taskctl.py recover-committed GOV-0001 "
+            "--proposal project-control/proposals/GOV-0001-R010.json "
+            "--actor Codex --reason confirmed --root " + shlex.quote(str(self.fixture.root))
+        )
+        self.assertIsNone(
+            pre_tool_use.evaluate(self.fixture.payload("Bash", {"command": command}))
+        )
+        outside = self.fixture.root / "outside-recovery.json"
+        outside.write_text("{}\n", encoding="utf-8")
+        denied = command.replace(
+            "project-control/proposals/GOV-0001-R010.json",
+            "outside-recovery.json",
+        )
+        self.assert_denied(
+            pre_tool_use.evaluate(self.fixture.payload("Bash", {"command": denied})),
+            "project-control/proposals",
+        )
+
     def test_session_start_injects_task_and_review_context(self) -> None:
         self.fixture.approve()
         payload = {
@@ -1746,7 +1790,7 @@ class HookConfigurationTests(unittest.TestCase):
                     output = json.loads(completed.stdout.lstrip("\ufeff"))
                     decision = output["hookSpecificOutput"]
                     self.assertEqual(decision["permissionDecision"], "deny")
-                    self.assertIn("outside reviewed scope", decision["permissionDecisionReason"])
+                    self.assertIn("signature", decision["permissionDecisionReason"])
 
     if os.name == "posix":
         test_real_session_command_finds_root_without_git = (
