@@ -785,10 +785,17 @@ def _workflow_check(root: Path) -> Dict[str, Any]:
             "discover('.codex/tests'" in text and "countTestCases()" in text
             and "No hook contract tests discovered" in text
         ),
-        "governance tests run": "unittest discover -s tools/governance/tests" in text,
-        "hook tests run": "unittest discover -s .codex/tests" in text,
-        "static reconcile": "reconcile.py static --json" in text,
-        "CI reconcile": "reconcile.py ci --json" in text,
+        "single controlled validation entry": text.count("run-required") == 1,
+        "no duplicate governance test execution": (
+            "python -m unittest discover -s tools/governance/tests" not in text
+        ),
+        "no duplicate hook test execution": (
+            "python -m unittest discover -s .codex/tests" not in text
+        ),
+        "no duplicate direct reconcile": (
+            "python tools/governance/reconcile.py static --json" not in text
+            and "python tools/governance/reconcile.py ci --json" not in text
+        ),
         "no continue-on-error": not bool(re.search(r"(?i)continue-on-error:\s*true", text)),
     }
     missing = [name for name, present in requirements.items() if not present]

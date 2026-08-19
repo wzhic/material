@@ -1134,7 +1134,25 @@ def _taskctl_controlled_shape(
         if parsed["values"]["--actor"] != "Codex":
             return None, "--actor must be Codex exactly"
         return parsed, None
-    if subcommand in {"start-branch", "commit-task", "push-task", "recover-blocked"}:
+    if subcommand == "commit-task":
+        parsed, error = _exact_cli_shape(
+            arguments,
+            positional_count=1,
+            required_value_options=("--manifest", "--actor", "--reason"),
+            optional_value_options=("--root",),
+        )
+        if error is not None or parsed is None:
+            return parsed, error
+        task_id = parsed["positionals"][0]
+        if TASK_ID_RE.fullmatch(task_id) is None:
+            return None, "task_id is invalid"
+        if parsed["values"]["--actor"] != "Codex":
+            return None, "--actor must be Codex exactly"
+        manifest = parsed["values"]["--manifest"]
+        if not manifest.startswith("project-control/proposals/%s-" % task_id) or not manifest.endswith(".json"):
+            return None, "--manifest must name a current-task proposal JSON file"
+        return parsed, None
+    if subcommand in {"start-branch", "push-task", "recover-blocked"}:
         parsed, error = _exact_cli_shape(
             arguments,
             positional_count=1,
@@ -1343,7 +1361,9 @@ def governance_cli_policy(
             return True, "read-only review query"
         return False, f"reviewctl subcommand is not permitted through Codex: {subcommand}"
 
-    read_subcommands = {"current", "show", "list", "scope-hash"}
+    read_subcommands = {
+        "current", "show", "list", "scope-hash", "prepare-recovery", "open-pr",
+    }
     if subcommand in read_subcommands:
         return True, "read-only task query"
     write_subcommands = {

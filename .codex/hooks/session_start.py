@@ -23,11 +23,6 @@ PREPARATION_WRITE_STATES = {
     "REVIEW_PENDING",
     "APPROVED",
     "READY",
-    "BLOCKED",
-    "FAILED",
-    "REJECTED",
-    "CANCELLED",
-    "DONE",
 }
 
 
@@ -169,6 +164,7 @@ def _context_document(payload: Dict[str, Any]) -> Dict[str, Any]:
         and not blockers
     )
     preparation_writes_allowed = snapshot.valid and status in PREPARATION_WRITE_STATES
+    recovery_proposal_allowed = snapshot.valid and status == "BLOCKED"
     if not snapshot.valid:
         write_mode = "FAIL_CLOSED"
         instruction = (
@@ -187,6 +183,12 @@ def _context_document(payload: Dict[str, Any]) -> Dict[str, Any]:
             "Local preparation files may be created or edited only in docs/requirements, "
             "docs/decisions, and project-control/proposals. Protected task/review/current "
             "records and implementation files remain blocked until the task is IN_PROGRESS."
+        )
+    elif recovery_proposal_allowed:
+        write_mode = "RECOVERY_PROPOSAL_ONLY"
+        instruction = (
+            "Only a recovery proposal whose filename starts with the current task id may be "
+            "prepared. All implementation, terminal-task, and cross-task writes remain blocked."
         )
     else:
         write_mode = "GOVERNANCE_ONLY"

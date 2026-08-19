@@ -9,9 +9,9 @@
 3. 只有当前任务处于允许开工的阶段、用户签发的回执有效、分支正确、变更路径在审核范围内且 `reconcile` 无阻断项时，才可执行写入、生成、构建、提交、推送或部署。
 4. 没有审核时只可做门禁允许的只读检查和准备审核所需的记录。不得先写代码、依赖、迁移、脚手架或测试，再补审核。
 
-在 `DRAFT`、`REVIEW_PENDING`、`APPROVED`、`READY` 及异常/终止状态，可以创建或编辑 `docs/requirements/**`、`docs/decisions/**` 和 `project-control/proposals/**` 中的本地准备文件；这不等于获准实现。需求范围获批且任务进入 `IN_PROGRESS` 后，当前任务 `allowed_paths` 内的本地创建、编辑、测试和同范围返工不再逐项向用户确认。
+在 `DRAFT`、`REVIEW_PENDING`、`APPROVED` 和 `READY` 可以创建或编辑 `docs/requirements/**`、`docs/decisions/**` 和 `project-control/proposals/**` 中的本地准备文件；这不等于获准实现。`BLOCKED` 只允许创建以当前任务编号开头的恢复 proposal；`FAILED`、`REJECTED`、`CANCELLED` 和 `DONE` 保持只读。需求范围获批且任务进入 `IN_PROGRESS` 后，当前任务 `allowed_paths` 内的本地创建、编辑、测试和同范围返工不再逐项向用户确认。
 
-必须单独取得用户明确决定的关键节点是：需求范围定稿；应用脚手架、新依赖或重大架构；登录、个人数据、安全、成本或不兼容迁移；验证豁免；不可逆/破坏性操作；合并、部署和发布。普通本地分支、完整验证后的任务提交、当前功能分支的非强制快进 push 不是独立确认点，但仍必须走受控命令和全部门禁。
+用户给出的需求在目标、范围和高风险影响清楚时，本身就是范围决定，不再追加一次形式化“确认”。只有需求存在会改变结果的歧义时才提问。必须单独取得用户明确决定的关键节点仅保留为：验证豁免；不可逆/破坏性操作；个人或敏感数据、显著安全风险、实质成本或不兼容迁移；最终合并、部署和发布。已批准需求内可逆的官方脚手架选择、常规依赖选择和实现架构由 Codex 给出默认值、记录依据并直接执行；涉及上述高风险因素时再停下确认。普通本地分支、编辑、测试、提交、非强制功能分支 push、PR 链接准备和 CI 核验都不是独立确认点，但仍必须走受控命令和全部门禁。
 
 `PreToolUse` 的拒绝是有效阻断，不得改配置、改状态、换工具或拆分命令来规避。门禁异常时停止并记录问题。Hook 只约束实际进入该 Hook 的 Codex 工具调用；已获准程序启动的子进程、用户外部终端或其他未接入路径不因此自动受控，不能把 Hook 描述成操作系统级安全边界。
 
@@ -56,7 +56,7 @@
 - `local` 证据绑定当前 `scope_hash` 和确定性工作区摘要，`ci` 证据绑定内容提交与 GitHub 事件 base/head，`post_merge` 证据绑定合并后的主分支内容提交。三类证据不得跨阶段或跨提交复用；`precommit` 只是针对已冻结 local 摘要的只读核对报告，不是第四类可记录验证。豁免也必须绑定相同阶段、摘要/提交、环境和该阶段的最远门禁，并始终显示为 `WAIVED`。
 - 用户代码审核使用 `code` 对话回执，并绑定准确内容提交 SHA 和当前范围；未提交工作区、其他提交或旧 CI 结果不能替代。删除历史、破坏性迁移、强制覆盖等不可逆操作前，必须另有用户明确对话决定及对应 `irreversible_operation` 回执。除 R010/R012 精确 recovery proposal 已实现并验证的 `recover-committed` / `recover-pending-content` 专用消费器外，G0 只提供回执记录与核验；其他不可逆操作在后续专门需求补齐消费器前一律保持阻断。
 - 提交前运行 `reconcile` 和任务规定的测试；push、PR 和合并后由 CI 重新验证。CI 失败或缺失时任务不能完成。
-- 直接 `git commit` / `git push` 继续拒绝。普通任务在完整 `LOCAL_VERIFIED` 后使用 `taskctl commit-task` 生成内容提交 A 和仅含受保护状态的控制提交 B，再用 `taskctl push-task` 将当前功能分支非强制快进到固定私有仓库；范围外路径、脏控制头、远端非祖先或竞争更新一律阻断。普通任务从 `COMMITTED` 因 CI 失败进入 `BLOCKED` 后，可用 `taskctl recover-blocked` 归档旧证据并回到 `IN_PROGRESS`，后续 A/B 必须是失败控制头的后代且重新跑完整验证。空仓库引导仍只能使用固定 `GOV-0001` 的 `bootstrap-commit` / `bootstrap-push`；历史 A→C→D、R007/R009 和 R010/R012 恢复链只作为有限迁移证据保留，不得扩展、改写或用于普通任务。所有路径均禁止 force push、`--no-verify` 和按 Run 编号增加源码例外。
+- 直接 `git commit` / `git push` 继续拒绝。普通任务在完整 `LOCAL_VERIFIED` 后使用 `taskctl commit-task --manifest <当前任务变更清单>`，只暂存清单中的精确文件并生成内容提交 A；当前任务的受保护状态再形成控制提交 B。未列入清单的用户文件保持原样且不得被暂存或提交，已有无关暂存内容直接阻断。`taskctl push-task` 只核对已提交的当前任务控制状态并将功能分支非强制快进到固定私有仓库，不要求清理未提交的用户文件。普通任务从 `COMMITTED` 因 CI 失败进入 `BLOCKED` 后，可用 `taskctl recover-blocked` 归档旧证据并回到 `IN_PROGRESS`，后续 A/B 必须是失败控制头的后代且重新跑完整验证。空仓库引导仍只能使用固定 `GOV-0001` 的 `bootstrap-commit` / `bootstrap-push`；历史恢复链只作为有限迁移证据保留。所有路径均禁止 force push、`--no-verify` 和按 Run 编号增加源码例外。
 - 私有仓库的 `ci` / `post_merge` 证据只能由 `taskctl sync-github-run` 使用用户在仓库外配置的 Actions 只读凭据在线查询 GitHub REST API，并核对固定仓库、workflow、run attempt、事件、分支、head SHA 和必需 job 全部成功后写入。调用者提供的 URL、结论或日志片段不是证据；无网络、无凭据或元数据不符时失败关闭，凭据不得写入仓库或日志。
 - CI 核对事件 base/head 之间的已提交 diff。任务中的 `committed_sha` 是内容提交 A；`taskctl` 后写入的受保护状态可形成控制提交 B。B 必须包含 A，且 A..B 只能变化 `tasks`、`reviews` 或 `current-task` 机器记录；CI 同时报告 A 和 B。PR 即使处于 detached HEAD，也必须使用事件 payload 的 base/head SHA 和可信 `GITHUB_BASE_REF`/`GITHUB_HEAD_REF`，不得把临时 merge ref 当需求分支；push 使用事件 `before`/`after`。
 - 多发布单元任务的验证计划、兼容矩阵、发布和回退证据必须逐一绑定受影响的 `mac`、`win`、`backend`；共享客户端实现不能合并平台验收。`windows-latest` 上治理 CI 成功只证明治理命令在 Windows runner 执行，不等于真实 Windows 客户端安装、升级、卸载或业务行为验收。

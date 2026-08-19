@@ -55,6 +55,17 @@ class TaskCtlTests(AuthenticatedReceiptTestCase):
         self.assertIsNone(error, _output)
         governed = root / "docs" / "governance" / "test.md"
         governed.write_text("reviewed task change\n", encoding="utf-8")
+        head, error = core.run_git(root, ("rev-parse", "HEAD"))
+        self.assertIsNone(error, head)
+        write_json(
+            root / "project-control" / "proposals" / "GOV-TEST-change-set.json",
+            {
+                "schema_version": 1,
+                "task_id": "GOV-TEST",
+                "base_head": head,
+                "paths": ["docs/governance/test.md"],
+            },
+        )
         task["validation"]["results"] = [valid_local_pass(root, task)]
         task["status"] = "LOCAL_VERIFIED"
         write_json(root / "project-control" / "tasks" / "GOV-TEST.json", task)
@@ -70,6 +81,8 @@ class TaskCtlTests(AuthenticatedReceiptTestCase):
                     "Codex",
                     "--reason",
                     "complete reviewed local work",
+                    "--manifest",
+                    "project-control/proposals/GOV-TEST-change-set.json",
                     "--root",
                     str(root),
                     "--json",
@@ -95,6 +108,44 @@ class TaskCtlTests(AuthenticatedReceiptTestCase):
             dirty, error = core.run_git(root, ("status", "--porcelain", "--untracked-files=all"))
             self.assertIsNone(error, dirty)
             self.assertEqual("", dirty)
+
+    def test_commit_task_preserves_unstaged_unrelated_work(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = self._prepare_committable_task(root)
+            unrelated = root / "user-notes.txt"
+            unrelated.write_text("user-owned work\n", encoding="utf-8")
+            task["validation"]["results"] = [valid_local_pass(root, task)]
+            write_json(root / "project-control" / "tasks" / "GOV-TEST.json", task)
+            stored = self._commit_prepared_task(root)
+            self.assertEqual("COMMITTED", stored["status"])
+            self.assertEqual("user-owned work\n", unrelated.read_text(encoding="utf-8"))
+            status, error = core.run_git(root, ("status", "--porcelain", "--untracked-files=all"))
+            self.assertIsNone(error, status)
+            self.assertIn("?? user-notes.txt", status)
+            committed, error = core.run_git(root, ("ls-tree", "-r", "--name-only", "HEAD"))
+            self.assertIsNone(error, committed)
+            self.assertNotIn("user-notes.txt", committed.splitlines())
+
+    def test_commit_task_rejects_unrelated_pre_staged_work(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = self._prepare_committable_task(root)
+            unrelated = root / "user-notes.txt"
+            unrelated.write_text("user-owned work\n", encoding="utf-8")
+            _output, error = core.run_git(root, ("add", "--", "user-notes.txt"))
+            self.assertIsNone(error, _output)
+            task["validation"]["results"] = [valid_local_pass(root, task)]
+            write_json(root / "project-control" / "tasks" / "GOV-TEST.json", task)
+            with mock.patch("reconcile.run_reconcile", return_value={"ok": True, "checks": []}):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    code = taskctl.main([
+                        "commit-task", "GOV-TEST", "--actor", "Codex",
+                        "--reason", "must preserve staged user work",
+                        "--manifest", "project-control/proposals/GOV-TEST-change-set.json",
+                        "--root", str(root), "--json",
+                    ])
+            self.assertEqual(2, code)
 
     def test_push_task_is_non_force_and_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -130,6 +181,49 @@ class TaskCtlTests(AuthenticatedReceiptTestCase):
             head, error = core.run_git(root, ("rev-parse", "HEAD"))
             self.assertIsNone(error, head)
             self.assertTrue(str(remote_sha).startswith(str(head) + "\t"))
+
+    def test_open_pr_emits_fixed_compare_url_without_creating_external_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._prepare_committable_task(root)
+            stored = self._commit_prepared_task(root)
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = taskctl.main([
+                    "open-pr", stored["task_id"], "--root", str(root), "--json",
+                ])
+            self.assertEqual(0, code)
+            payload = json.loads(output.getvalue())
+            self.assertEqual(
+                "https://github.com/wzhic/material/compare/main...codex/req-test-gov-test?expand=1",
+                payload["url"],
+            )
+            self.assertFalse(payload["creates_pull_request"])
+
+    def test_prepare_recovery_is_read_only_and_task_owned(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._prepare_committable_task(root)
+            stored = self._commit_prepared_task(root)
+            stored["status"] = "BLOCKED"
+            stored["exception"] = {
+                "previous_status": "COMMITTED",
+                "reason": "CI failed",
+                "recorded_at": "2026-08-19T00:00:00+00:00",
+            }
+            task_path = root / "project-control" / "tasks" / "GOV-TEST.json"
+            write_json(task_path, stored)
+            before = task_path.read_bytes()
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = taskctl.main([
+                    "prepare-recovery", stored["task_id"], "--root", str(root), "--json",
+                ])
+            self.assertEqual(0, code)
+            payload = json.loads(output.getvalue())
+            self.assertEqual("project-control/proposals/GOV-TEST-", payload["proposal_prefix"])
+            self.assertEqual("COMMITTED", payload["previous_status"])
+            self.assertEqual(before, task_path.read_bytes())
 
     def test_recover_blocked_archives_committed_evidence_without_rewriting_history(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

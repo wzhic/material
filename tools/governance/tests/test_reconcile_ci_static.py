@@ -398,6 +398,21 @@ class StaticProfileTests(AuthenticatedReceiptTestCase):
             contract = next(item for item in report["checks"] if item["id"] == "workflow_contract")
             self.assertIn("controlled required validation", contract["message"])
 
+    def test_workflow_contract_rejects_duplicate_direct_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = prepare_static_root(root)
+            workflow = root / ".github" / "workflows" / "governance.yml"
+            workflow.write_text(
+                workflow.read_text(encoding="utf-8")
+                + "\n# duplicate\n# python -m unittest discover -s tools/governance/tests\n",
+                encoding="utf-8",
+            )
+            report = run_reconcile(root, "workflow", git_branch=task["branch"], git_changes=[])
+            self.assertFalse(report["ok"])
+            contract = next(item for item in report["checks"] if item["id"] == "workflow_contract")
+            self.assertIn("no duplicate governance test execution", contract["message"])
+
     def test_static_rejects_fixed_project_repository_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

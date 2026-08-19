@@ -33,11 +33,6 @@ PREPARATION_WRITE_STATES = {
     "REVIEW_PENDING",
     "APPROVED",
     "READY",
-    "BLOCKED",
-    "FAILED",
-    "REJECTED",
-    "CANCELLED",
-    "DONE",
 }
 PREPARATION_PATHS = (
     "project-control/proposals/**",
@@ -118,7 +113,8 @@ def evaluate(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     task = snapshot.task
     status = task.get("status")
     preparation_only = status in PREPARATION_WRITE_STATES
-    if preparation_only and tool_name == "apply_patch":
+    recovery_proposal_only = status == "BLOCKED"
+    if (preparation_only or recovery_proposal_only) and tool_name == "apply_patch":
         command = tool_input.get("command") if isinstance(tool_input, dict) else None
         try:
             targets = extract_apply_patch_paths(command)
@@ -130,9 +126,13 @@ def evaluate(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                     protected_reason = direct_governance_mutation_reason(relative)
                 if protected_reason is not None:
                     return deny(f"protected governance path {relative!r}: {protected_reason}")
-                if not path_is_allowed(relative, PREPARATION_PATHS):
+                allowed_preparation_paths = (
+                    PREPARATION_PATHS if preparation_only else
+                    ("project-control/proposals/%s-*.json" % task.get("task_id"),)
+                )
+                if not path_is_allowed(relative, allowed_preparation_paths):
                     return deny(
-                        "preparation writes are limited to requirement, decision, and task proposal files: "
+                        "preparation writes are limited to the current state and task-owned proposal files: "
                         + relative
                     )
         except GovernanceError as exc:
