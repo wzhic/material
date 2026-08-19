@@ -13,7 +13,8 @@ from helpers import (
 )
 
 import taskctl
-from core import read_json, run_git
+import core
+from core import BOOTSTRAP_REPAIR_MESSAGE, BOOTSTRAP_REPAIR_REVIEW_ID, read_json, run_git
 
 
 def git(root: Path, *arguments: str) -> str:
@@ -76,6 +77,37 @@ class BootstrapGitTransportTests(AuthenticatedReceiptTestCase):
         content_sha = git(root, "rev-parse", "HEAD")
         self.assertEqual(1, len(git(root, "rev-list", "--parents", "-n", "1", content_sha).split()))
         return content_sha
+
+    def prepare_repair(self, root: Path) -> None:
+        governed = root / "tools" / "governance" / "core.py"
+        governed.parent.mkdir(parents=True, exist_ok=True)
+        governed.write_text("# explicit UTF-8 Git decoding\n", encoding="utf-8")
+        task_path = root / "project-control" / "tasks" / "GOV-0001.json"
+        task = read_json(task_path)
+        task["rework_history"] = [{"review_id": BOOTSTRAP_REPAIR_REVIEW_ID}]
+        task["validation"]["results"] = [valid_local_pass(root, task)]
+        write_json(task_path, task)
+
+    def commit_repair(self, root: Path, failed_root: str) -> str:
+        self.prepare_repair(root)
+        with mock.patch.object(core, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root), mock.patch.object(
+            taskctl, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root
+        ), mock.patch("reconcile.run_reconcile", return_value={"ok": True, "checks": []}):
+            code = taskctl.main([
+                "bootstrap-commit", "GOV-0001",
+                "--stage", "content",
+                "--actor", "Codex",
+                "--root", str(root),
+                "--json",
+            ])
+        self.assertEqual(0, code)
+        repair_sha = git(root, "rev-parse", "HEAD")
+        self.assertEqual(
+            [repair_sha, failed_root],
+            git(root, "rev-list", "--parents", "-n", "1", repair_sha).split(),
+        )
+        self.assertEqual(BOOTSTRAP_REPAIR_MESSAGE, git(root, "show", "-s", "--format=%s", repair_sha))
+        return repair_sha
 
     def transition_and_commit_control(self, root: Path, content_sha: str) -> str:
         code = taskctl.main([
@@ -170,3 +202,33 @@ class BootstrapGitTransportTests(AuthenticatedReceiptTestCase):
                 "git@github.com:wzhic/material.git",
                 git(root, "remote", "get-url", "origin"),
             )
+
+    def test_failed_root_repair_and_control_are_both_non_force_fast_forwards(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "work"
+            remote = Path(temporary) / "remote.git"
+            root.mkdir()
+            remote.mkdir()
+            git(remote, "init", "--bare")
+            self.prepare(root)
+            failed_root = self.commit_content(root)
+            with mock.patch.object(taskctl, "_BOOTSTRAP_PUSH_URL", str(remote)):
+                self.assertEqual(0, taskctl.main([
+                    "bootstrap-push", "GOV-0001", "--stage", "content",
+                    "--actor", "Codex", "--root", str(root), "--json",
+                ]))
+            repair_sha = self.commit_repair(root, failed_root)
+            with mock.patch.object(core, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root), mock.patch.object(
+                taskctl, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root
+            ), mock.patch.object(taskctl, "_BOOTSTRAP_PUSH_URL", str(remote)):
+                self.assertEqual(0, taskctl.main([
+                    "bootstrap-push", "GOV-0001", "--stage", "content",
+                    "--actor", "Codex", "--root", str(root), "--json",
+                ]))
+                self.assertEqual(repair_sha, git(remote, "rev-parse", "refs/heads/main"))
+                control_sha = self.transition_and_commit_control(root, repair_sha)
+                self.assertEqual(0, taskctl.main([
+                    "bootstrap-push", "GOV-0001", "--stage", "control",
+                    "--actor", "Codex", "--root", str(root), "--json",
+                ]))
+                self.assertEqual(control_sha, git(remote, "rev-parse", "refs/heads/main"))

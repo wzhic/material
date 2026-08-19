@@ -24,6 +24,24 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 SCHEMA_VERSION = 1
 BOOTSTRAP_TASK_ID = "GOV-0001"
+FAILED_BOOTSTRAP_ROOT_SHA = "59a285c853099b817d5fafa3a1d50ddda5ae7ce8"
+FAILED_BOOTSTRAP_RUN_ID = "32221854668"
+BOOTSTRAP_REPAIR_REVIEW_ID = "GOV-0001-R007"
+BOOTSTRAP_REPAIR_MESSAGE = "fix(governance): restore Windows bootstrap CI"
+BOOTSTRAP_REPAIR_ALLOWED_PATHS = frozenset((
+    "AGENTS.md",
+    "docs/governance/验证与豁免-GOV-0003-v1.0.md",
+    "docs/requirements/治理基线-REQ-0001/治理基线-REQ-0001-v1.0.md",
+    "docs/troubleshooting/治理门禁问题排查-TRB-0001-v1.0.md",
+    "project-control/reviews/GOV-0001-R007.json",
+    "project-control/tasks/GOV-0001.json",
+    "tools/governance/core.py",
+    "tools/governance/reconcile.py",
+    "tools/governance/taskctl.py",
+    "tools/governance/tests/test_bootstrap_git.py",
+    "tools/governance/tests/test_core.py",
+    "tools/governance/tests/test_reconcile_ci_static.py",
+))
 
 NORMAL_STATES: Tuple[str, ...] = (
     "DRAFT",
@@ -462,6 +480,8 @@ def run_git(root: Path, arguments: Sequence[str]) -> Tuple[Optional[str], Option
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                encoding="utf-8",
+                errors="strict",
                 check=False,
             )
         except OSError as exc:
@@ -471,6 +491,52 @@ def run_git(root: Path, arguments: Sequence[str]) -> Tuple[Optional[str], Option
             return completed.stdout.strip(), None
         errors.append(completed.stderr.strip() or "%s exited %s" % (executable, completed.returncode))
     return None, "; ".join(errors)
+
+
+def bootstrap_repair_commit_issues(root: Path, commit: str) -> List[str]:
+    """Validate the one-time, non-force repair child of the failed G0 root.
+
+    This exception is deliberately bound to the observed failed root, Run #1,
+    fixed commit message and exact reviewed file set.  It cannot be reused by a
+    later task or by another root commit.
+    """
+
+    normalized = str(commit).strip().lower()
+    issues: List[str] = []
+    if normalized == FAILED_BOOTSTRAP_ROOT_SHA or not re.fullmatch(r"[0-9a-f]{40}", normalized):
+        return ["bootstrap repair subject must be a distinct 40-character commit"]
+    parents, parents_error = run_git(root, ("rev-list", "--parents", "-n", "1", normalized))
+    expected_parents = [normalized, FAILED_BOOTSTRAP_ROOT_SHA]
+    if parents_error or (parents or "").split() != expected_parents:
+        issues.append(
+            "bootstrap repair must be the sole child of failed root %s from Actions run %s"
+            % (FAILED_BOOTSTRAP_ROOT_SHA, FAILED_BOOTSTRAP_RUN_ID)
+        )
+    root_line, root_error = run_git(
+        root, ("rev-list", "--parents", "-n", "1", FAILED_BOOTSTRAP_ROOT_SHA)
+    )
+    if root_error or (root_line or "").split() != [FAILED_BOOTSTRAP_ROOT_SHA]:
+        issues.append("recorded failed bootstrap commit is unavailable or is not the repository root")
+    message, message_error = run_git(root, ("show", "-s", "--format=%s", normalized))
+    if message_error or message != BOOTSTRAP_REPAIR_MESSAGE:
+        issues.append("bootstrap repair commit message is not the fixed reviewed message")
+    changed, changed_error = run_git(
+        root,
+        ("diff", "--name-only", "-z", FAILED_BOOTSTRAP_ROOT_SHA + ".." + normalized),
+    )
+    if changed_error:
+        issues.append("bootstrap repair paths cannot be inspected: %s" % changed_error)
+    else:
+        paths = [path for path in (changed or "").split("\0") if path]
+        if not paths:
+            issues.append("bootstrap repair commit may not be empty")
+        outside = sorted(set(paths) - set(BOOTSTRAP_REPAIR_ALLOWED_PATHS))
+        if outside:
+            issues.append(
+                "bootstrap repair changes paths outside the R007 allowlist: %s"
+                % ", ".join(outside)
+            )
+    return issues
 
 
 def current_branch(root: Path) -> Tuple[Optional[str], Optional[str]]:

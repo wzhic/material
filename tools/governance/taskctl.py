@@ -13,7 +13,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core import (
+    BOOTSTRAP_REPAIR_ALLOWED_PATHS,
+    BOOTSTRAP_REPAIR_MESSAGE,
+    BOOTSTRAP_REPAIR_REVIEW_ID,
     GATE_PHASES,
+    FAILED_BOOTSTRAP_ROOT_SHA,
     GovernanceError,
     NORMAL_STATES,
     SCOPE_EDITABLE_FIELDS,
@@ -23,6 +27,7 @@ from core import (
     allowed_transition,
     branch_validity,
     BOOTSTRAP_TASK_ID,
+    bootstrap_repair_commit_issues,
     canonical_scope,
     canonical_scope_hash,
     control_dir,
@@ -138,6 +143,25 @@ def _require_root_commit(root: Path, commit: str) -> None:
         raise GovernanceError("bootstrap content commit must be the repository root commit")
 
 
+def _require_repair_authorization(task: Dict[str, Any]) -> None:
+    history = task.get("rework_history", [])
+    if not isinstance(history, list) or not any(
+        isinstance(item, dict) and item.get("review_id") == BOOTSTRAP_REPAIR_REVIEW_ID
+        for item in history
+    ):
+        raise GovernanceError("failed bootstrap repair requires recorded R007 rework authorization")
+
+
+def _bootstrap_content_subject_mode(root: Path, commit: str) -> str:
+    line = _git(root, ("rev-list", "--parents", "-n", "1", commit), "cannot inspect content parents")
+    if line.split() == [commit]:
+        return "root"
+    issues = bootstrap_repair_commit_issues(root, commit)
+    if issues:
+        raise GovernanceError("invalid failed-bootstrap repair content: %s" % "; ".join(issues))
+    return "repair"
+
+
 def _require_allowed_snapshot(root: Path, task: Dict[str, Any], commit: str) -> List[str]:
     paths = _nul_paths(
         _git(root, ("ls-tree", "-r", "--name-only", "-z", commit), "cannot inspect commit snapshot")
@@ -172,12 +196,23 @@ def _configure_fixed_origin(root: Path) -> None:
 def _bootstrap_commit(root: Path, task: Dict[str, Any], stage: str) -> Dict[str, Any]:
     expected_status = "LOCAL_VERIFIED" if stage == "content" else "COMMITTED"
     _require_exact_bootstrap_task(root, task, expected_status)
+    content_mode = "control"
     if stage == "content":
         if task.get("git", {}).get("committed_sha"):
             raise GovernanceError("content commit is already recorded")
         count = _git(root, ("rev-list", "--all", "--count"), "cannot inspect repository history")
-        if count != "0":
-            raise GovernanceError("bootstrap content commit requires an unborn repository")
+        recovery = count == "1"
+        if count not in ("0", "1"):
+            raise GovernanceError("bootstrap content commit allows only an unborn repository or exact R007 repair")
+        if recovery:
+            head = normalize_commit(
+                _git(root, ("rev-parse", "HEAD"), "cannot resolve failed bootstrap root"),
+                "HEAD",
+            )
+            if head != FAILED_BOOTSTRAP_ROOT_SHA:
+                raise GovernanceError("R007 repair must start at the exact failed bootstrap root")
+            _require_root_commit(root, head)
+            _require_repair_authorization(task)
         gate = validation_gate_status(root, task, "LOCAL_VERIFIED")
         if gate["missing"]:
             raise GovernanceError("bootstrap content commit requires complete local validation")
@@ -193,22 +228,33 @@ def _bootstrap_commit(root: Path, task: Dict[str, Any], stage: str) -> Dict[str,
                 "bootstrap content commit requires a clean precommit reconcile: %s"
                 % ("; ".join(failed) or "unknown reconcile failure")
             )
-        candidates = _nul_paths(
-            _git(
-                root,
-                ("ls-files", "--cached", "--others", "--exclude-standard", "-z"),
-                "cannot enumerate bootstrap content",
+        if recovery:
+            candidates = list(dict.fromkeys(
+                _nul_paths(_git(root, ("diff", "--name-only", "-z"), "cannot inspect repair changes"))
+                + _nul_paths(_git(root, ("diff", "--cached", "--name-only", "-z"), "cannot inspect staged repair changes"))
+                + _nul_paths(_git(root, ("ls-files", "--others", "--exclude-standard", "-z"), "cannot inspect repair files"))
+            ))
+        else:
+            candidates = _nul_paths(
+                _git(
+                    root,
+                    ("ls-files", "--cached", "--others", "--exclude-standard", "-z"),
+                    "cannot enumerate bootstrap content",
+                )
             )
-        )
         if not candidates:
             raise GovernanceError("bootstrap content commit has no reviewed files")
-        outside = [path for path in candidates if not path_is_allowed(root, path, task["allowed_paths"])]
+        if recovery:
+            outside = sorted(set(candidates) - set(BOOTSTRAP_REPAIR_ALLOWED_PATHS))
+        else:
+            outside = [path for path in candidates if not path_is_allowed(root, path, task["allowed_paths"])]
         if outside:
             raise GovernanceError(
                 "bootstrap content contains paths outside reviewed scope: %s"
                 % ", ".join(sorted(outside))
             )
-        message = _BOOTSTRAP_CONTENT_MESSAGE
+        message = BOOTSTRAP_REPAIR_MESSAGE if recovery else _BOOTSTRAP_CONTENT_MESSAGE
+        content_mode = "repair" if recovery else "root"
     else:
         content_sha = normalize_commit(task.get("git", {}).get("committed_sha"), "task.git.committed_sha")
         head = normalize_commit(
@@ -217,7 +263,7 @@ def _bootstrap_commit(root: Path, task: Dict[str, Any], stage: str) -> Dict[str,
         )
         if head != content_sha:
             raise GovernanceError("control commit must start directly from the recorded content commit")
-        _require_root_commit(root, content_sha)
+        _bootstrap_content_subject_mode(root, content_sha)
         candidates = list(dict.fromkeys(
             _nul_paths(_git(root, ("diff", "--name-only", "-z"), "cannot inspect unstaged changes"))
             + _nul_paths(_git(root, ("diff", "--cached", "--name-only", "-z"), "cannot inspect staged changes"))
@@ -239,7 +285,9 @@ def _bootstrap_commit(root: Path, task: Dict[str, Any], stage: str) -> Dict[str,
     )
     if not staged:
         raise GovernanceError("bootstrap commit staging produced an empty commit")
-    if stage == "content":
+    if stage == "content" and content_mode == "repair":
+        invalid = sorted(set(staged) - set(BOOTSTRAP_REPAIR_ALLOWED_PATHS))
+    elif stage == "content":
         invalid = [path for path in staged if not path_is_allowed(root, path, task["allowed_paths"])]
     else:
         invalid = [path for path in staged if not _protected_control_path(path)]
@@ -258,7 +306,9 @@ def _bootstrap_commit(root: Path, task: Dict[str, Any], stage: str) -> Dict[str,
     )
     commit = normalize_commit(_git(root, ("rev-parse", "HEAD"), "cannot resolve created commit"), "HEAD")
     if stage == "content":
-        _require_root_commit(root, commit)
+        actual_mode = _bootstrap_content_subject_mode(root, commit)
+        if actual_mode != content_mode:
+            raise GovernanceError("created bootstrap content does not match the selected transport mode")
         _require_allowed_snapshot(root, task, commit)
     else:
         content_sha = normalize_commit(task.get("git", {}).get("committed_sha"), "task.git.committed_sha")
@@ -269,7 +319,13 @@ def _bootstrap_commit(root: Path, task: Dict[str, Any], stage: str) -> Dict[str,
     dirty = _git(root, ("status", "--porcelain", "--untracked-files=all"), "cannot verify clean worktree")
     if dirty:
         raise GovernanceError("bootstrap commit left unexpected worktree changes")
-    return {"stage": stage, "commit": commit, "paths": sorted(staged), "message": message}
+    return {
+        "stage": stage,
+        "mode": content_mode,
+        "commit": commit,
+        "paths": sorted(staged),
+        "message": message,
+    }
 
 
 def _remote_branch_sha(output: str) -> Optional[str]:
@@ -287,20 +343,32 @@ def _bootstrap_push(root: Path, task: Dict[str, Any], stage: str) -> Dict[str, A
     _require_exact_bootstrap_task(root, task, expected_status)
     head = normalize_commit(_git(root, ("rev-parse", "HEAD"), "cannot resolve push head"), "HEAD")
     _configure_fixed_origin(root)
+    content_mode = "control"
     if stage == "content":
         if task.get("git", {}).get("committed_sha"):
             raise GovernanceError("content push must occur before the content SHA is recorded")
-        _require_root_commit(root, head)
+        content_mode = _bootstrap_content_subject_mode(root, head)
         _require_allowed_snapshot(root, task, head)
-        remote_state = _git(root, ("ls-remote", _BOOTSTRAP_PUSH_URL), "cannot verify empty remote")
-        if remote_state:
-            raise GovernanceError("bootstrap content push requires a completely empty remote")
-        expected_before = None
+        if content_mode == "repair":
+            _require_repair_authorization(task)
+            remote_state = _git(
+                root,
+                ("ls-remote", _BOOTSTRAP_PUSH_URL, "refs/heads/main"),
+                "cannot verify failed bootstrap remote",
+            )
+            expected_before = _remote_branch_sha(remote_state)
+            if expected_before != FAILED_BOOTSTRAP_ROOT_SHA:
+                raise GovernanceError("R007 repair push requires remote main at the exact failed root")
+        else:
+            remote_state = _git(root, ("ls-remote", _BOOTSTRAP_PUSH_URL), "cannot verify empty remote")
+            if remote_state:
+                raise GovernanceError("bootstrap content push requires a completely empty remote")
+            expected_before = None
     else:
         content_sha = normalize_commit(task.get("git", {}).get("committed_sha"), "task.git.committed_sha")
         if head == content_sha:
             raise GovernanceError("control push requires a distinct protected control commit")
-        _require_root_commit(root, content_sha)
+        _bootstrap_content_subject_mode(root, content_sha)
         _verify_content_control_commits(root, content_sha, head)
         remote_state = _git(
             root,
@@ -326,6 +394,7 @@ def _bootstrap_push(root: Path, task: Dict[str, Any], stage: str) -> Dict[str, A
         raise GovernanceError("remote main does not match the pushed bootstrap commit")
     return {
         "stage": stage,
+        "mode": content_mode,
         "commit": head,
         "remote": _BOOTSTRAP_SOURCE_REPOSITORY,
         "transport": _BOOTSTRAP_PUSH_URL,
@@ -963,7 +1032,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
                     report = run_reconcile(root, "ci")
                     ci_context = report.get("context", {}).get("ci", {})
-                    if not report.get("ok") or ci_context.get("mode") != "bootstrap_pending":
+                    if not report.get("ok") or ci_context.get("mode") not in (
+                        "bootstrap_pending", "bootstrap_repair_pending",
+                    ):
                         failed = [
                             str(item.get("message"))
                             for item in report.get("checks", [])
@@ -971,7 +1042,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                         ]
                         raise GovernanceError(
                             "bootstrap first push did not satisfy the exact PENDING contract: %s"
-                            % ("; ".join(failed) or "CI context is not bootstrap_pending")
+                            % (
+                                "; ".join(failed)
+                                or "CI context is not bootstrap_pending/bootstrap_repair_pending"
+                            )
                         )
                     _emit({
                         "ok": True,
@@ -981,7 +1055,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "results": [],
                         "ci": ci_context,
                         "message": (
-                            "exact GOV-0001 root push validated as bootstrap PENDING; "
+                            "exact GOV-0001 bootstrap content push validated as PENDING; "
                             "no CI PASS was recorded"
                         ),
                     }, args.json)

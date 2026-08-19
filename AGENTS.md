@@ -52,7 +52,7 @@
 - `local` 证据绑定当前 `scope_hash` 和确定性工作区摘要，`ci` 证据绑定内容提交与 GitHub 事件 base/head，`post_merge` 证据绑定合并后的主分支内容提交。三类证据不得跨阶段或跨提交复用；`precommit` 只是针对已冻结 local 摘要的只读核对报告，不是第四类可记录验证。豁免也必须绑定相同阶段、摘要/提交、环境和该阶段的最远门禁，并始终显示为 `WAIVED`。
 - 用户代码审核使用 `code` 对话回执，并绑定准确内容提交 SHA 和当前范围；未提交工作区、其他提交或旧 CI 结果不能替代。删除历史、破坏性迁移、强制覆盖等不可逆操作前，必须另有用户明确对话决定及对应 `irreversible_operation` 回执。G0 只提供回执记录与核验，不提供执行或单次消费器；因此在后续专门需求实现并验证消费器前，不可逆操作一律保持阻断。
 - 提交前运行 `reconcile` 和任务规定的测试；push、PR 和合并后由 CI 重新验证。CI 失败或缺失时任务不能完成。
-- 直接 `git commit` / `git push` 在 G0 始终拒绝。唯一空仓库引导只能使用 `taskctl bootstrap-commit` / `bootstrap-push` 的 content/control 窄入口；它们固定 `GOV-0001`、`main`、`wzhic/material`、根 A、受保护 B 和非强制 push。该入口在 G0 后不得复用。
+- 直接 `git commit` / `git push` 在 G0 始终拒绝。唯一空仓库引导只能使用 `taskctl bootstrap-commit` / `bootstrap-push` 的 content/control 窄入口；它们固定 `GOV-0001`、`main`、`wzhic/material`、内容提交、受保护控制提交和非强制 push。已失败的根提交 `59a285c853099b817d5fafa3a1d50ddda5ae7ce8` 仅可按 R007 形成一个固定消息、固定路径集合的直接修复子提交；其他历史、路径或任务不得复用该恢复例外。
 - 私有仓库的 `ci` / `post_merge` 证据只能由 `taskctl sync-github-run` 使用用户在仓库外配置的 Actions 只读凭据在线查询 GitHub REST API，并核对固定仓库、workflow、run attempt、事件、分支、head SHA 和必需 job 全部成功后写入。调用者提供的 URL、结论或日志片段不是证据；无网络、无凭据或元数据不符时失败关闭，凭据不得写入仓库或日志。
 - CI 核对事件 base/head 之间的已提交 diff。任务中的 `committed_sha` 是内容提交 A；`taskctl` 后写入的受保护状态可形成控制提交 B。B 必须包含 A，且 A..B 只能变化 `tasks`、`reviews` 或 `current-task` 机器记录；CI 同时报告 A 和 B。PR 即使处于 detached HEAD，也必须使用事件 payload 的 base/head SHA 和可信 `GITHUB_BASE_REF`/`GITHUB_HEAD_REF`，不得把临时 merge ref 当需求分支；push 使用事件 `before`/`after`。
 - 多发布单元任务的验证计划、兼容矩阵、发布和回退证据必须逐一绑定受影响的 `mac`、`win`、`backend`；共享客户端实现不能合并平台验收。`windows-latest` 上治理 CI 成功只证明治理命令在 Windows runner 执行，不等于真实 Windows 客户端安装、升级、卸载或业务行为验收。

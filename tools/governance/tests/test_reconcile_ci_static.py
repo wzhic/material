@@ -18,7 +18,9 @@ if str(GOVERNANCE_DIR) not in sys.path:
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from core import canonical_scope_hash, read_json, run_git  # noqa: E402
+import core  # noqa: E402
+import reconcile  # noqa: E402
+from core import BOOTSTRAP_REPAIR_MESSAGE, canonical_scope_hash, read_json, run_git  # noqa: E402
 from helpers import AuthenticatedReceiptTestCase, base_task, initialize_root, write_json  # noqa: E402
 from reconcile import run_reconcile  # noqa: E402
 import taskctl  # noqa: E402
@@ -687,6 +689,54 @@ class TrustedCiContextTests(AuthenticatedReceiptTestCase):
             self.assertEqual("bootstrap_pending", report["context"]["ci"]["mode"])
             self.assertEqual("pending", report["context"]["ci"]["evidence_status"])
             self.assertIsNone(report["context"]["ci"]["content_subject_sha"])
+
+    def test_failed_root_repair_stays_pending_then_allows_protected_control_head(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = prepare_static_root(root, task_id="GOV-0001")
+            task["allowed_paths"].extend(["project-control/**", "AGENTS.md", "README.md"])
+            task["branch_exception"] = {
+                "kind": "bootstrap-main",
+                "applies_only_to_task": "GOV-0001",
+                "reason": "isolated failed-root repair test",
+            }
+            renew_test_scope_review(root, task)
+            store_controlled_local_pass(root, task)
+            task["status"] = "LOCAL_VERIFIED"
+            task_file = root / "project-control" / "tasks" / "GOV-0001.json"
+            write_json(task_file, task)
+            initialize_git(root)
+            failed_root = commit_all(root, "failed bootstrap root")
+
+            governed = root / "tools" / "governance" / "core.py"
+            governed.parent.mkdir(parents=True, exist_ok=True)
+            governed.write_text("# explicit UTF-8 Git decoding\n", encoding="utf-8")
+            task = read_json(task_file)
+            store_controlled_local_pass(root, task)
+            repair_sha = commit_all(root, BOOTSTRAP_REPAIR_MESSAGE)
+            repair_environment = github_push_environment(root, failed_root, repair_sha, "main")
+            with mock.patch.object(core, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root), mock.patch.object(
+                reconcile, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root
+            ), mock.patch.dict(os.environ, repair_environment, clear=False):
+                repair_report = run_reconcile(root, "ci")
+            self.assertTrue(repair_report["ok"], repair_report)
+            self.assertEqual("bootstrap_repair_pending", repair_report["context"]["ci"]["mode"])
+            Path(repair_environment["GITHUB_EVENT_PATH"]).unlink()
+
+            task = read_json(task_file)
+            task["status"] = "COMMITTED"
+            task["git"] = {"committed_sha": repair_sha}
+            write_json(task_file, task)
+            control_sha = commit_all(root, "protected control state")
+            control_environment = github_push_environment(root, repair_sha, control_sha, "main")
+            with mock.patch.object(core, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root), mock.patch.object(
+                reconcile, "FAILED_BOOTSTRAP_ROOT_SHA", failed_root
+            ), mock.patch.dict(os.environ, control_environment, clear=False):
+                control_report = run_reconcile(root, "ci")
+            self.assertTrue(control_report["ok"], control_report)
+            context = control_report["context"]["ci"]
+            self.assertEqual("bootstrap_control_head", context["mode"])
+            self.assertEqual("failed_root_repair", context["bootstrap_content_mode"])
 
 
 class GovernanceConsistencyTests(unittest.TestCase):

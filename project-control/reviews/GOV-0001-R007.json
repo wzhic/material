@@ -1,0 +1,23 @@
+{
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "conversation:2026-08-19:windows-ci-rework-confirmation",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "确认",
+  "decided_at": "2026-08-19T06:13:52+00:00",
+  "decision": "approved",
+  "expires_at": "2026-08-26T23:59:59+08:00",
+  "from_status": "LOCAL_VERIFIED",
+  "kind": "rework",
+  "project_id": "material",
+  "reason": "批准修复 GitHub Actions Run 32221854668 暴露的 Windows CP1252 解码 Git UTF-8 输出失败，并增加仅针对已失败根提交 A 的非强制恢复路径；禁止强推或改写历史",
+  "recorded_by": "Codex",
+  "review_id": "GOV-0001-R007",
+  "schema_version": 3,
+  "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+  "scope_version": 4,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "subject": "workspace:sha256:3e9a40079597d314fa19562089c389284c254e76d457ff95fe99bca94170d15d",
+  "supersedes": null,
+  "task_id": "GOV-0001"
+}

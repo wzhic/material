@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 GOVERNANCE_DIR = Path(__file__).resolve().parents[1]
@@ -27,6 +28,20 @@ from core import (  # noqa: E402
     validate_task,
 )
 from helpers import AuthenticatedReceiptTestCase, base_task, initialize_root, write_json  # noqa: E402
+import core  # noqa: E402
+
+
+class GitEncodingTests(unittest.TestCase):
+    def test_run_git_requests_utf8_instead_of_the_windows_locale(self) -> None:
+        completed = mock.Mock(returncode=0, stdout="治理输出\n", stderr="")
+        with mock.patch.object(core, "_git_candidates", return_value=["git"]), mock.patch.object(
+            core.subprocess, "run", return_value=completed
+        ) as run:
+            output, error = core.run_git(Path("."), ("status",))
+        self.assertEqual("治理输出", output)
+        self.assertIsNone(error)
+        self.assertEqual("utf-8", run.call_args.kwargs["encoding"])
+        self.assertEqual("strict", run.call_args.kwargs["errors"])
 
 
 class CanonicalScopeTests(unittest.TestCase):

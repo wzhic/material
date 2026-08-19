@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from core import (
     BOOTSTRAP_TASK_ID,
+    FAILED_BOOTSTRAP_ROOT_SHA,
     GITHUB_REPOSITORY,
     GITHUB_WORKFLOW_PATH,
     GovernanceError,
@@ -22,6 +23,7 @@ from core import (
     PROJECT_ID,
     SOURCE_REPOSITORY,
     branch_validity,
+    bootstrap_repair_commit_issues,
     canonical_scope_hash,
     ci_trust_issues,
     command_is_allowed,
@@ -1160,6 +1162,16 @@ def _ci_commit_protocol_check(
         and task_index < status_index("COMMITTED")
         and not task.get("git", {}).get("committed_sha")
     )
+    bootstrap_repair = (
+        event_name == "push"
+        and not created
+        and base == FAILED_BOOTSTRAP_ROOT_SHA
+        and bootstrap_tasks == [BOOTSTRAP_TASK_ID]
+        and task.get("task_id") == BOOTSTRAP_TASK_ID
+        and branch == task.get("branch") == task.get("base_branch") == "main"
+        and task_index < status_index("COMMITTED")
+        and not task.get("git", {}).get("committed_sha")
+    )
     result_context: Dict[str, Any] = {
         "content_subject_sha": None,
         "control_head_sha": head,
@@ -1174,6 +1186,24 @@ def _ci_commit_protocol_check(
         return _check(
             "ci_commit_protocol", True,
             "bootstrap root snapshot is definition-only; CI evidence remains pending and cannot advance CI_VERIFIED",
+            result_context,
+        ), result_context
+    if bootstrap_repair:
+        repair_issues = bootstrap_repair_commit_issues(root, str(head))
+        if repair_issues:
+            return _check(
+                "ci_commit_protocol",
+                False,
+                "failed-bootstrap repair does not match the exact R007 contract: %s"
+                % "; ".join(repair_issues),
+                result_context,
+            ), result_context
+        result_context["mode"] = "bootstrap_repair_pending"
+        result_context["failed_root_sha"] = FAILED_BOOTSTRAP_ROOT_SHA
+        return _check(
+            "ci_commit_protocol",
+            True,
+            "exact R007 repair was fast-forwarded from the failed root; CI evidence remains pending",
             result_context,
         ), result_context
     git_evidence = task.get("git", {}) if isinstance(task.get("git"), dict) else {}
@@ -1224,7 +1254,9 @@ def _ci_commit_protocol_check(
                 root, ("rev-list", "--parents", "-n", "1", subject)
             )
             subject_is_root = not parents_error and len((parents or "").split()) == 1
-            if not exact_bootstrap_control or not subject_is_root:
+            repair_issues = bootstrap_repair_commit_issues(root, subject)
+            subject_is_repair = not repair_issues
+            if not exact_bootstrap_control or not (subject_is_root or subject_is_repair):
                 return _check(
                     "ci_commit_protocol", False,
                     "trusted event diff starts at the content subject and therefore does not revalidate its changes",
@@ -1253,6 +1285,9 @@ def _ci_commit_protocol_check(
                     },
                 ), result_context
             bootstrap_control_continuation = True
+            result_context["bootstrap_content_mode"] = (
+                "root" if subject_is_root else "failed_root_repair"
+            )
             result_context["bootstrap_content_path_count"] = len(content_paths)
             result_context["content_diff_base_sha"] = diff_base
         else:
