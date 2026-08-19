@@ -28,6 +28,24 @@ from _governance import (
 )
 
 
+PREPARATION_WRITE_STATES = {
+    "DRAFT",
+    "REVIEW_PENDING",
+    "APPROVED",
+    "READY",
+    "BLOCKED",
+    "FAILED",
+    "REJECTED",
+    "CANCELLED",
+    "DONE",
+}
+PREPARATION_PATHS = (
+    "project-control/proposals/**",
+    "docs/requirements/**",
+    "docs/decisions/**",
+)
+
+
 def deny(reason: str) -> Dict[str, Any]:
     return {
         "hookSpecificOutput": {
@@ -99,9 +117,30 @@ def evaluate(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return deny("governance snapshot is invalid: " + concise_reasons(snapshot.reasons))
     task = snapshot.task
     status = task.get("status")
+    preparation_only = status in PREPARATION_WRITE_STATES
+    if preparation_only and tool_name == "apply_patch":
+        command = tool_input.get("command") if isinstance(tool_input, dict) else None
+        try:
+            targets = extract_apply_patch_paths(command)
+            for raw_target in targets:
+                relative, resolved = normalize_repo_path(repo_root, raw_target)
+                resolved_relative = resolved.relative_to(repo_root.resolve()).as_posix()
+                protected_reason = direct_governance_mutation_reason(resolved_relative)
+                if protected_reason is None:
+                    protected_reason = direct_governance_mutation_reason(relative)
+                if protected_reason is not None:
+                    return deny(f"protected governance path {relative!r}: {protected_reason}")
+                if not path_is_allowed(relative, PREPARATION_PATHS):
+                    return deny(
+                        "preparation writes are limited to requirement, decision, and task proposal files: "
+                        + relative
+                    )
+        except GovernanceError as exc:
+            return deny(str(exc))
+        return None
     if status != ORDINARY_WRITE_STATE:
         return deny(
-            "ordinary writes require task status IN_PROGRESS; "
+            "ordinary implementation writes require task status IN_PROGRESS; "
             f"current status is {status!r}"
         )
     if task.get("blockers"):

@@ -1021,6 +1021,20 @@
       "from": "IN_PROGRESS",
       "reason": "R017 允许的 9 个路径已完成 Git clean-filter blob 规范化、LF/CRLF 与首次提交回归及三份记录；受控 local 5/5、治理 148 项、Hook 契约、session/static/workflow 与 precommit 全部通过，0 豁免。",
       "to": "LOCAL_VERIFIED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T12:29:48+00:00",
+      "from": "LOCAL_VERIFIED",
+      "reason": "GitHub Actions run 32248313775 failed on pushed content commit 359ce3d714f728992ea7a7f6872469e0457157a9: Windows governance unit tests reported two pre-Git fixture subject mismatches and one platform skip; no validation waiver permitted",
+      "to": "BLOCKED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T13:29:21+00:00",
+      "from": "BLOCKED",
+      "reason": "User explicitly chose to stop the self-deadlocked GOV-0001 recovery chain, preserve all history and receipts, and replace it with a single-purpose GOV-0002 task that repairs the recovery lifecycle before governance completion",
+      "to": "CANCELLED"
     }
   ],
   "open_questions": [
@@ -5612,10 +5626,10 @@
     }
   ],
   "scope_version": 4,
-  "status": "LOCAL_VERIFIED",
+  "status": "CANCELLED",
   "summary": "只初始化 G0 治理控制层、记录和 CI 定义；本范围同时将后续所有正式审批从 OpenSSH 签名改为用户对话确认，补齐 LOCAL_VERIFIED 后受控返工入口并修正文档迁移状态；不创建应用脚手架、依赖文件或业务代码。",
   "task_id": "GOV-0001",
-  "updated_at": "2026-08-19T11:34:30+00:00",
+  "updated_at": "2026-08-19T13:29:21+00:00",
   "validation": {
     "required": [
       {

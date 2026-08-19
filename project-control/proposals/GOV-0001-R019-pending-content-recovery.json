@@ -1,0 +1,34 @@
+{
+  "allowed_paths": [
+    "project-control/proposals/GOV-0001-R019-pending-content-recovery.json",
+    "project-control/reviews/GOV-0001-R018.json",
+    "project-control/reviews/GOV-0001-R019.json",
+    "project-control/reviews/GOV-0001-R020.json",
+    "project-control/reviews/GOV-0001-R021.json",
+    "project-control/tasks/GOV-0001.json",
+    "tools/governance/tests/test_evidence.py",
+    "tools/governance/tests/test_reconcile_ci_static.py"
+  ],
+  "commit_message": "fix(governance): make bootstrap tests portable",
+  "expected_history_count": 8,
+  "failed_content_sha": "359ce3d714f728992ea7a7f6872469e0457157a9",
+  "failed_control_head": "359ce3d714f728992ea7a7f6872469e0457157a9",
+  "failed_run_id": "32248313775",
+  "failure_stage": "content_ci_pending",
+  "from_previous_status": "LOCAL_VERIFIED",
+  "from_status": "BLOCKED",
+  "invariants": [
+    "no_validation_waiver",
+    "no_force_push",
+    "preserve_existing_history",
+    "controlled_local_validation_required",
+    "three_platform_ci_required",
+    "no_business_code_or_dependency_files"
+  ],
+  "operation_id": "GOV-0001-CI-RUN-32248313775-PENDING-CONTENT-RECOVERY",
+  "review_id": "GOV-0001-R021",
+  "rework_review_id": "GOV-0001-R020",
+  "schema_version": 2,
+  "scope_version": 4,
+  "task_id": "GOV-0001"
+}

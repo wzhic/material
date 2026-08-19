@@ -34,7 +34,6 @@ from core import (
     default_root,
     find_effective_review,
     find_effective_code_review,
-    find_effective_rework_review,
     find_effective_validation_waiver,
     json_result,
     legacy_g0_v1_migration,
@@ -88,6 +87,14 @@ _BOOTSTRAP_CONTENT_MESSAGE = "chore(governance): establish G0 baseline"
 _BOOTSTRAP_CONTROL_MESSAGE = "chore(governance): record G0 content commit"
 
 
+def _task_content_message(task: Mapping[str, Any]) -> str:
+    return "chore(task): implement reviewed scope for %s" % task["task_id"]
+
+
+def _task_control_message(task: Mapping[str, Any]) -> str:
+    return "chore(governance): record %s content commit" % task["task_id"]
+
+
 def _protected_control_path(path: str) -> bool:
     normalized = path.replace("\\", "/").lstrip("./")
     return (
@@ -106,6 +113,22 @@ def _git(root: Path, arguments: tuple[str, ...], purpose: str) -> str:
 
 def _nul_paths(output: str) -> List[str]:
     return [item for item in output.split("\0") if item]
+
+
+def _changed_worktree_paths(root: Path) -> List[str]:
+    return sorted(set(
+        _nul_paths(_git(root, ("diff", "--name-only", "-z"), "cannot inspect unstaged changes"))
+        + _nul_paths(
+            _git(root, ("diff", "--cached", "--name-only", "-z"), "cannot inspect staged changes")
+        )
+        + _nul_paths(
+            _git(
+                root,
+                ("ls-files", "--others", "--exclude-standard", "-z"),
+                "cannot inspect untracked files",
+            )
+        )
+    ))
 
 
 def _require_exact_bootstrap_task(
@@ -455,6 +478,297 @@ def _bootstrap_push(root: Path, task: Dict[str, Any], stage: str) -> Dict[str, A
         "previous_remote_sha": expected_before,
         "remote_main_sha": verified,
         "forced": False,
+    }
+
+
+def _require_regular_task_transport(
+    root: Path,
+    task: Dict[str, Any],
+    statuses: tuple[str, ...],
+) -> None:
+    _require_current_task(root, task)
+    _require_complete_validation_plan(task)
+    _require_scope_review(root, task)
+    _require_work_branch(root, task)
+    if task.get("task_id") == BOOTSTRAP_TASK_ID:
+        raise GovernanceError("regular task Git transport cannot replace the bounded GOV-0001 bootstrap flow")
+    if task.get("status") not in statuses:
+        raise GovernanceError(
+            "regular task Git transport requires status %s, found %s"
+            % (" or ".join(statuses), task.get("status"))
+        )
+    branch = task.get("branch")
+    base = task.get("base_branch")
+    if not isinstance(branch, str) or not branch.strip() or branch == base:
+        raise GovernanceError("regular task Git transport requires a reviewed feature branch")
+    project = read_json(control_dir(root) / "project.json")
+    if project.get("source_repository") != _BOOTSTRAP_SOURCE_REPOSITORY:
+        raise GovernanceError("task source repository does not match the fixed GitHub repository")
+
+
+def _task_commit(root: Path, task: Dict[str, Any], actor: str, reason: str) -> Dict[str, Any]:
+    _require_regular_task_transport(root, task, ("LOCAL_VERIFIED",))
+    if actor != "Codex":
+        raise GovernanceError("commit-task must record --actor Codex exactly")
+    if not reason.strip():
+        raise GovernanceError("commit-task reason must be non-empty")
+    if task.get("git", {}).get("committed_sha"):
+        raise GovernanceError("task content commit is already recorded")
+    local_gate = validation_gate_status(root, task, "LOCAL_VERIFIED")
+    if local_gate["missing"]:
+        raise GovernanceError("commit-task requires complete local validation")
+
+    from reconcile import run_reconcile
+
+    report = run_reconcile(root, "precommit")
+    if not report.get("ok"):
+        failed = [
+            str(item.get("message")) for item in report.get("checks", [])
+            if item.get("status") == "failed"
+        ]
+        raise GovernanceError(
+            "commit-task requires a clean precommit reconcile: %s"
+            % ("; ".join(failed) or "unknown reconcile failure")
+        )
+
+    candidates = _changed_worktree_paths(root)
+    if not candidates:
+        raise GovernanceError("commit-task has no reviewed changes")
+    outside = [
+        path for path in candidates
+        if not path_is_allowed(root, path, task.get("allowed_paths", []))
+    ]
+    if outside:
+        raise GovernanceError(
+            "commit-task contains paths outside reviewed scope: %s"
+            % ", ".join(sorted(outside))
+        )
+
+    _git(root, ("add", "--all"), "cannot stage reviewed task content")
+    staged = _nul_paths(
+        _git(
+            root,
+            ("diff", "--cached", "--name-only", "--diff-filter=ACDMRTUXB", "-z"),
+            "cannot inspect staged task content",
+        )
+    )
+    invalid = [
+        path for path in staged
+        if not path_is_allowed(root, path, task.get("allowed_paths", []))
+    ]
+    if not staged or invalid:
+        raise GovernanceError(
+            "staged task content is empty or outside reviewed scope: %s"
+            % ", ".join(sorted(invalid))
+        )
+    _git(root, ("diff", "--cached", "--check"), "staged task content failed whitespace checks")
+    content_message = _task_content_message(task)
+    _git(
+        root,
+        (
+            "-c", "user.name=Codex Governance",
+            "-c", "user.email=codex-governance@users.noreply.github.com",
+            "-c", "commit.gpgSign=false",
+            "commit", "-m", content_message,
+        ),
+        "cannot create reviewed task content commit",
+    )
+    content_sha = normalize_commit(
+        _git(root, ("rev-parse", "HEAD"), "cannot resolve task content commit"),
+        "HEAD",
+    )
+
+    transitioned = _transition(root, task, "COMMITTED", actor, reason, content_sha)
+    control_candidates = _changed_worktree_paths(root)
+    if not control_candidates or any(
+        not _protected_control_path(path) for path in control_candidates
+    ):
+        raise GovernanceError("content commit transition produced non-control or empty state changes")
+    _git(root, ("add", "--all"), "cannot stage protected task state")
+    control_staged = _nul_paths(
+        _git(
+            root,
+            ("diff", "--cached", "--name-only", "--diff-filter=ACDMRTUXB", "-z"),
+            "cannot inspect protected task state",
+        )
+    )
+    if not control_staged or any(
+        not _protected_control_path(path) for path in control_staged
+    ):
+        raise GovernanceError("control commit may contain only protected task state")
+    _git(root, ("diff", "--cached", "--check"), "protected task state failed whitespace checks")
+    control_message = _task_control_message(task)
+    _git(
+        root,
+        (
+            "-c", "user.name=Codex Governance",
+            "-c", "user.email=codex-governance@users.noreply.github.com",
+            "-c", "commit.gpgSign=false",
+            "commit", "-m", control_message,
+        ),
+        "cannot create protected task control commit",
+    )
+    control_sha = normalize_commit(
+        _git(root, ("rev-parse", "HEAD"), "cannot resolve task control commit"),
+        "HEAD",
+    )
+    _verify_content_control_commits(root, content_sha, control_sha)
+    dirty = _git(root, ("status", "--porcelain", "--untracked-files=all"), "cannot verify clean worktree")
+    if dirty:
+        raise GovernanceError("commit-task left unexpected worktree changes")
+    return {
+        "task": transitioned,
+        "content_sha": content_sha,
+        "control_sha": control_sha,
+        "content_paths": sorted(staged),
+        "control_paths": sorted(control_staged),
+        "content_message": content_message,
+        "control_message": control_message,
+    }
+
+
+def _remote_ref_sha(output: str, reference: str) -> Optional[str]:
+    lines = [line for line in output.splitlines() if line.strip()]
+    if not lines:
+        return None
+    if len(lines) != 1:
+        raise GovernanceError("remote reference lookup returned an ambiguous result")
+    fields = lines[0].split()
+    if len(fields) != 2 or fields[1] != reference or not _GITHUB_SHA.fullmatch(fields[0]):
+        raise GovernanceError("remote reference lookup returned an invalid result")
+    return fields[0]
+
+
+def _task_push(root: Path, task: Dict[str, Any], actor: str, reason: str) -> Dict[str, Any]:
+    _require_regular_task_transport(root, task, ("COMMITTED",))
+    if actor != "Codex":
+        raise GovernanceError("push-task must record --actor Codex exactly")
+    if not reason.strip():
+        raise GovernanceError("push-task reason must be non-empty")
+    dirty = _git(root, ("status", "--porcelain", "--untracked-files=all"), "cannot verify clean worktree")
+    if dirty:
+        raise GovernanceError("push-task requires a clean worktree")
+    content_sha = normalize_commit(
+        task.get("git", {}).get("committed_sha"),
+        "task.git.committed_sha",
+    )
+    head = normalize_commit(_git(root, ("rev-parse", "HEAD"), "cannot resolve push head"), "HEAD")
+    if head == content_sha:
+        raise GovernanceError("push-task requires the protected control commit after task content")
+    _verify_content_control_commits(root, content_sha, head)
+    _configure_fixed_origin(root)
+    reference = "refs/heads/" + str(task["branch"])
+    remote_before = _remote_ref_sha(
+        _git(root, ("ls-remote", _BOOTSTRAP_PUSH_URL, reference), "cannot inspect remote task branch"),
+        reference,
+    )
+    pushed = remote_before != head
+    if remote_before is not None and pushed:
+        _output, ancestor_error = run_git(
+            root, ("merge-base", "--is-ancestor", remote_before, head)
+        )
+        if ancestor_error:
+            raise GovernanceError(
+                "remote task branch is not a local ancestor; refusing a non-fast-forward push"
+            )
+    if pushed:
+        _git(
+            root,
+            ("push", _BOOTSTRAP_PUSH_URL, "HEAD:" + reference),
+            "task branch push failed without force",
+        )
+    remote_after = _remote_ref_sha(
+        _git(root, ("ls-remote", _BOOTSTRAP_PUSH_URL, reference), "cannot verify pushed task branch"),
+        reference,
+    )
+    if remote_after != head:
+        raise GovernanceError("remote task branch does not match the reviewed control head")
+    return {
+        "task_id": task["task_id"],
+        "branch": task["branch"],
+        "content_sha": content_sha,
+        "control_sha": head,
+        "remote": _BOOTSTRAP_SOURCE_REPOSITORY,
+        "transport": _BOOTSTRAP_PUSH_URL,
+        "previous_remote_sha": remote_before,
+        "remote_branch_sha": remote_after,
+        "pushed": pushed,
+        "forced": False,
+    }
+
+
+def _recover_blocked_task(
+    root: Path,
+    task: Dict[str, Any],
+    actor: str,
+    reason: str,
+) -> Dict[str, Any]:
+    _require_regular_task_transport(root, task, ("BLOCKED",))
+    if actor != "Codex":
+        raise GovernanceError("recover-blocked must record --actor Codex exactly")
+    if not reason.strip():
+        raise GovernanceError("recover-blocked reason must be non-empty")
+    if task.get("exception", {}).get("previous_status") != "COMMITTED":
+        raise GovernanceError("recover-blocked only handles a task blocked after COMMITTED")
+    candidates = _changed_worktree_paths(root)
+    ordinary = [path for path in candidates if not _protected_control_path(path)]
+    if ordinary:
+        raise GovernanceError(
+            "recover-blocked found ordinary changes before evidence invalidation: %s"
+            % ", ".join(sorted(ordinary))
+        )
+    content_sha = normalize_commit(
+        task.get("git", {}).get("committed_sha"),
+        "task.git.committed_sha",
+    )
+    control_sha = normalize_commit(
+        _git(root, ("rev-parse", "HEAD"), "cannot resolve blocked task head"),
+        "HEAD",
+    )
+    _verify_content_control_commits(root, content_sha, control_sha)
+    timestamp = utc_now()
+    archived_results = copy.deepcopy(task.get("validation", {}).get("results", []))
+    archived_git = copy.deepcopy(task.get("git", {}))
+    archived_exception = copy.deepcopy(task.get("exception", {}))
+    task.setdefault("recovery_history", []).append({
+        "at": timestamp,
+        "actor": actor,
+        "reason": reason,
+        "scope_hash": canonical_scope_hash(task),
+        "from_status": "BLOCKED",
+        "from_previous_status": "COMMITTED",
+        "to_status": "IN_PROGRESS",
+        "failed_content_sha": content_sha,
+        "failed_control_sha": control_sha,
+        "archived_git": archived_git,
+        "archived_exception": archived_exception,
+        "archived_validation_results": archived_results,
+        "append_only_required": True,
+        "force_push_allowed": False,
+    })
+    task.setdefault("history", []).append({
+        "event": "same_scope_blocked_recovery",
+        "from": "BLOCKED",
+        "to": "IN_PROGRESS",
+        "at": timestamp,
+        "actor": actor,
+        "reason": reason,
+        "failed_content_sha": content_sha,
+        "failed_control_sha": control_sha,
+    })
+    task["validation"]["results"] = []
+    task["git"] = {}
+    task["status"] = "IN_PROGRESS"
+    task.pop("exception", None)
+    task["updated_at"] = timestamp
+    validate_task(task)
+    write_json_atomic(task_path(root, task["task_id"]), task)
+    return {
+        "task": task,
+        "failed_content_sha": content_sha,
+        "failed_control_sha": control_sha,
+        "archived_result_count": len(archived_results),
+        "message": "same-scope blocked task reopened; all local validation must rerun",
     }
 
 
@@ -822,6 +1136,35 @@ def build_parser() -> argparse.ArgumentParser:
     pending_content_recovery.add_argument("--reason", required=True)
     common(pending_content_recovery)
 
+    start_branch = subparsers.add_parser(
+        "start-branch",
+        help="create and switch to the reviewed local task branch from its base branch",
+    )
+    start_branch.add_argument("task_id")
+    start_branch.add_argument("--actor", required=True)
+    start_branch.add_argument("--reason", required=True)
+    common(start_branch)
+
+    for command, help_text in (
+        (
+            "commit-task",
+            "create reviewed content and protected control commits after complete local validation",
+        ),
+        (
+            "push-task",
+            "push the reviewed task branch as a non-force fast-forward",
+        ),
+        (
+            "recover-blocked",
+            "reopen same-scope work append-only after a committed task is blocked",
+        ),
+    ):
+        controlled_git = subparsers.add_parser(command, help=help_text)
+        controlled_git.add_argument("task_id")
+        controlled_git.add_argument("--actor", required=True)
+        controlled_git.add_argument("--reason", required=True)
+        common(controlled_git)
+
     create = subparsers.add_parser("create", help="create a DRAFT task from a reviewed JSON specification")
     create.add_argument("--file", required=True, type=Path)
     common(create)
@@ -867,6 +1210,88 @@ def main(argv: Optional[List[str]] = None) -> int:
             task = load_task(root, args.task_id)
             changed = _transition(root, task, args.target, args.actor, args.reason, args.commit)
             _emit({"ok": True, "task": changed, "message": "transition recorded"}, args.json)
+            return 0
+
+        if args.command == "start-branch":
+            task = load_task(root, args.task_id)
+            _require_current_task(root, task)
+            _require_complete_validation_plan(task)
+            _require_scope_review(root, task)
+            if args.actor != "Codex":
+                raise GovernanceError("start-branch must record --actor Codex exactly")
+            if not args.reason.strip():
+                raise GovernanceError("start-branch reason must be non-empty")
+            if task.get("status") not in ("APPROVED", "READY"):
+                raise GovernanceError("start-branch requires task status APPROVED or READY")
+            expected = task.get("branch")
+            base = task.get("base_branch")
+            if not isinstance(expected, str) or not expected.strip():
+                raise GovernanceError("reviewed task branch is missing")
+            if not isinstance(base, str) or not base.strip() or expected == base:
+                raise GovernanceError("reviewed task branch must differ from its base branch")
+            actual, branch_error = current_branch(root)
+            if branch_error:
+                raise GovernanceError(branch_error)
+            if actual != base:
+                raise GovernanceError(
+                    "start-branch must run from reviewed base branch %s, found %s" % (base, actual)
+                )
+            _existing, existing_error = run_git(
+                root, ("show-ref", "--verify", "refs/heads/" + expected)
+            )
+            if existing_error is None:
+                raise GovernanceError("reviewed task branch already exists: %s" % expected)
+            _git(root, ("switch", "-c", expected), "cannot create reviewed task branch")
+            actual, branch_error = current_branch(root)
+            if branch_error or actual != expected:
+                raise GovernanceError("created branch does not match reviewed task branch")
+            timestamp = utc_now()
+            task.setdefault("history", []).append({
+                "event": "local_branch_started",
+                "at": timestamp,
+                "actor": args.actor,
+                "reason": args.reason,
+                "base_branch": base,
+                "branch": expected,
+            })
+            task["updated_at"] = timestamp
+            validate_task(task)
+            write_json_atomic(task_path(root, args.task_id), task)
+            _emit({
+                "ok": True,
+                "task": task,
+                "branch": expected,
+                "base_branch": base,
+                "message": "reviewed local task branch created",
+            }, args.json)
+            return 0
+
+        if args.command == "commit-task":
+            task = load_task(root, args.task_id)
+            evidence = _task_commit(root, task, args.actor, args.reason)
+            _emit({
+                "ok": True,
+                "task": evidence["task"],
+                "evidence": {key: value for key, value in evidence.items() if key != "task"},
+                "message": "reviewed task content and protected control commits created",
+            }, args.json)
+            return 0
+
+        if args.command == "push-task":
+            task = load_task(root, args.task_id)
+            evidence = _task_push(root, task, args.actor, args.reason)
+            _emit({
+                "ok": True,
+                "task_id": task["task_id"],
+                "evidence": evidence,
+                "message": "reviewed task branch is present remotely without force",
+            }, args.json)
+            return 0
+
+        if args.command == "recover-blocked":
+            task = load_task(root, args.task_id)
+            evidence = _recover_blocked_task(root, task, args.actor, args.reason)
+            _emit({"ok": True, **evidence}, args.json)
             return 0
 
         if args.command == "record-validation":
@@ -1522,16 +1947,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                         for item in local_gate["missing"]
                     )
                 )
-            receipt, receipt_reason = find_effective_rework_review(root, task)
-            if receipt is None:
-                raise GovernanceError("same-scope rework has no effective user decision: %s" % receipt_reason)
             timestamp = utc_now()
             archived_results = copy.deepcopy(task.get("validation", {}).get("results", []))
             task.setdefault("rework_history", []).append({
                 "at": timestamp,
                 "actor": args.actor,
                 "reason": args.reason,
-                "review_id": receipt.get("review_id"),
                 "scope_hash": canonical_scope_hash(task),
                 "subject": managed_content_subject(root, task),
                 "from_status": task.get("status"),
@@ -1545,7 +1966,6 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "at": timestamp,
                 "actor": args.actor,
                 "reason": args.reason,
-                "review_id": receipt.get("review_id"),
             })
             task["validation"]["results"] = []
             task["status"] = "IN_PROGRESS"
@@ -1556,9 +1976,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             _emit({
                 "ok": True,
                 "task": task,
-                "rework_review_id": receipt.get("review_id"),
                 "archived_result_count": len(archived_results),
-                "message": "same-scope rework reopened; prior local evidence is archived and inactive",
+                "message": "same-scope local rework reopened; prior evidence is archived and inactive",
             }, args.json)
             return 0
 

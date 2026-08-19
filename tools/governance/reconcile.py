@@ -625,10 +625,16 @@ def _approval_migration_docs_check(
         for anchor in ("conversation-v1", "GOV-0001-R003", "record-conversation", "不是密码学")
         if anchor not in corpus
     ]
-    scope_ok = isinstance(task.get("scope_version"), int) and task.get("scope_version", 0) >= 3
+    scope_version = task.get("scope_version")
+    scope_ok = (
+        isinstance(scope_version, int)
+        and scope_version >= 1
+        and (task.get("task_id") != BOOTSTRAP_TASK_ID or scope_version >= 3)
+    )
     ok = scope_ok and not stale and not missing_anchors
     details = {
-        "scope_version": task.get("scope_version"),
+        "scope_version": scope_version,
+        "migration_scope_applies": task.get("task_id") == BOOTSTRAP_TASK_ID,
         "stale_locations": stale,
         "missing_anchors": missing_anchors,
     }
@@ -637,7 +643,11 @@ def _approval_migration_docs_check(
     else:
         problems: List[str] = []
         if not scope_ok:
-            problems.append("active task scope_version is below 3")
+            problems.append(
+                "GOV-0001 migration scope_version is below 3"
+                if task.get("task_id") == BOOTSTRAP_TASK_ID
+                else "active task scope_version is invalid"
+            )
         if stale:
             problems.append("stale pre-R003 statements: %s" % ", ".join(stale))
         if missing_anchors:

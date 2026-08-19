@@ -1,0 +1,21 @@
+{
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "conversation:2026-08-19:policy-relaxation",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "用户：放宽策略，你收的太紧了，允许创建和编辑本地文件，仅在关键节点上需要我确认。随后用户：继续执行。",
+  "decided_at": "2026-08-19T13:44:56+00:00",
+  "decision": "approved",
+  "expires_at": null,
+  "kind": "scope",
+  "project_id": "material",
+  "reason": "用户确认将治理调整为当前任务范围内允许本地创建和编辑，仅在关键节点确认；不扩展到业务实现或应用初始化",
+  "recorded_by": "Codex",
+  "review_id": "GOV-0002-R001",
+  "schema_version": 3,
+  "scope_hash": "sha256:519a1f8f90b9fc1134cd5e8144b32184bdd5f84b8e3e5af2bfad798debc52812",
+  "scope_version": 1,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "supersedes": null,
+  "task_id": "GOV-0002"
+}

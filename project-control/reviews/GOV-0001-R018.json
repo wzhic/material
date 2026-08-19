@@ -1,0 +1,23 @@
+{
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "Codex conversation 2026-08-19 current user turn",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "确认按最小收口方案返工",
+  "decided_at": "2026-08-19T12:05:12+00:00",
+  "decision": "approved",
+  "expires_at": "2026-08-20T23:59:59Z",
+  "from_status": "LOCAL_VERIFIED",
+  "kind": "rework",
+  "project_id": "material",
+  "reason": "Windows CI exposed two pre-Git fixture boundary failures and one platform skip; user approved the minimal test-only closure without changing production hashing, workflow, dependencies, business code, or unrelated documentation",
+  "recorded_by": "Codex",
+  "review_id": "GOV-0001-R018",
+  "schema_version": 3,
+  "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+  "scope_version": 4,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "subject": "workspace:sha256:edf4dda9fe4591fbb3f126dd23d364a06438a597ba9a928fa849851e34c400a2",
+  "supersedes": null,
+  "task_id": "GOV-0001"
+}

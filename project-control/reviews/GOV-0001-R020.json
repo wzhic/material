@@ -1,0 +1,23 @@
+{
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "Codex conversation 2026-08-19 user decision: 确认按最小收口方案返工",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "确认按最小收口方案返工",
+  "decided_at": "2026-08-19T13:26:55+00:00",
+  "decision": "approved",
+  "expires_at": "2026-08-20T23:59:59Z",
+  "from_status": "LOCAL_VERIFIED",
+  "kind": "rework",
+  "project_id": "material",
+  "reason": "Supersede R018 only to bind the same user-approved minimal portable-test rework to the frozen subject after the required recovery proposal was created; scope and correction remain unchanged",
+  "recorded_by": "Codex",
+  "review_id": "GOV-0001-R020",
+  "schema_version": 3,
+  "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+  "scope_version": 4,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "subject": "workspace:sha256:2acfcbc007f6b835a2b1eb643cb2ad7d0db560ad9efb2917f8883a4af2749aa4",
+  "supersedes": "GOV-0001-R018",
+  "task_id": "GOV-0001"
+}

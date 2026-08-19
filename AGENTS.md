@@ -9,6 +9,10 @@
 3. 只有当前任务处于允许开工的阶段、用户签发的回执有效、分支正确、变更路径在审核范围内且 `reconcile` 无阻断项时，才可执行写入、生成、构建、提交、推送或部署。
 4. 没有审核时只可做门禁允许的只读检查和准备审核所需的记录。不得先写代码、依赖、迁移、脚手架或测试，再补审核。
 
+在 `DRAFT`、`REVIEW_PENDING`、`APPROVED`、`READY` 及异常/终止状态，可以创建或编辑 `docs/requirements/**`、`docs/decisions/**` 和 `project-control/proposals/**` 中的本地准备文件；这不等于获准实现。需求范围获批且任务进入 `IN_PROGRESS` 后，当前任务 `allowed_paths` 内的本地创建、编辑、测试和同范围返工不再逐项向用户确认。
+
+必须单独取得用户明确决定的关键节点是：需求范围定稿；应用脚手架、新依赖或重大架构；登录、个人数据、安全、成本或不兼容迁移；验证豁免；不可逆/破坏性操作；合并、部署和发布。普通本地分支、完整验证后的任务提交、当前功能分支的非强制快进 push 不是独立确认点，但仍必须走受控命令和全部门禁。
+
 `PreToolUse` 的拒绝是有效阻断，不得改配置、改状态、换工具或拆分命令来规避。门禁异常时停止并记录问题。Hook 只约束实际进入该 Hook 的 Codex 工具调用；已获准程序启动的子进程、用户外部终端或其他未接入路径不因此自动受控，不能把 Hook 描述成操作系统级安全边界。
 
 `project-control/tasks/**`、`project-control/reviews/**` 和 `project-control/current-task.json` 禁止直接编辑、覆盖或删除。任务和当前任务只能由 `taskctl` 写入；新回执只能由 `reviewctl record-conversation` 根据当前任务和用户在本次 Codex 对话中的明确决定生成。命令必须记录对话引用、用户原话摘要、原因和 `recorded_by=Codex`，并由工具自动绑定当前 scope、提交、检查项、环境、工作区摘要或操作目标。旧的通用 `record` / `waive` 入口保持禁用。
@@ -25,7 +29,7 @@
 - 修改前明确允许路径、禁止路径、前置依赖、后置影响、数据兼容、验证项和回退条件；超出范围立即停工，通过 `taskctl revise-scope` 形成新版范围并重新审核，禁止手工回退状态。
 - 保留用户和并行任务已有改动。不得覆盖、清理、格式化或提交不属于当前任务的内容。
 - 到达 `LOCAL_VERIFIED` 后普通源代码、文档和配置冻结。同一范围内返工必须先用受控流程使相关验证失效；范围发生变化时必须使用 `taskctl revise-scope` 递增范围版本、回到审核阶段并重新审核，不能修改后继续沿用旧证据。
-- 同一范围返工必须先取得绑定当前冻结工作区摘要、当前 scope 和未来有效期的 `rework` 对话回执，再由 `taskctl reopen` 归档并清空旧本地验证证据、返回 `IN_PROGRESS`。提交后或缺少明确用户对话决定时不得 reopen。
+- `LOCAL_VERIFIED` 后、尚未形成内容提交且冻结摘要仍一致时，同一范围返工可直接由 `taskctl reopen` 归档并清空旧本地验证证据、返回 `IN_PROGRESS`，无需另建 `rework` 回执；范围变化仍须 `revise-scope` 和新 scope 回执。提交后 CI 失败的普通任务只能由 `recover-blocked` 以追加提交方式返工，禁止改写已推送历史或 force push。
 
 ## 文档与设计
 
@@ -52,7 +56,7 @@
 - `local` 证据绑定当前 `scope_hash` 和确定性工作区摘要，`ci` 证据绑定内容提交与 GitHub 事件 base/head，`post_merge` 证据绑定合并后的主分支内容提交。三类证据不得跨阶段或跨提交复用；`precommit` 只是针对已冻结 local 摘要的只读核对报告，不是第四类可记录验证。豁免也必须绑定相同阶段、摘要/提交、环境和该阶段的最远门禁，并始终显示为 `WAIVED`。
 - 用户代码审核使用 `code` 对话回执，并绑定准确内容提交 SHA 和当前范围；未提交工作区、其他提交或旧 CI 结果不能替代。删除历史、破坏性迁移、强制覆盖等不可逆操作前，必须另有用户明确对话决定及对应 `irreversible_operation` 回执。除 R010/R012 精确 recovery proposal 已实现并验证的 `recover-committed` / `recover-pending-content` 专用消费器外，G0 只提供回执记录与核验；其他不可逆操作在后续专门需求补齐消费器前一律保持阻断。
 - 提交前运行 `reconcile` 和任务规定的测试；push、PR 和合并后由 CI 重新验证。CI 失败或缺失时任务不能完成。
-- 直接 `git commit` / `git push` 在 G0 始终拒绝。唯一空仓库引导只能使用 `taskctl bootstrap-commit` / `bootstrap-push` 的 content/control 窄入口；它们固定 `GOV-0001`、`main`、`wzhic/material`、内容提交、受保护控制提交和非强制 push。历史 A→C→D 修复链仍按 R007/R009 固定验证并保留，不得改写。提交后的 bootstrap CI 若再次失败，不得继续给源码增加按 Run 编号硬编码的例外；必须先如实进入 `BLOCKED`，由仓库内规范化 proposal 列出失败 Run、失败 content/control SHA、失败阶段、精确允许路径、固定提交消息和安全不变量，再由当前 scope 的 `irreversible_operation` 对话回执绑定 proposal SHA256。`recover-committed` 处理已经形成控制提交且从 `COMMITTED` 阻断的情况；`recover-pending-content` 只处理内容提交已经非强制推送、尚未形成控制提交且从 `LOCAL_VERIFIED` 阻断的情况。两者都必须核对当前 HEAD、直接父子关系、失败阶段、当前历史数量、对应 rework 回执及 proposal 精确摘要，归档旧恢复标记并清空 PASS 后才允许在 `IN_PROGRESS` 返工。后续内容仍须重新通过完整 local gate，形成失败 head 的单一直接子提交，并只作非强制快进；proposal 漂移、回执过期、额外路径、旁支、远端竞争或验证失败一律阻断。只有 GitHub REST 成功核验该恢复提交的三平台 CI 后，恢复记录才转为 `consumed` 并绑定 content/control/run；此后按消费时间核对当时有效的回执，回执自然到期不得抹除已经完成的历史授权。
+- 直接 `git commit` / `git push` 继续拒绝。普通任务在完整 `LOCAL_VERIFIED` 后使用 `taskctl commit-task` 生成内容提交 A 和仅含受保护状态的控制提交 B，再用 `taskctl push-task` 将当前功能分支非强制快进到固定私有仓库；范围外路径、脏控制头、远端非祖先或竞争更新一律阻断。普通任务从 `COMMITTED` 因 CI 失败进入 `BLOCKED` 后，可用 `taskctl recover-blocked` 归档旧证据并回到 `IN_PROGRESS`，后续 A/B 必须是失败控制头的后代且重新跑完整验证。空仓库引导仍只能使用固定 `GOV-0001` 的 `bootstrap-commit` / `bootstrap-push`；历史 A→C→D、R007/R009 和 R010/R012 恢复链只作为有限迁移证据保留，不得扩展、改写或用于普通任务。所有路径均禁止 force push、`--no-verify` 和按 Run 编号增加源码例外。
 - 私有仓库的 `ci` / `post_merge` 证据只能由 `taskctl sync-github-run` 使用用户在仓库外配置的 Actions 只读凭据在线查询 GitHub REST API，并核对固定仓库、workflow、run attempt、事件、分支、head SHA 和必需 job 全部成功后写入。调用者提供的 URL、结论或日志片段不是证据；无网络、无凭据或元数据不符时失败关闭，凭据不得写入仓库或日志。
 - CI 核对事件 base/head 之间的已提交 diff。任务中的 `committed_sha` 是内容提交 A；`taskctl` 后写入的受保护状态可形成控制提交 B。B 必须包含 A，且 A..B 只能变化 `tasks`、`reviews` 或 `current-task` 机器记录；CI 同时报告 A 和 B。PR 即使处于 detached HEAD，也必须使用事件 payload 的 base/head SHA 和可信 `GITHUB_BASE_REF`/`GITHUB_HEAD_REF`，不得把临时 merge ref 当需求分支；push 使用事件 `before`/`after`。
 - 多发布单元任务的验证计划、兼容矩阵、发布和回退证据必须逐一绑定受影响的 `mac`、`win`、`backend`；共享客户端实现不能合并平台验收。`windows-latest` 上治理 CI 成功只证明治理命令在 Windows runner 执行，不等于真实 Windows 客户端安装、升级、卸载或业务行为验收。

@@ -1,0 +1,23 @@
+{
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "Codex conversation 2026-08-19 immediately after R021 operation and final digest were presented",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "确认",
+  "decided_at": "2026-08-19T13:27:48+00:00",
+  "decision": "approved",
+  "expires_at": "2026-08-20T23:59:59Z",
+  "kind": "irreversible_operation",
+  "operation_id": "GOV-0001-CI-RUN-32248313775-PENDING-CONTENT-RECOVERY",
+  "project_id": "material",
+  "reason": "User explicitly approved the final receipt-bound pending-content recovery for GitHub Actions run 32248313775 and canonical proposal digest sha256:39ff14cd5b068d9dc9440755729acfedc6557a2d97f20b4c5a5cdc9a6fb46e3b; preserve history, do not force push, rerun all validation, and change only portable bootstrap tests plus governance records",
+  "recorded_by": "Codex",
+  "review_id": "GOV-0001-R021",
+  "schema_version": 3,
+  "scope_hash": "sha256:5200bac39582c88681cd56d3781c5c6c109f0d428f290041640f42feaa2ac899",
+  "scope_version": 4,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "supersedes": null,
+  "target_digest": "sha256:39ff14cd5b068d9dc9440755729acfedc6557a2d97f20b4c5a5cdc9a6fb46e3b",
+  "task_id": "GOV-0001"
+}

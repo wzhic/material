@@ -62,7 +62,6 @@ class ValidationEvidenceTests(AuthenticatedReceiptTestCase):
             self.assertEqual("unit", gate["missing"][0]["check_id"])
             self.assertIn("subject", gate["missing"][0]["reason"])
 
-    @unittest.skipIf(os.name == "nt", "Windows does not expose the Git executable-bit distinction via chmod")
     def test_executable_bit_change_invalidates_local_result(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -70,12 +69,18 @@ class ValidationEvidenceTests(AuthenticatedReceiptTestCase):
             governed_file = root / "tools" / "governance" / "subject.sh"
             governed_file.parent.mkdir(parents=True, exist_ok=True)
             governed_file.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-            os.chmod(str(governed_file), stat.S_IMODE(governed_file.stat().st_mode) & ~0o111)
+            _initialized, error = core.run_git(root, ("init", "--quiet"))
+            self.assertIsNone(error)
+            _added, error = core.run_git(root, ("add", "--", "tools/governance/subject.sh"))
+            self.assertIsNone(error)
             task["validation"]["results"] = [valid_local_pass(root, task)]
             write_json(root / "project-control" / "tasks" / "GOV-TEST.json", task)
             stored = read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
             self.assertEqual([], validation_gate_status(root, stored, "LOCAL_VERIFIED")["missing"])
-            os.chmod(str(governed_file), stat.S_IMODE(governed_file.stat().st_mode) | stat.S_IXUSR)
+            _updated, error = core.run_git(
+                root, ("update-index", "--chmod=+x", "--", "tools/governance/subject.sh")
+            )
+            self.assertIsNone(error)
             gate = validation_gate_status(root, stored, "LOCAL_VERIFIED")
             self.assertEqual("unit", gate["missing"][0]["check_id"])
             self.assertIn("subject", gate["missing"][0]["reason"])
