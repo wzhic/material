@@ -179,6 +179,9 @@
   },
   "created_at": "2026-08-19T13:44:08+00:00",
   "dependencies": [],
+  "git": {
+    "committed_sha": "2357d83de0310bf54b0d7b195554e85fe341c647"
+  },
   "history": [
     {
       "actor": "Codex",
@@ -229,6 +232,13 @@
       "from": "IN_PROGRESS",
       "reason": "all reviewed local checks passed after frozen reconcile fix",
       "to": "LOCAL_VERIFIED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-19T14:17:46+00:00",
+      "from": "LOCAL_VERIFIED",
+      "reason": "record the fully validated governance simplification task",
+      "to": "COMMITTED"
     }
   ],
   "open_questions": [],
@@ -641,10 +651,10 @@
     }
   ],
   "scope_version": 1,
-  "status": "LOCAL_VERIFIED",
+  "status": "COMMITTED",
   "summary": "简化治理流程：允许在当前任务范围内创建和编辑本地文件、建立本地分支、提交及同范围返工；仅在需求定稿、依赖和架构、数据安全、不兼容迁移、验证豁免、不可逆操作、合并部署发布等关键节点取得用户确认。同时修复现有恢复闭环和 Windows 测试可移植性问题，不涉及业务代码、应用依赖或技术栈初始化。",
   "task_id": "GOV-0002",
-  "updated_at": "2026-08-19T14:17:06+00:00",
+  "updated_at": "2026-08-19T14:17:46+00:00",
   "validation": {
     "required": [
       {
