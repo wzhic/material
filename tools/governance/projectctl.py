@@ -33,6 +33,12 @@ def generator_commands() -> Tuple[Tuple[str, ...], ...]:
     )
 
 
+def scaffold_ignore_names() -> Tuple[str, ...]:
+    """Generated caches and nested VCS metadata never enter the repository."""
+
+    return (".git", ".venv", "__pycache__", "node_modules", "out")
+
+
 def _require_programs() -> Dict[str, str]:
     resolved: Dict[str, str] = {}
     for name in ("node", "npm", "uv"):
@@ -104,8 +110,9 @@ def initialize(root: Path) -> Dict[str, object]:
         apps = root / "apps"
         apps.mkdir(parents=True, exist_ok=True)
         try:
-            shutil.copytree(staging / "desktop", root / CLIENT_TARGET)
-            shutil.copytree(staging / "backend", root / BACKEND_TARGET)
+            ignore = shutil.ignore_patterns(*scaffold_ignore_names())
+            shutil.copytree(staging / "desktop", root / CLIENT_TARGET, ignore=ignore)
+            shutil.copytree(staging / "backend", root / BACKEND_TARGET, ignore=ignore)
         except Exception:
             shutil.rmtree(root / CLIENT_TARGET, ignore_errors=True)
             shutil.rmtree(root / BACKEND_TARGET, ignore_errors=True)

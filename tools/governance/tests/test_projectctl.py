@@ -21,6 +21,10 @@ class ProjectCtlTests(unittest.TestCase):
         self.assertEqual("uvicorn[standard]", commands[2][-1])
         self.assertTrue(all(isinstance(command, tuple) for command in commands))
 
+    def test_generated_caches_and_nested_git_are_excluded(self) -> None:
+        ignored = set(projectctl.scaffold_ignore_names())
+        self.assertTrue({".git", ".venv", "node_modules", "out"}.issubset(ignored))
+
     def test_existing_targets_are_never_overwritten(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
