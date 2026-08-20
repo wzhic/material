@@ -2256,7 +2256,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                 pass
             if previous and previous != task["task_id"]:
                 active = load_task(root, previous)
-                if active["status"] not in _SELECTABLE_TERMINAL_STATES:
+                # A pushed/committed task may wait for GitHub independently.
+                # This lets one maintainer continue with the next feature
+                # without importing CI run metadata or abandoning the task.
+                switchable_states = _SELECTABLE_TERMINAL_STATES | {"COMMITTED"}
+                if active["status"] not in switchable_states:
                     raise GovernanceError(
                         "cannot switch away from unfinished current task %s (%s)"
                         % (active["task_id"], active["status"])

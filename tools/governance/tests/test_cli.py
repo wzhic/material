@@ -449,18 +449,15 @@ class TaskCtlTests(AuthenticatedReceiptTestCase):
                 root / "project-control" / "current-task.json"
             )["task_id"])
 
-            active["status"] = "DONE"
+            active["status"] = "COMMITTED"
             completed_sha = "a" * 40
             active["git"] = {
                 "committed_sha": completed_sha,
-                "ci_verified_sha": completed_sha,
-                "merged_sha": completed_sha,
-                "post_merge_verified_sha": completed_sha,
             }
             write_json(root / "project-control" / "tasks" / "GOV-TEST.json", active)
             with contextlib.redirect_stdout(io.StringIO()):
                 accepted = taskctl.main([
-                    "set-current", "GOV-NEXT", "--actor", "Codex", "--reason", "completed",
+                    "set-current", "GOV-NEXT", "--actor", "Codex", "--reason", "committed task waits for CI",
                     "--root", str(root),
                 ])
             self.assertEqual(0, accepted)
