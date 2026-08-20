@@ -341,6 +341,7 @@ def _active_task_check(root: Path, current_task: Mapping[str, Any]) -> Dict[str,
     tasks_directory = control_dir(root) / "tasks"
     active: List[Dict[str, str]] = []
     errors: List[str] = []
+    current_id = str(current_task.get("task_id"))
     for path in sorted(tasks_directory.glob("*.json")):
         try:
             task = load_task(root, path.stem)
@@ -349,12 +350,17 @@ def _active_task_check(root: Path, current_task: Mapping[str, Any]) -> Dict[str,
             continue
         status = str(task.get("status"))
         effective_index = _effective_status_index(task)
+        task_id = str(task.get("task_id"))
+        # A non-current COMMITTED task is immutable and may wait for its
+        # independent GitHub run while the sole maintainer starts the next
+        # reviewed task. It is not a second writable workstream.
+        waiting_for_ci = status == "COMMITTED" and task_id != current_id
         if (
             status not in ("DONE", "CANCELLED", "REJECTED")
             and effective_index >= status_index("READY")
+            and not waiting_for_ci
         ):
-            active.append({"task_id": str(task.get("task_id")), "status": status})
-    current_id = str(current_task.get("task_id"))
+            active.append({"task_id": task_id, "status": status})
     if len(active) > 1:
         errors.append("multiple active tasks: %s" % ", ".join(item["task_id"] for item in active))
     elif active and active[0]["task_id"] != current_id:

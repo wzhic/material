@@ -765,12 +765,24 @@ def _git_candidates() -> List[str]:
     return candidates
 
 
-def run_git(root: Path, arguments: Sequence[str]) -> Tuple[Optional[str], Optional[str]]:
+_WORKING_GIT_BY_CANDIDATES: Dict[Tuple[str, ...], str] = {}
+
+
+def run_git(
+    root: Path,
+    arguments: Sequence[str],
+    *,
+    input_text: Optional[str] = None,
+) -> Tuple[Optional[str], Optional[str]]:
     """Run Git with portable fallbacks; every candidate may fail independently."""
 
     candidates = _git_candidates()
     if not candidates:
         return None, "git executable was not found"
+    candidate_key = tuple(candidates)
+    preferred = _WORKING_GIT_BY_CANDIDATES.get(candidate_key)
+    if preferred in candidates:
+        candidates = [preferred] + [candidate for candidate in candidates if candidate != preferred]
     errors: List[str] = []
     for executable in candidates:
         try:
@@ -782,13 +794,19 @@ def run_git(root: Path, arguments: Sequence[str]) -> Tuple[Optional[str], Option
                 text=True,
                 encoding="utf-8",
                 errors="strict",
+                input=input_text,
                 check=False,
             )
         except OSError as exc:
             errors.append("%s: %s" % (executable, exc))
+            if executable == preferred:
+                _WORKING_GIT_BY_CANDIDATES.pop(candidate_key, None)
             continue
         if completed.returncode == 0:
+            _WORKING_GIT_BY_CANDIDATES[candidate_key] = executable
             return completed.stdout.strip(), None
+        if executable == preferred:
+            _WORKING_GIT_BY_CANDIDATES.pop(candidate_key, None)
         errors.append(completed.stderr.strip() or "%s exited %s" % (executable, completed.returncode))
     return None, "; ".join(errors)
 
@@ -1087,6 +1105,33 @@ def _git_blob_oid(root: Path, relative: str) -> str:
     return object_id
 
 
+def _git_blob_oids(root: Path, relatives: Sequence[str]) -> Dict[str, str]:
+    """Hash reviewed paths through Git filters in one bounded subprocess."""
+
+    paths = list(relatives)
+    if not paths:
+        return {}
+    if any("\n" in path or "\r" in path for path in paths):
+        raise GovernanceError("cannot calculate Git blob identity for a path containing a newline")
+    output, error = run_git(
+        root,
+        ("hash-object", "--stdin-paths"),
+        input_text="".join(path + "\n" for path in paths),
+    )
+    if error:
+        raise GovernanceError("cannot calculate Git blob identities: %s" % error)
+    object_ids = (output or "").splitlines()
+    if len(object_ids) != len(paths):
+        raise GovernanceError("Git returned an unexpected blob identity count")
+    result: Dict[str, str] = {}
+    for relative, object_id in zip(paths, object_ids):
+        normalized = object_id.strip().lower()
+        if not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", normalized):
+            raise GovernanceError("cannot parse Git blob identity for %s" % relative)
+        result[relative] = normalized
+    return result
+
+
 def _unfiltered_git_blob_oid(content: bytes) -> str:
     """Return the standard SHA-1 Git blob id used before a worktree exists."""
 
@@ -1115,7 +1160,8 @@ def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
     git_worktree = _git_worktree_available(root)
     tracked_entries = _tracked_git_entries(root)
     modified_paths = _git_modified_paths(root) if tracked_entries else frozenset()
-    entries: List[Tuple[str, str, int, bytes]] = []
+    entries: List[Tuple[str, str, int, Optional[bytes]]] = []
+    filtered_paths: List[str] = []
     try:
         for directory, directory_names, file_names in os.walk(str(root), topdown=True, followlinks=False):
             directory_path = Path(directory)
@@ -1159,7 +1205,8 @@ def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
                     if tracked_entry is not None and relative not in modified_paths:
                         content = ("git-blob:" + tracked_entry[1]).encode("ascii")
                     elif git_worktree:
-                        content = ("git-blob:" + _git_blob_oid(root, relative)).encode("ascii")
+                        content = None
+                        filtered_paths.append(relative)
                     else:
                         content = (
                             "git-blob:" + _unfiltered_git_blob_oid(candidate.read_bytes())
@@ -1170,8 +1217,11 @@ def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
     except OSError as exc:
         raise GovernanceError("cannot calculate local validation subject: %s" % exc) from exc
 
+    filtered_blob_ids = _git_blob_oids(root, filtered_paths)
     digest = hashlib.sha256()
     for relative, kind, executable_bits, content in sorted(entries, key=lambda item: item[0]):
+        if content is None:
+            content = ("git-blob:" + filtered_blob_ids[relative]).encode("ascii")
         path_bytes = relative.encode("utf-8")
         kind_bytes = kind.encode("ascii")
         digest.update(len(path_bytes).to_bytes(8, "big"))

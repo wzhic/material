@@ -1,0 +1,17 @@
+{
+  "task_id": "APP-0001",
+  "allowed_paths": [
+    ".github/**",
+    ".gitignore",
+    "README.md",
+    "apps/**",
+    "docs/**",
+    "project-control/**",
+    "tools/governance/core.py",
+    "tools/governance/projectctl.py",
+    "tools/governance/reconcile.py",
+    "tools/governance/tests/test_core.py",
+    "tools/governance/tests/test_projectctl.py",
+    "tools/governance/tests/test_reconcile_ci_static.py"
+  ]
+}

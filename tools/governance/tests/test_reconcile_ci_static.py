@@ -880,6 +880,28 @@ class GovernanceConsistencyTests(unittest.TestCase):
             self.assertIn("release_units", failed)
             self.assertIn("active_task", failed)
 
+    def test_noncurrent_committed_task_waiting_for_ci_is_not_active_work(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = prepare_static_root(root)
+            waiting = base_task(status="COMMITTED")
+            waiting["task_id"] = "GOV-WAITING"
+            waiting["branch"] = "codex/req-waiting-gov-waiting-ci"
+            waiting["coordination"]["coordinator_task"] = "GOV-WAITING"
+            waiting["coordination"]["unit_tasks"] = {
+                "mac": "GOV-WAITING", "win": "GOV-WAITING", "backend": "GOV-WAITING",
+            }
+            waiting["git"] = {"committed_sha": "a" * 40}
+            write_json(root / "project-control" / "tasks" / "GOV-WAITING.json", waiting)
+
+            report = run_reconcile(root, "session", git_branch=task["branch"], git_changes=[])
+            active = next(item for item in report["checks"] if item["id"] == "active_task")
+            self.assertEqual("passed", active["status"], active)
+            self.assertEqual(
+                [{"task_id": task["task_id"], "status": task["status"]}],
+                active["details"]["active"],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

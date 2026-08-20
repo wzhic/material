@@ -31,6 +31,7 @@ from core import (
     read_json,
     task_path,
     utc_now,
+    _git_candidates,
 )
 
 
@@ -70,6 +71,7 @@ _CI_CONTEXT_ENV_ALLOWLIST = frozenset((
     "MATERIAL_RELEASE_UNIT",
     "RUNNER_OS",
 ))
+_WORKING_GIT_DIRECTORY: Optional[str] = None
 
 
 def _sha256_bytes(value: bytes) -> str:
@@ -296,7 +298,37 @@ def _minimal_environment(temporary_home: Path, phase: str) -> Dict[str, str]:
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONNOUSERSITE": "1",
     })
+    environment["PATH"] = _working_git_directory() + os.pathsep + environment.get("PATH", "")
     return environment
+
+
+def _working_git_directory() -> str:
+    """Return the first Git installation that can initialize a repository."""
+
+    global _WORKING_GIT_DIRECTORY
+    if _WORKING_GIT_DIRECTORY is not None:
+        return _WORKING_GIT_DIRECTORY
+    errors: List[str] = []
+    for candidate in _git_candidates():
+        try:
+            with tempfile.TemporaryDirectory(prefix="material-validation-git-probe-") as temporary:
+                completed = subprocess.run(
+                    [candidate, "init", "--quiet", temporary],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            errors.append("%s: %s" % (candidate, type(exc).__name__))
+            continue
+        if completed.returncode == 0:
+            _WORKING_GIT_DIRECTORY = str(Path(candidate).resolve().parent)
+            return _WORKING_GIT_DIRECTORY
+        errors.append(completed.stderr.strip() or "%s exited %s" % (candidate, completed.returncode))
+    raise GovernanceError("controlled validation requires a working Git executable: %s" % "; ".join(errors))
 
 
 def _resolve_argv(argv: Sequence[str]) -> List[str]:

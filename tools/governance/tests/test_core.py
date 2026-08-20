@@ -35,6 +35,12 @@ import taskctl  # noqa: E402
 
 
 class GitEncodingTests(unittest.TestCase):
+    def setUp(self) -> None:
+        core._WORKING_GIT_BY_CANDIDATES.clear()
+
+    def tearDown(self) -> None:
+        core._WORKING_GIT_BY_CANDIDATES.clear()
+
     def test_run_git_requests_utf8_instead_of_the_windows_locale(self) -> None:
         completed = mock.Mock(returncode=0, stdout="治理输出\n", stderr="")
         with mock.patch.object(core, "_git_candidates", return_value=["git"]), mock.patch.object(
@@ -52,6 +58,33 @@ class GitEncodingTests(unittest.TestCase):
         ), mock.patch.object(core.shutil, "which", return_value="git"):
             candidates = core._git_candidates()
         self.assertEqual("git", candidates[0])
+
+    def test_run_git_reuses_the_first_working_portable_candidate(self) -> None:
+        failed = mock.Mock(returncode=69, stdout="", stderr="license blocked")
+        passed = mock.Mock(returncode=0, stdout="ok\n", stderr="")
+        with mock.patch.object(
+            core, "_git_candidates", return_value=["/system/git", "/portable/git"]
+        ), mock.patch.object(
+            core.subprocess, "run", side_effect=[failed, passed, passed]
+        ) as run:
+            first, first_error = core.run_git(Path("."), ("status",))
+            second, second_error = core.run_git(Path("."), ("status",))
+
+        self.assertEqual(("ok", None), (first, first_error))
+        self.assertEqual(("ok", None), (second, second_error))
+        self.assertEqual(
+            ["/system/git", "/portable/git", "/portable/git"],
+            [call.args[0][0] for call in run.call_args_list],
+        )
+
+    def test_git_blob_paths_are_hashed_in_one_filtered_batch(self) -> None:
+        object_ids = "a" * 40 + "\n" + "b" * 40 + "\n"
+        with mock.patch.object(core, "run_git", return_value=(object_ids, None)) as run:
+            result = core._git_blob_oids(Path("."), ["a.txt", "dir/b.txt"])
+
+        self.assertEqual({"a.txt": "a" * 40, "dir/b.txt": "b" * 40}, result)
+        self.assertEqual(("hash-object", "--stdin-paths"), run.call_args.args[1])
+        self.assertEqual("a.txt\ndir/b.txt\n", run.call_args.kwargs["input_text"])
 
     def test_output_uses_utf8_bytes_when_console_text_encoding_is_cp1252(self) -> None:
         raw = io.BytesIO()

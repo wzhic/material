@@ -17,9 +17,13 @@ if str(GOVERNANCE_DIR) not in sys.path:
 from core import GovernanceError  # noqa: E402
 from helpers import base_task, initialize_root  # noqa: E402
 from validation_runner import RUNNER_VERSION, required_checks, run_one, run_required  # noqa: E402
+import validation_runner  # noqa: E402
 
 
 class ControlledValidationRunnerTests(unittest.TestCase):
+    def tearDown(self) -> None:
+        validation_runner._WORKING_GIT_DIRECTORY = None
+
     def _root_and_task(
         self,
         root: Path,
@@ -170,6 +174,33 @@ class ControlledValidationRunnerTests(unittest.TestCase):
                 result = run_one(root, task, task["validation"]["required"][0], "local")
 
             self.assertEqual("passed", result["status"])
+
+    def test_child_path_prefers_the_first_git_candidate_that_can_initialize(self) -> None:
+        failed = mock.Mock(returncode=69, stderr="license blocked")
+        passed = mock.Mock(returncode=0, stderr="")
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(
+            validation_runner,
+            "_git_candidates",
+            return_value=["/system/git", "/portable/bin/git"],
+        ), mock.patch.object(
+            validation_runner.subprocess,
+            "run",
+            side_effect=[failed, passed],
+        ) as run_mock:
+            environment = validation_runner._minimal_environment(Path(temporary), "local")
+
+        self.assertEqual(
+            "/portable/bin",
+            environment["PATH"].split(os.pathsep)[0],
+        )
+        self.assertEqual(
+            ["/system/git", "init", "--quiet"],
+            run_mock.call_args_list[0].args[0][:3],
+        )
+        self.assertEqual(
+            ["/portable/bin/git", "init", "--quiet"],
+            run_mock.call_args_list[1].args[0][:3],
+        )
 
     def test_ci_gets_only_nonsecret_github_context_allowlist(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
