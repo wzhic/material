@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0001",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "requirement": {
+    "id": "项目初始化-REQ-0002",
+    "name": "项目初始化",
+    "version": "v1.0",
+    "interaction_kind": "non_ui"
+  },
+  "summary": "使用一个受控命令调用 Electron Forge 与 uv 官方生成器，建立共享 macOS/Windows 桌面客户端和统一 FastAPI 后端，安装依赖并验证生成结果；不实现广告素材业务功能、登录、数据 schema、部署或发布。",
+  "release_units": [
+    "mac",
+    "win",
+    "backend"
+  ],
+  "branch": "codex/req-0002-app-0001-project-bootstrap",
+  "base_branch": "codex/req-0001-gov-0002-governance-simplification",
+  "allowed_paths": [
+    ".github/**",
+    ".gitignore",
+    "README.md",
+    "apps/**",
+    "docs/**",
+    "project-control/**",
+    "tools/governance/projectctl.py",
+    "tools/governance/tests/test_projectctl.py"
+  ],
+  "allowed_commands": [
+    "python3 tools/governance/projectctl.py init --json",
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reviewctl.py verify --json",
+    "python3 tools/governance/reviewctl.py record-conversation APP-0001",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py docs --json",
+    "python3 tools/governance/reconcile.py workflow --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/reconcile.py precommit --json",
+    "python3 tools/governance/taskctl.py start-branch APP-0001",
+    "python3 tools/governance/taskctl.py run-validation APP-0001",
+    "python3 tools/governance/taskctl.py run-required APP-0001",
+    "python3 tools/governance/taskctl.py commit-task APP-0001",
+    "python3 tools/governance/taskctl.py push-task APP-0001",
+    "python3 tools/governance/taskctl.py open-pr APP-0001"
+  ],
+  "allowed_tools": [
+    "apply_patch",
+    "ApplyPatch",
+    "Bash",
+    "Read",
+    "Glob",
+    "Grep",
+    "view_image",
+    "codex_app__read_thread_terminal"
+  ],
+  "dependencies": [],
+  "required_docs": [
+    "README.md",
+    "docs/README.md",
+    "docs/requirements/项目初始化-REQ-0002/项目初始化-REQ-0002-v1.0.md",
+    "docs/development/开发流程-DEV-0001-v1.0.md",
+    "docs/operations/发布与回退-OPS-0001-v1.0.md",
+    ".github/workflows/governance.yml"
+  ],
+  "validation": {
+    "required": [
+      {
+        "id": "desktop_lint",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "lint"],
+        "timeout_seconds": 600,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_package",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "package"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "backend_import",
+        "argv": ["uv", "run", "--project", "apps/backend", "python", "-c", "import fastapi"],
+        "timeout_seconds": 600,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["backend"]
+      },
+      {
+        "id": "repository_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "static", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      }
+    ],
+    "results": []
+  },
+  "assumptions": [
+    {"id": "APP-ASM-001", "statement": "Electron Forge webpack-typescript 是共享桌面客户端的可逆默认脚手架。", "status": "confirmed", "source": "用户授权 Codex 采用推荐默认值"},
+    {"id": "APP-ASM-002", "statement": "uv app + FastAPI 是统一后端的可逆默认脚手架。", "status": "confirmed", "source": "用户授权 Codex 采用推荐默认值"},
+    {"id": "APP-ASM-003", "statement": "本任务只生成框架和依赖，不实现登录、SQLite schema 或业务逻辑。", "status": "confirmed", "source": "范围约束"}
+  ],
+  "open_questions": [],
+  "blockers": [],
+  "review_authority": {
+    "scheme": "ssh-keygen-y-v1",
+    "identity": "material-project-owner",
+    "namespace": "material-governance-review",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E"
+  },
+  "ci_trust": {
+    "provider": "github_actions_rest_v1",
+    "repository": "wzhic/material",
+    "workflow_path": ".github/workflows/governance.yml",
+    "api_base": "https://api.github.com",
+    "api_version": "2026-03-10",
+    "private": true,
+    "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "ci_events": ["pull_request", "push"],
+    "post_merge_events": ["push"],
+    "required_jobs": {
+      "pull_request": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"],
+      "push": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"]
+    }
+  },
+  "coordination": {
+    "mode": "coordinated-multi",
+    "coordinator_task": "APP-0001",
+    "unit_tasks": {"mac": "APP-0001", "win": "APP-0001", "backend": "APP-0001"},
+    "compatibility_matrix_doc": "docs/requirements/项目初始化-REQ-0002/项目初始化-REQ-0002-v1.0.md",
+    "deployment_order": ["backend", "mac", "win"],
+    "rollback_order": ["win", "mac", "backend"],
+    "unit_validation_checks": {
+      "mac": ["desktop_lint", "desktop_package", "repository_reconcile"],
+      "win": ["desktop_lint", "desktop_package", "repository_reconcile"],
+      "backend": ["backend_import", "repository_reconcile"]
+    },
+    "unit_rollback_checks": {
+      "mac": ["desktop_package"],
+      "win": ["desktop_package"],
+      "backend": ["backend_import"]
+    }
+  }
+}

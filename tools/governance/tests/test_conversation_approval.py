@@ -213,7 +213,6 @@ class ControlledReworkTests(AuthenticatedReceiptTestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             task = self._verified_task(root)
-            self._write_rework_receipt(root, task)
             with contextlib.redirect_stdout(io.StringIO()):
                 result = taskctl.main([
                     "reopen",
@@ -229,13 +228,16 @@ class ControlledReworkTests(AuthenticatedReceiptTestCase):
             stored = read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
             self.assertEqual("IN_PROGRESS", stored["status"])
             self.assertEqual([], stored["validation"]["results"])
-            self.assertEqual("REV-REWORK", stored["rework_history"][-1]["review_id"])
+            self.assertNotIn("review_id", stored["rework_history"][-1])
             self.assertEqual(1, len(stored["rework_history"][-1]["archived_validation_results"]))
 
-    def test_reopen_without_rework_receipt_fails_closed(self) -> None:
+    def test_reopen_after_frozen_subject_drift_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             task = self._verified_task(root)
+            changed = root / "tools" / "governance" / "changed.txt"
+            changed.parent.mkdir(parents=True, exist_ok=True)
+            changed.write_text("changed after verification\n", encoding="utf-8")
             with contextlib.redirect_stderr(io.StringIO()):
                 result = taskctl.main([
                     "reopen",
@@ -243,7 +245,7 @@ class ControlledReworkTests(AuthenticatedReceiptTestCase):
                     "--actor",
                     "Codex",
                     "--reason",
-                    "unapproved rework",
+                    "attempt rework after content drift",
                     "--root",
                     str(root),
                 ])

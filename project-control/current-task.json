@@ -1,7 +1,8 @@
 {
+  "previous_task_id": "GOV-0001",
+  "reason": "GOV-0001 已取消；用户确认启动本地编辑放宽与关键节点审批治理迁移",
   "schema_version": 1,
-  "task_id": "GOV-0001",
-  "selected_at": "2026-08-18T12:35:28+00:00",
-  "selected_by": "user",
-  "reason": "用户确认按 G0 方向执行治理控制层"
+  "selected_at": "2026-08-19T13:44:20+00:00",
+  "selected_by": "Codex",
+  "task_id": "GOV-0002"
 }

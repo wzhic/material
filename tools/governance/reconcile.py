@@ -625,10 +625,16 @@ def _approval_migration_docs_check(
         for anchor in ("conversation-v1", "GOV-0001-R003", "record-conversation", "不是密码学")
         if anchor not in corpus
     ]
-    scope_ok = isinstance(task.get("scope_version"), int) and task.get("scope_version", 0) >= 3
+    scope_version = task.get("scope_version")
+    scope_ok = (
+        isinstance(scope_version, int)
+        and scope_version >= 1
+        and (task.get("task_id") != BOOTSTRAP_TASK_ID or scope_version >= 3)
+    )
     ok = scope_ok and not stale and not missing_anchors
     details = {
-        "scope_version": task.get("scope_version"),
+        "scope_version": scope_version,
+        "migration_scope_applies": task.get("task_id") == BOOTSTRAP_TASK_ID,
         "stale_locations": stale,
         "missing_anchors": missing_anchors,
     }
@@ -637,7 +643,11 @@ def _approval_migration_docs_check(
     else:
         problems: List[str] = []
         if not scope_ok:
-            problems.append("active task scope_version is below 3")
+            problems.append(
+                "GOV-0001 migration scope_version is below 3"
+                if task.get("task_id") == BOOTSTRAP_TASK_ID
+                else "active task scope_version is invalid"
+            )
         if stale:
             problems.append("stale pre-R003 statements: %s" % ", ".join(stale))
         if missing_anchors:
@@ -775,10 +785,17 @@ def _workflow_check(root: Path) -> Dict[str, Any]:
             "discover('.codex/tests'" in text and "countTestCases()" in text
             and "No hook contract tests discovered" in text
         ),
-        "governance tests run": "unittest discover -s tools/governance/tests" in text,
-        "hook tests run": "unittest discover -s .codex/tests" in text,
-        "static reconcile": "reconcile.py static --json" in text,
-        "CI reconcile": "reconcile.py ci --json" in text,
+        "single controlled validation entry": text.count("run-required") == 1,
+        "no duplicate governance test execution": (
+            "python -m unittest discover -s tools/governance/tests" not in text
+        ),
+        "no duplicate hook test execution": (
+            "python -m unittest discover -s .codex/tests" not in text
+        ),
+        "no duplicate direct reconcile": (
+            "python tools/governance/reconcile.py static --json" not in text
+            and "python tools/governance/reconcile.py ci --json" not in text
+        ),
         "no continue-on-error": not bool(re.search(r"(?i)continue-on-error:\s*true", text)),
     }
     missing = [name for name, present in requirements.items() if not present]

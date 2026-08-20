@@ -315,7 +315,7 @@ class HookPolicyTests(unittest.TestCase):
         payload = self.fixture.payload("Bash", {"command": "git status --short"})
         self.assertIsNone(pre_tool_use.evaluate(payload))
 
-    def test_pre_review_states_are_recognized_but_governance_only(self) -> None:
+    def test_pre_review_states_allow_only_local_preparation_files(self) -> None:
         for status in ("DRAFT", "REVIEW_PENDING"):
             with self.subTest(status=status):
                 self.fixture.set_status(status)
@@ -329,10 +329,39 @@ class HookPolicyTests(unittest.TestCase):
                 _, encoded = output["hookSpecificOutput"]["additionalContext"].split("\n", 1)
                 context = json.loads(encoded)
                 self.assertEqual(context["governance"], "READY")
-                self.assertEqual(context["write_mode"], "GOVERNANCE_ONLY")
+                self.assertEqual(context["write_mode"], "PREPARATION_WRITES_ALLOWED")
                 self.assertEqual(context["task"]["status"], status)
                 self.assertFalse(context["review"]["effective"])
                 self.assertTrue(context["review"]["reason"])
+
+                proposal = self.fixture.payload(
+                    "apply_patch",
+                    {
+                        "command": (
+                            "*** Begin Patch\n"
+                            "*** Add File: project-control/proposals/NEXT-task.json\n"
+                            "+{}\n"
+                            "*** End Patch"
+                        )
+                    },
+                )
+                self.assertIsNone(pre_tool_use.evaluate(proposal))
+
+                implementation = self.fixture.payload(
+                    "apply_patch",
+                    {
+                        "command": (
+                            "*** Begin Patch\n"
+                            "*** Add File: .codex/hooks/not-approved.py\n"
+                            "+pass\n"
+                            "*** End Patch"
+                        )
+                    },
+                )
+                self.assert_denied(
+                    pre_tool_use.evaluate(implementation),
+                    "preparation writes are limited",
+                )
 
     def test_in_progress_scope_allows_in_scope_patch(self) -> None:
         self.fixture.approve()
@@ -410,7 +439,11 @@ class HookPolicyTests(unittest.TestCase):
                     result = pre_tool_use.evaluate(payload)
                     self.assert_denied(
                         result,
-                        "ordinary writes require task status IN_PROGRESS",
+                        (
+                            "preparation writes are limited"
+                            if payload["tool_name"] == "apply_patch"
+                            else "ordinary implementation writes require task status IN_PROGRESS"
+                        ),
                     )
 
     def test_reviewed_lifecycle_states_have_explicit_session_write_mode(self) -> None:
@@ -447,7 +480,11 @@ class HookPolicyTests(unittest.TestCase):
                 expected_mode = (
                     "IN_SCOPE_WRITES_ALLOWED"
                     if status == "IN_PROGRESS"
-                    else "GOVERNANCE_ONLY"
+                    else (
+                        "PREPARATION_WRITES_ALLOWED"
+                        if status in ("APPROVED", "READY")
+                        else "GOVERNANCE_ONLY"
+                    )
                 )
                 self.assertEqual(context["write_mode"], expected_mode)
 
@@ -478,8 +515,57 @@ class HookPolicyTests(unittest.TestCase):
                         result = pre_tool_use.evaluate(frozen_payload)
                         self.assert_denied(
                             result,
-                            "ordinary writes require task status IN_PROGRESS",
+                            (
+                                "preparation writes are limited"
+                                if status in ("APPROVED", "READY")
+                                and frozen_payload["tool_name"] == "apply_patch"
+                                else "ordinary implementation writes require task status IN_PROGRESS"
+                            ),
                         )
+
+    def test_blocked_allows_only_current_task_recovery_proposal(self) -> None:
+        self.fixture.set_status("BLOCKED")
+        payload = {
+            "session_id": "test-session",
+            "cwd": str(self.fixture.root),
+            "hook_event_name": "SessionStart",
+            "source": "resume",
+        }
+        output = session_start.build_output(payload)
+        _, encoded = output["hookSpecificOutput"]["additionalContext"].split("\n", 1)
+        context = json.loads(encoded)
+        self.assertEqual("RECOVERY_PROPOSAL_ONLY", context["write_mode"])
+
+        current = self.fixture.payload("apply_patch", {"command": (
+            "*** Begin Patch\n"
+            "*** Add File: project-control/proposals/GOV-0001-recovery.json\n"
+            "+{}\n"
+            "*** End Patch"
+        )})
+        self.assertIsNone(pre_tool_use.evaluate(current))
+
+        other = self.fixture.payload("apply_patch", {"command": (
+            "*** Begin Patch\n"
+            "*** Add File: project-control/proposals/OTHER-recovery.json\n"
+            "+{}\n"
+            "*** End Patch"
+        )})
+        self.assert_denied(pre_tool_use.evaluate(other), "current state and task-owned")
+
+    def test_terminal_states_are_read_only(self) -> None:
+        for status in ("FAILED", "REJECTED", "CANCELLED", "DONE"):
+            with self.subTest(status=status):
+                self.fixture.set_status(status)
+                proposal = self.fixture.payload("apply_patch", {"command": (
+                    "*** Begin Patch\n"
+                    "*** Add File: project-control/proposals/GOV-0001-late.json\n"
+                    "+{}\n"
+                    "*** End Patch"
+                )})
+                self.assert_denied(
+                    pre_tool_use.evaluate(proposal),
+                    "ordinary implementation writes require task status IN_PROGRESS",
+                )
 
     def test_reviewed_project_control_scope_cannot_directly_mutate_state(self) -> None:
         self.fixture.task["allowed_paths"].append("project-control/**")
@@ -632,7 +718,9 @@ class HookPolicyTests(unittest.TestCase):
         for payload in (patch_payload, write_payload, bash_payload):
             with self.subTest(tool=payload["tool_name"]):
                 result = pre_tool_use.evaluate(payload)
-                self.assert_denied(result, "ordinary writes require task status IN_PROGRESS")
+                self.assert_denied(
+                    result, "ordinary implementation writes require task status IN_PROGRESS"
+                )
 
         transition = (
             "python3 tools/governance/taskctl.py transition GOV-0001 COMMITTED "
@@ -1110,6 +1198,26 @@ class HookPolicyTests(unittest.TestCase):
                 payload = self.fixture.payload("Bash", {"command": command})
                 self.assertIsNone(pre_tool_use.evaluate(payload))
 
+    def test_reconcile_profiles_remain_reachable_after_local_freeze(self) -> None:
+        self.fixture.approve()
+        self.fixture.set_status("LOCAL_VERIFIED")
+        reconcile_script = self.fixture.root / "tools" / "governance" / "reconcile.py"
+        reconcile_script.parent.mkdir(parents=True, exist_ok=True)
+        reconcile_script.write_text("# read-only reconcile fixture\n", encoding="utf-8")
+        for profile in ("session", "docs", "workflow", "static", "precommit", "ci"):
+            with self.subTest(profile=profile):
+                command = "python3 tools/governance/reconcile.py %s --json" % profile
+                self.assertIsNone(
+                    pre_tool_use.evaluate(
+                        self.fixture.payload("Bash", {"command": command})
+                    )
+                )
+        denied = "python3 tools/governance/reconcile.py precommit --root /tmp --json"
+        self.assert_denied(
+            pre_tool_use.evaluate(self.fixture.payload("Bash", {"command": denied})),
+            "--root must be the current repository",
+        )
+
     def test_controlled_validation_and_github_sync_clis_are_reachable(self) -> None:
         repository = shlex.quote(str(self.fixture.root))
         commands = (
@@ -1352,6 +1460,20 @@ class HookPolicyTests(unittest.TestCase):
                     )
                 )
 
+    def test_start_branch_lifecycle_is_reachable_and_shape_checked(self) -> None:
+        allowed = (
+            "python3 tools/governance/taskctl.py start-branch GOV-0001 "
+            "--actor Codex --reason 'start reviewed local branch' --json"
+        )
+        self.assertIsNone(
+            pre_tool_use.evaluate(self.fixture.payload("Bash", {"command": allowed}))
+        )
+        denied = allowed.replace("--actor Codex", "--actor user")
+        self.assert_denied(
+            pre_tool_use.evaluate(self.fixture.payload("Bash", {"command": denied})),
+            "arguments are invalid",
+        )
+
         malformed = (
             "python3 tools/governance/reviewctl.py record-conversation GOV-0001 "
             "--review-id GOV-0001-R004 --decision approved --reason ok "
@@ -1361,6 +1483,43 @@ class HookPolicyTests(unittest.TestCase):
             self.fixture.payload("Bash", {"command": malformed})
         )
         self.assert_denied(result, "--actor must be Codex exactly")
+
+    def test_regular_task_git_and_recovery_channels_are_narrowly_reachable(self) -> None:
+        for subcommand in ("commit-task", "push-task", "recover-blocked"):
+            with self.subTest(subcommand=subcommand):
+                manifest = (
+                    "--manifest project-control/proposals/GOV-0001-change-set.json "
+                    if subcommand == "commit-task" else ""
+                )
+                allowed = (
+                    "python3 tools/governance/taskctl.py %s GOV-0001 "
+                    "%s--actor Codex --reason 'same scope lifecycle' --json"
+                ) % (subcommand, manifest)
+                self.assertIsNone(
+                    pre_tool_use.evaluate(
+                        self.fixture.payload("Bash", {"command": allowed})
+                    )
+                )
+                self.assert_denied(
+                    pre_tool_use.evaluate(
+                        self.fixture.payload(
+                            "Bash",
+                            {"command": allowed.replace("--actor Codex", "--actor user")},
+                        )
+                    ),
+                    "arguments are invalid",
+                )
+
+        missing_manifest = (
+            "python3 tools/governance/taskctl.py commit-task GOV-0001 "
+            "--actor Codex --reason 'same scope lifecycle' --json"
+        )
+        self.assert_denied(
+            pre_tool_use.evaluate(
+                self.fixture.payload("Bash", {"command": missing_manifest})
+            ),
+            "missing required option(s): --manifest",
+        )
 
     def test_bash_aliases_cannot_bypass_governance_cli_policy(self) -> None:
         command = (

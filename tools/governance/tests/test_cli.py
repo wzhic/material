@@ -7,6 +7,7 @@ import os
 import sys
 import tempfile
 import unittest
+import shutil
 from unittest import mock
 from pathlib import Path
 
@@ -17,6 +18,7 @@ if str(GOVERNANCE_DIR) not in sys.path:
 
 import reviewctl  # noqa: E402
 import taskctl  # noqa: E402
+import core  # noqa: E402
 from core import canonical_scope_hash, find_effective_review, read_json  # noqa: E402
 from helpers import (  # noqa: E402
     AuthenticatedReceiptTestCase,
@@ -29,6 +31,261 @@ from reconcile import run_reconcile  # noqa: E402
 
 
 class TaskCtlTests(AuthenticatedReceiptTestCase):
+    def _prepare_committable_task(self, root: Path) -> dict:
+        task = base_task(status="IN_PROGRESS")
+        task["allowed_paths"].append("project-control/**")
+        initialize_root(root, task)
+        project_path = root / "project-control" / "project.json"
+        project = read_json(project_path)
+        project["source_repository"] = "git@github.com:wzhic/material.git"
+        write_json(project_path, project)
+        shutil.rmtree(root / ".git")
+        _output, error = core.run_git(root, ("init", "--quiet", "-b", "main"))
+        self.assertIsNone(error, _output)
+        _output, error = core.run_git(root, ("add", "--all"))
+        self.assertIsNone(error, _output)
+        _output, error = core.run_git(root, (
+            "-c", "user.name=Governance Test",
+            "-c", "user.email=governance-test@example.invalid",
+            "-c", "commit.gpgSign=false",
+            "commit", "--quiet", "-m", "baseline",
+        ))
+        self.assertIsNone(error, _output)
+        _output, error = core.run_git(root, ("switch", "-c", task["branch"]))
+        self.assertIsNone(error, _output)
+        governed = root / "docs" / "governance" / "test.md"
+        governed.write_text("reviewed task change\n", encoding="utf-8")
+        head, error = core.run_git(root, ("rev-parse", "HEAD"))
+        self.assertIsNone(error, head)
+        write_json(
+            root / "project-control" / "proposals" / "GOV-TEST-change-set.json",
+            {
+                "schema_version": 1,
+                "task_id": "GOV-TEST",
+                "base_head": head,
+                "paths": ["docs/governance/test.md"],
+            },
+        )
+        task["validation"]["results"] = [valid_local_pass(root, task)]
+        task["status"] = "LOCAL_VERIFIED"
+        write_json(root / "project-control" / "tasks" / "GOV-TEST.json", task)
+        return task
+
+    def _commit_prepared_task(self, root: Path) -> dict:
+        with mock.patch("reconcile.run_reconcile", return_value={"ok": True, "checks": []}):
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = taskctl.main([
+                    "commit-task",
+                    "GOV-TEST",
+                    "--actor",
+                    "Codex",
+                    "--reason",
+                    "complete reviewed local work",
+                    "--manifest",
+                    "project-control/proposals/GOV-TEST-change-set.json",
+                    "--root",
+                    str(root),
+                    "--json",
+                ])
+        self.assertEqual(0, code)
+        return read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
+
+    def test_commit_task_creates_content_and_protected_control_commits(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._prepare_committable_task(root)
+            stored = self._commit_prepared_task(root)
+            self.assertEqual("COMMITTED", stored["status"])
+            content_sha = stored["git"]["committed_sha"]
+            control_sha, error = core.run_git(root, ("rev-parse", "HEAD"))
+            self.assertIsNone(error, control_sha)
+            self.assertNotEqual(content_sha, control_sha)
+            changed, error = core.run_git(
+                root, ("diff", "--name-only", content_sha + ".." + str(control_sha))
+            )
+            self.assertIsNone(error, changed)
+            self.assertEqual("project-control/tasks/GOV-TEST.json", changed)
+            dirty, error = core.run_git(root, ("status", "--porcelain", "--untracked-files=all"))
+            self.assertIsNone(error, dirty)
+            self.assertEqual("", dirty)
+
+    def test_commit_task_preserves_unstaged_unrelated_work(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = self._prepare_committable_task(root)
+            unrelated = root / "user-notes.txt"
+            unrelated.write_text("user-owned work\n", encoding="utf-8")
+            task["validation"]["results"] = [valid_local_pass(root, task)]
+            write_json(root / "project-control" / "tasks" / "GOV-TEST.json", task)
+            stored = self._commit_prepared_task(root)
+            self.assertEqual("COMMITTED", stored["status"])
+            self.assertEqual("user-owned work\n", unrelated.read_text(encoding="utf-8"))
+            status, error = core.run_git(root, ("status", "--porcelain", "--untracked-files=all"))
+            self.assertIsNone(error, status)
+            self.assertIn("?? user-notes.txt", status)
+            committed, error = core.run_git(root, ("ls-tree", "-r", "--name-only", "HEAD"))
+            self.assertIsNone(error, committed)
+            self.assertNotIn("user-notes.txt", committed.splitlines())
+
+    def test_commit_task_rejects_unrelated_pre_staged_work(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = self._prepare_committable_task(root)
+            unrelated = root / "user-notes.txt"
+            unrelated.write_text("user-owned work\n", encoding="utf-8")
+            _output, error = core.run_git(root, ("add", "--", "user-notes.txt"))
+            self.assertIsNone(error, _output)
+            task["validation"]["results"] = [valid_local_pass(root, task)]
+            write_json(root / "project-control" / "tasks" / "GOV-TEST.json", task)
+            with mock.patch("reconcile.run_reconcile", return_value={"ok": True, "checks": []}):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    code = taskctl.main([
+                        "commit-task", "GOV-TEST", "--actor", "Codex",
+                        "--reason", "must preserve staged user work",
+                        "--manifest", "project-control/proposals/GOV-TEST-change-set.json",
+                        "--root", str(root), "--json",
+                    ])
+            self.assertEqual(2, code)
+
+    def test_push_task_is_non_force_and_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "work"
+            remote = Path(temporary) / "remote.git"
+            root.mkdir()
+            self._prepare_committable_task(root)
+            stored = self._commit_prepared_task(root)
+            _output, error = core.run_git(root, ("init", "--bare", "--quiet", str(remote)))
+            self.assertIsNone(error, _output)
+            command = [
+                "push-task",
+                stored["task_id"],
+                "--actor",
+                "Codex",
+                "--reason",
+                "publish reviewed feature branch",
+                "--root",
+                str(root),
+                "--json",
+            ]
+            with mock.patch.object(taskctl, "_BOOTSTRAP_PUSH_URL", str(remote)):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    first = taskctl.main(command)
+                    second = taskctl.main(command)
+            self.assertEqual(0, first)
+            self.assertEqual(0, second)
+            remote_sha, error = core.run_git(
+                root,
+                ("ls-remote", str(remote), "refs/heads/" + stored["branch"]),
+            )
+            self.assertIsNone(error, remote_sha)
+            head, error = core.run_git(root, ("rev-parse", "HEAD"))
+            self.assertIsNone(error, head)
+            self.assertTrue(str(remote_sha).startswith(str(head) + "\t"))
+
+    def test_open_pr_emits_fixed_compare_url_without_creating_external_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._prepare_committable_task(root)
+            stored = self._commit_prepared_task(root)
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = taskctl.main([
+                    "open-pr", stored["task_id"], "--root", str(root), "--json",
+                ])
+            self.assertEqual(0, code)
+            payload = json.loads(output.getvalue())
+            self.assertEqual(
+                "https://github.com/wzhic/material/compare/main...codex/req-test-gov-test?expand=1",
+                payload["url"],
+            )
+            self.assertFalse(payload["creates_pull_request"])
+
+    def test_prepare_recovery_is_read_only_and_task_owned(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._prepare_committable_task(root)
+            stored = self._commit_prepared_task(root)
+            stored["status"] = "BLOCKED"
+            stored["exception"] = {
+                "previous_status": "COMMITTED",
+                "reason": "CI failed",
+                "recorded_at": "2026-08-19T00:00:00+00:00",
+            }
+            task_path = root / "project-control" / "tasks" / "GOV-TEST.json"
+            write_json(task_path, stored)
+            before = task_path.read_bytes()
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = taskctl.main([
+                    "prepare-recovery", stored["task_id"], "--root", str(root), "--json",
+                ])
+            self.assertEqual(0, code)
+            payload = json.loads(output.getvalue())
+            self.assertEqual("project-control/proposals/GOV-TEST-", payload["proposal_prefix"])
+            self.assertEqual("COMMITTED", payload["previous_status"])
+            self.assertEqual(before, task_path.read_bytes())
+
+    def test_recover_blocked_archives_committed_evidence_without_rewriting_history(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._prepare_committable_task(root)
+            stored = self._commit_prepared_task(root)
+            head_before, error = core.run_git(root, ("rev-parse", "HEAD"))
+            self.assertIsNone(error, head_before)
+            stored["status"] = "BLOCKED"
+            stored["exception"] = {
+                "previous_status": "COMMITTED",
+                "reason": "CI failed",
+                "recorded_at": "2026-08-19T00:00:00+00:00",
+            }
+            write_json(root / "project-control" / "tasks" / "GOV-TEST.json", stored)
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = taskctl.main([
+                    "recover-blocked",
+                    stored["task_id"],
+                    "--actor",
+                    "Codex",
+                    "--reason",
+                    "repair failed CI in the same reviewed scope",
+                    "--root",
+                    str(root),
+                ])
+            self.assertEqual(0, code)
+            recovered = read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
+            self.assertEqual("IN_PROGRESS", recovered["status"])
+            self.assertEqual({}, recovered["git"])
+            self.assertEqual([], recovered["validation"]["results"])
+            self.assertTrue(recovered["recovery_history"][-1]["append_only_required"])
+            head_after, error = core.run_git(root, ("rev-parse", "HEAD"))
+            self.assertIsNone(error, head_after)
+            self.assertEqual(head_before, head_after)
+
+    def test_start_branch_creates_only_reviewed_local_branch(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = base_task(status="APPROVED")
+            initialize_root(root, task)
+            shutil.rmtree(root / ".git")
+            _initialized, error = core.run_git(root, ("init", "--quiet", "-b", "main"))
+            self.assertIsNone(error, _initialized)
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = taskctl.main([
+                    "start-branch",
+                    task["task_id"],
+                    "--actor",
+                    "Codex",
+                    "--reason",
+                    "start reviewed local branch",
+                    "--root",
+                    str(root),
+                ])
+            self.assertEqual(0, code)
+            branch, branch_error = core.current_branch(root)
+            self.assertIsNone(branch_error)
+            self.assertEqual(task["branch"], branch)
+            stored = read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
+            self.assertEqual("local_branch_started", stored["history"][-1]["event"])
+
     def test_create_rejects_task_id_path_traversal(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -192,18 +449,15 @@ class TaskCtlTests(AuthenticatedReceiptTestCase):
                 root / "project-control" / "current-task.json"
             )["task_id"])
 
-            active["status"] = "DONE"
+            active["status"] = "COMMITTED"
             completed_sha = "a" * 40
             active["git"] = {
                 "committed_sha": completed_sha,
-                "ci_verified_sha": completed_sha,
-                "merged_sha": completed_sha,
-                "post_merge_verified_sha": completed_sha,
             }
             write_json(root / "project-control" / "tasks" / "GOV-TEST.json", active)
             with contextlib.redirect_stdout(io.StringIO()):
                 accepted = taskctl.main([
-                    "set-current", "GOV-NEXT", "--actor", "Codex", "--reason", "completed",
+                    "set-current", "GOV-NEXT", "--actor", "Codex", "--reason", "committed task waits for CI",
                     "--root", str(root),
                 ])
             self.assertEqual(0, accepted)

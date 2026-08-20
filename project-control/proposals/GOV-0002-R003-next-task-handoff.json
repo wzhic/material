@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0002",
+  "base_head": "e77d6ddb76791762f38950002bcf715f59071f5e",
+  "paths": [
+    "docs/requirements/项目初始化-REQ-0002/项目初始化-REQ-0002-v1.0.md",
+    "project-control/proposals/APP-0001-task.json",
+    "tools/governance/projectctl.py",
+    "tools/governance/tests/test_projectctl.py"
+  ]
+}

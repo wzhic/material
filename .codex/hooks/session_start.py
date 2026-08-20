@@ -18,6 +18,14 @@ from _governance import (
 )
 
 
+PREPARATION_WRITE_STATES = {
+    "DRAFT",
+    "REVIEW_PENDING",
+    "APPROVED",
+    "READY",
+}
+
+
 NEXT_STATE = {
     "DRAFT": "REVIEW_PENDING",
     "REVIEW_PENDING": "APPROVED",
@@ -48,14 +56,14 @@ NEXT_STEP = {
         "to LOCAL_VERIFIED."
     ),
     "LOCAL_VERIFIED": (
-        "Ordinary writes are frozen. Commit only after separate authorization; exact unborn "
-        "GOV-0001 uses taskctl bootstrap-commit/bootstrap-push --stage content. If same-scope "
-        "rework is needed, first record an explicit user rework decision and use taskctl reopen."
+        "Ordinary writes are frozen. Regular reviewed tasks use taskctl commit-task after the "
+        "complete local gate; exact unborn GOV-0001 keeps its bounded bootstrap transport. "
+        "Same-scope local rework may use taskctl reopen before any content drift."
     ),
     "COMMITTED": (
-        "Exact GOV-0001 records only its protected control change with taskctl bootstrap-commit/"
-        "bootstrap-push --stage control. Then let CI rerun every required check and use taskctl "
-        "sync-github-run with the reviewed GitHub run identity before transition to CI_VERIFIED."
+        "Regular reviewed tasks use taskctl push-task for a non-force feature-branch fast-forward; "
+        "exact GOV-0001 keeps its bounded bootstrap control transport. Then let CI rerun every "
+        "required check and use taskctl sync-github-run before transition to CI_VERIFIED."
     ),
     "CI_VERIFIED": (
         "After explicit user code approval in this conversation, record a commit-bound "
@@ -105,6 +113,11 @@ def _next_state_and_step(task: Dict[str, Any]) -> tuple:
     if status == "BLOCKED":
         exception = task.get("exception")
         previous = exception.get("previous_status") if isinstance(exception, dict) else None
+        if previous == "COMMITTED" and task.get("task_id") != "GOV-0001":
+            return previous, (
+                "For same-scope append-only repair, use taskctl recover-blocked, rerun the full "
+                "local gate, then create and non-force push new descendant commits."
+            )
         return previous, "Resolve the recorded blockers, then use taskctl to resume the previous state."
     return NEXT_STATE.get(status), NEXT_STEP.get(
         status,
@@ -150,6 +163,8 @@ def _context_document(payload: Dict[str, Any]) -> Dict[str, Any]:
         and snapshot.review is not None
         and not blockers
     )
+    preparation_writes_allowed = snapshot.valid and status in PREPARATION_WRITE_STATES
+    recovery_proposal_allowed = snapshot.valid and status == "BLOCKED"
     if not snapshot.valid:
         write_mode = "FAIL_CLOSED"
         instruction = (
@@ -161,6 +176,19 @@ def _context_document(payload: Dict[str, Any]) -> Dict[str, Any]:
         instruction = (
             "Ordinary writes are allowed only inside reviewed allowed_paths while the "
             "task remains IN_PROGRESS; do not bypass validation."
+        )
+    elif preparation_writes_allowed:
+        write_mode = "PREPARATION_WRITES_ALLOWED"
+        instruction = (
+            "Local preparation files may be created or edited only in docs/requirements, "
+            "docs/decisions, and project-control/proposals. Protected task/review/current "
+            "records and implementation files remain blocked until the task is IN_PROGRESS."
+        )
+    elif recovery_proposal_allowed:
+        write_mode = "RECOVERY_PROPOSAL_ONLY"
+        instruction = (
+            "Only a recovery proposal whose filename starts with the current task id may be "
+            "prepared. All implementation, terminal-task, and cross-task writes remain blocked."
         )
     else:
         write_mode = "GOVERNANCE_ONLY"

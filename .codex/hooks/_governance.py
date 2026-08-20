@@ -1134,6 +1134,38 @@ def _taskctl_controlled_shape(
         if parsed["values"]["--actor"] != "Codex":
             return None, "--actor must be Codex exactly"
         return parsed, None
+    if subcommand == "commit-task":
+        parsed, error = _exact_cli_shape(
+            arguments,
+            positional_count=1,
+            required_value_options=("--manifest", "--actor", "--reason"),
+            optional_value_options=("--root",),
+        )
+        if error is not None or parsed is None:
+            return parsed, error
+        task_id = parsed["positionals"][0]
+        if TASK_ID_RE.fullmatch(task_id) is None:
+            return None, "task_id is invalid"
+        if parsed["values"]["--actor"] != "Codex":
+            return None, "--actor must be Codex exactly"
+        manifest = parsed["values"]["--manifest"]
+        if not manifest.startswith("project-control/proposals/%s-" % task_id) or not manifest.endswith(".json"):
+            return None, "--manifest must name a current-task proposal JSON file"
+        return parsed, None
+    if subcommand in {"start-branch", "push-task", "recover-blocked"}:
+        parsed, error = _exact_cli_shape(
+            arguments,
+            positional_count=1,
+            required_value_options=("--actor", "--reason"),
+            optional_value_options=("--root",),
+        )
+        if error is not None or parsed is None:
+            return parsed, error
+        if TASK_ID_RE.fullmatch(parsed["positionals"][0]) is None:
+            return None, "task_id is invalid"
+        if parsed["values"]["--actor"] != "Codex":
+            return None, "--actor must be Codex exactly"
+        return parsed, None
     return None, "controlled taskctl subcommand is not recognized"
 
 
@@ -1260,7 +1292,7 @@ def governance_cli_policy(
 
     script_text = words[1]
     script_name = script_text.replace("\\", "/").rsplit("/", 1)[-1].lower()
-    if script_name not in {"taskctl.py", "reviewctl.py"}:
+    if script_name not in {"taskctl.py", "reviewctl.py", "reconcile.py"}:
         return None
     actual_script = _resolved_argument_path(script_text, cwd, strict=True)
     expected_script = (
@@ -1281,6 +1313,18 @@ def governance_cli_policy(
             return False, "governance CLI --root must be the current repository"
 
     subcommand = arguments[0]
+    if script_name == "reconcile.py":
+        if subcommand not in {"session", "docs", "workflow", "static", "precommit", "ci"}:
+            return False, f"reconcile profile is not permitted through Codex: {subcommand}"
+        _parsed, error = _exact_cli_shape(
+            arguments,
+            positional_count=0,
+            required_value_options=(),
+            optional_value_options=("--root",),
+        )
+        if error is not None:
+            return False, f"reconcile arguments are invalid: {error}"
+        return True, "reconcile profile is read-only and lifecycle-safe"
     if script_name == "reviewctl.py":
         if subcommand in {"record", "waive"}:
             return False, (
@@ -1317,7 +1361,9 @@ def governance_cli_policy(
             return True, "read-only review query"
         return False, f"reviewctl subcommand is not permitted through Codex: {subcommand}"
 
-    read_subcommands = {"current", "show", "list", "scope-hash"}
+    read_subcommands = {
+        "current", "show", "list", "scope-hash", "prepare-recovery", "open-pr",
+    }
     if subcommand in read_subcommands:
         return True, "read-only task query"
     write_subcommands = {
@@ -1334,6 +1380,10 @@ def governance_cli_policy(
         "bootstrap-push",
         "recover-committed",
         "recover-pending-content",
+        "start-branch",
+        "commit-task",
+        "push-task",
+        "recover-blocked",
     }
     if subcommand not in write_subcommands:
         return False, f"taskctl subcommand is not lifecycle-approved: {subcommand}"
@@ -1342,6 +1392,8 @@ def governance_cli_policy(
         "run-validation", "run-required", "sync-github-run",
         "bootstrap-commit", "bootstrap-push", "recover-committed",
         "recover-pending-content",
+        "start-branch",
+        "commit-task", "push-task", "recover-blocked",
     }:
         parsed, error = _taskctl_controlled_shape(subcommand, arguments)
         if error is not None:
@@ -1364,6 +1416,14 @@ def governance_cli_policy(
             )
         if subcommand.startswith("bootstrap-"):
             return True, f"taskctl {subcommand} uses the exact GOV-0001 Git transport path"
+        if subcommand == "start-branch":
+            return True, "taskctl start-branch creates only the reviewed local task branch"
+        if subcommand == "commit-task":
+            return True, "taskctl commit-task creates only reviewed content and protected control commits"
+        if subcommand == "push-task":
+            return True, "taskctl push-task permits only a non-force feature-branch fast-forward"
+        if subcommand == "recover-blocked":
+            return True, "taskctl recover-blocked invalidates evidence for append-only same-scope rework"
         return True, f"taskctl {subcommand} uses the controlled validation evidence path"
 
     if subcommand in {"create", "revise-scope"}:

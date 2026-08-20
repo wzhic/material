@@ -28,6 +28,19 @@ from _governance import (
 )
 
 
+PREPARATION_WRITE_STATES = {
+    "DRAFT",
+    "REVIEW_PENDING",
+    "APPROVED",
+    "READY",
+}
+PREPARATION_PATHS = (
+    "project-control/proposals/**",
+    "docs/requirements/**",
+    "docs/decisions/**",
+)
+
+
 def deny(reason: str) -> Dict[str, Any]:
     return {
         "hookSpecificOutput": {
@@ -99,9 +112,35 @@ def evaluate(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return deny("governance snapshot is invalid: " + concise_reasons(snapshot.reasons))
     task = snapshot.task
     status = task.get("status")
+    preparation_only = status in PREPARATION_WRITE_STATES
+    recovery_proposal_only = status == "BLOCKED"
+    if (preparation_only or recovery_proposal_only) and tool_name == "apply_patch":
+        command = tool_input.get("command") if isinstance(tool_input, dict) else None
+        try:
+            targets = extract_apply_patch_paths(command)
+            for raw_target in targets:
+                relative, resolved = normalize_repo_path(repo_root, raw_target)
+                resolved_relative = resolved.relative_to(repo_root.resolve()).as_posix()
+                protected_reason = direct_governance_mutation_reason(resolved_relative)
+                if protected_reason is None:
+                    protected_reason = direct_governance_mutation_reason(relative)
+                if protected_reason is not None:
+                    return deny(f"protected governance path {relative!r}: {protected_reason}")
+                allowed_preparation_paths = (
+                    PREPARATION_PATHS if preparation_only else
+                    ("project-control/proposals/%s-*.json" % task.get("task_id"),)
+                )
+                if not path_is_allowed(relative, allowed_preparation_paths):
+                    return deny(
+                        "preparation writes are limited to the current state and task-owned proposal files: "
+                        + relative
+                    )
+        except GovernanceError as exc:
+            return deny(str(exc))
+        return None
     if status != ORDINARY_WRITE_STATE:
         return deny(
-            "ordinary writes require task status IN_PROGRESS; "
+            "ordinary implementation writes require task status IN_PROGRESS; "
             f"current status is {status!r}"
         )
     if task.get("blockers"):

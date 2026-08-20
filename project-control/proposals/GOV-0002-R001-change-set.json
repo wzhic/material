@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0002",
+  "base_head": "bfe8578e03bdb6125ccac459b9103cf0a639a7fb",
+  "paths": [
+    ".codex/hooks/_governance.py",
+    ".codex/hooks/pre_tool_use.py",
+    ".codex/hooks/session_start.py",
+    ".codex/tests/test_hooks.py",
+    ".github/workflows/governance.yml",
+    "AGENTS.md",
+    "README.md",
+    "docs/development/开发流程-DEV-0001-v1.0.md",
+    "docs/governance/假设和未决事项-GOV-0002-v1.0.md",
+    "docs/governance/治理总则-GOV-0001-v1.0.md",
+    "docs/project/项目基线-PROJ-0001-v1.0.md",
+    "docs/requirements/治理基线-REQ-0001/治理基线-REQ-0001-v1.0.md",
+    "docs/troubleshooting/治理门禁问题排查-TRB-0001-v1.0.md",
+    "project-control/proposals/GOV-0002-task.json",
+    "tools/governance/reconcile.py",
+    "tools/governance/taskctl.py",
+    "tools/governance/tests/test_cli.py",
+    "tools/governance/tests/test_reconcile_ci_static.py"
+  ]
+}

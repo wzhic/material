@@ -1,45 +1,26 @@
-# 广告素材制作项目
+# Material
 
-本仓库用于广告素材制作者与广告优化师使用的跨平台素材制作产品。当前处于 **G0 治理基线** 阶段，只建立任务、审核、核对、文档与 CI 约束；尚未初始化应用脚手架，也没有业务代码或应用依赖。
+面向广告素材制作者与广告优化师的跨平台素材制作项目。
 
-## 已确认的项目边界
+项目规模为 `M`，采用一个 monorepo 管理三个独立发布单元：共享代码的 macOS/Windows 客户端，以及统一后端。客户端业务功能一致，但两个平台分别构建、验收、发布和回退；后端独立发布。
 
-- 规模：`M`。
-- 形态：`multi`，采用一个 monorepo 管理三个独立发布单元：macOS 客户端、Windows 客户端、统一后端服务。
-- 两个客户端共享业务代码、功能一致，但分别构建、验证、发布和回退。
-- 后端面向公网，但不保存账号数据；身份提供方和鉴权方案仍待确认。
-- 个人数据仅保存在客户端本地 SQLite；登录凭据不得明文写入 SQLite。
-- 产品不会自动发布广告或调整广告预算。
-- 暂不上架应用商店，但架构和发布流程需要保留签名、公证及商店分发能力。
-- 用户是唯一有权签发开工、验证豁免和不可逆操作回执的审核人。
+## 当前约束
 
-风险后果评估已由用户明确延期，因此它是后续技术选型和业务开发前必须重新确认的阻断项，不得解释为“无风险”。
+- 后端不保存账号数据。
+- 个人数据保存在客户端本地 SQLite，登录凭据使用系统安全存储。
+- 当前不走应用商店，但保留以后接入签名、公证和商店发布的能力。
+- 自动化不会发布广告，也不会调整广告预算。
 
-## 开工入口
+## 工作方式
 
-每个新会话必须先接收 `SessionStart` 注入的当前任务，再依次核对任务、审核回执和仓库状态。项目 Hook 经用户在 Codex `/hooks` 信任后，没有有效审核回执时 `PreToolUse` 会阻止其接管的 Codex 工具调用；它不覆盖已获准程序的子进程、用户外部终端或其他未接入路径，也不是操作系统级安全边界。信任前只能称为“配置和本地契约已验证”，不能声称新会话门禁已启用。治理命令位于 `tools/governance/`；机器可读状态位于 `project-control/`。
+治理采用最小交互模式：Codex 在当前任务范围内自动编辑、测试、提交和准备 PR；用户只在验证豁免、破坏性或高风险变更，以及最终合并、部署、发布时做决定。GitHub Actions 直接展示 CI 结果，不需要用户发送 Run 链接或配置本地同步令牌。
 
-`project-control/tasks/**`、`project-control/reviews/**` 和 `project-control/current-task.json` 是受保护的机器记录，禁止直接编辑；任务和当前任务只通过 `taskctl` 管理。用户在当前 Codex 对话中明确决定后，由 `reviewctl record-conversation` 自动绑定当前 scope、提交、验证项或操作目标并追加审计回执；旧的通用 `record` / `waive` 保持禁用。对话回执不提供密码学身份或人在场证明，这一弱化边界由用户明确选择并记录。
+主要入口：
 
-任何需求都必须先有明确范围、需求版本、影响分析、验证计划和回退计划，然后才能由用户签发开工回执。禁止通过跳过测试、关闭门禁或把未执行项标记为通过来完成任务。
+- `python3 tools/governance/taskctl.py current --json`：查看当前任务。
+- `python3 tools/governance/reconcile.py session --json`：核对仓库状态。
+- `python3 tools/governance/projectctl.py init`：用官方生成器完成应用框架和依赖初始化。
 
-详细规则见：
+应用初始化默认采用 Electron Forge + TypeScript 构建共享桌面客户端，采用 uv + FastAPI 构建统一后端。生成器产生依赖清单和锁文件，仓库不手工仿造脚手架。
 
-- [协作规则](AGENTS.md)
-- [文档导航](docs/README.md)
-- [治理基线需求](docs/requirements/治理基线-REQ-0001/治理基线-REQ-0001-v1.0.md)
-- [治理总则](docs/governance/治理总则-GOV-0001-v1.0.md)
-- [假设和未决事项](docs/governance/假设和未决事项-GOV-0002-v1.0.md)
-- [验证与豁免](docs/governance/验证与豁免-GOV-0003-v1.0.md)
-
-## 状态说明
-
-文档描述规则，`project-control/` 中的记录描述当前状态。两者不一致时不得自行选择其一继续开发，必须运行 `reconcile`，将差异作为阻断项处理。
-
-当前仓库只处于未提交的 G0 工作区阶段。workflow 文件存在不表示 GitHub CI 已运行；在真实 push、PR 和合并后 workflow 分别绑定准确内容提交并成功完成前，CI、跨平台和合并后验证均保持 `PENDING`。私有仓库的 CI/合并后结果还必须由 `taskctl sync-github-run` 使用用户在仓库外配置的 Actions 只读凭据在线查询 GitHub REST API，核对固定仓库、workflow、run attempt、事件、分支、提交和必需 job；缺网络、凭据或匹配项时失败关闭。调用者自报的 URL、结论或日志片段不能形成 PASS，凭据不得写入仓库或输出。
-
-受控 runner、历史签名回执验签、对话回执绑定和 GitHub REST 在线核验已经实现并有负向测试：本地 PASS 由受审核 argv 的实际执行结果派生，CI/合并后 PASS 只能来自在线核验后的真实 run。`GOV-0001-R003` 已由用户作为最后一份 OpenSSH 回执签发并授权 scope v3 起改为 `conversation-v1`；R004 已作为首份对话 scope 回执精确绑定 scope v4，R005 授权修复首次 G0 CI 闭环，R006 进一步只授权补齐受控 A/B 提交与推送入口并重跑全部本地验证。R001/R002/R003 与公钥仅保留为历史迁移证据，后续审批不再要求签名。当前 G0 仍未提交或 push，真实 GitHub run 尚未发生，因此本文不是提交、CI 或完成声明。
-
-空仓库首次推送采用严格两步协议：根内容提交 A 必须包含完整且在 GOV-0001 范围内的治理快照，workflow 会执行全部检查但只报告 `bootstrap_pending`，不写入 CI PASS；`taskctl` 记录 A 后形成的控制提交 B 只能修改受保护的任务/回执/当前任务记录，B 再执行全部检查，成功后才可供 GitHub REST 同步真实 CI 证据。提交与推送只能通过 `taskctl bootstrap-commit/bootstrap-push --stage content|control`；工具固定仓库身份、SSH 443 传输、提交消息和非强制 push，并在前后检查根提交、远端状态和 A..B 差异。该例外只匹配 `GOV-0001 + main + 空远端 + 根提交 A + 受保护控制提交 B`，不得通过空提交、强制推送、跳过检查或普通内容变更复用。
-
-本项目三个发布单元的自动检查、兼容和回退证据必须分别记录。PR 与 `main` push 的 `windows-latest` 治理检查只证明治理入口在 Windows runner 执行，不等于真实 Windows 客户端的安装、升级、卸载和业务行为验收；同一分支被新提交取代的旧运行会取消，以控制私有仓库 CI 成本。
+详细需求、开发、运维和排障记录见 [docs/README.md](docs/README.md)。历史 G0 文档保留用于审计，不再代表普通任务需要用户逐步操作。
