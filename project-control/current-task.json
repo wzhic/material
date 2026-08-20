@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0001",
-  "reason": "GOV-0001 已取消；用户确认启动本地编辑放宽与关键节点审批治理迁移",
+  "previous_task_id": "GOV-0002",
+  "reason": "continue approved one-command application initialization while GOV-0002 waits for GitHub CI",
   "schema_version": 1,
-  "selected_at": "2026-08-19T13:44:20+00:00",
+  "selected_at": "2026-08-20T01:37:14+00:00",
   "selected_by": "Codex",
-  "task_id": "GOV-0002"
+  "task_id": "APP-0001"
 }
