@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0003",
-  "reason": "repair-self-created-task-switch-deadlock-without-user-intervention",
+  "previous_task_id": "GOV-0004",
+  "reason": "align the current governance repair branch with its reviewed task branch",
   "schema_version": 1,
-  "selected_at": "2026-08-21T12:36:58+00:00",
+  "selected_at": "2026-08-21T12:49:58+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0003"
+  "task_id": "GOV-0004"
 }

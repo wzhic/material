@@ -268,6 +268,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "commit-only-atomic-task-activation-handoff",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-21T12:44:14+00:00",
+      "from": "COMMITTED",
+      "reason": "the user requested verification of prototype delivery and the committed PRD task contains no standalone prototype artifact, so the same-scope deliverable must be completed before product review",
+      "to": "BLOCKED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-21T12:51:48+00:00",
+      "from": "BLOCKED",
+      "reason": "restore the unchanged committed Product Library task while its branch-switch repair task is active; prototype recovery will resume after the controller fix completes",
+      "to": "COMMITTED"
     }
   ],
   "open_questions": [],
@@ -1248,7 +1262,7 @@
   ],
   "summary": "在任何产品库业务实现开始前，将已确认方向整理为可实现、可验收的 V1 产品需求文档：覆盖服饰与游戏产品的用户主动创建、编辑、删除、查找、可选绑定、重复提醒、版本与渠道结构、报告快照关系，以及入口、取消、空/加载/成功/失败、离线/超时、恢复、权限和无障碍状态；提供不限制扩展性的表单样例与必填规则。本任务不实现客户端代码、SQLite schema、模型接入、素材分析、素材库或标签库。",
   "task_id": "APP-0003",
-  "updated_at": "2026-08-21T12:39:26+00:00",
+  "updated_at": "2026-08-21T12:51:48+00:00",
   "validation": {
     "required": [
       {
