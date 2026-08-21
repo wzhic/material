@@ -367,6 +367,27 @@ class StaticProfileTests(AuthenticatedReceiptTestCase):
             contract = next(item for item in report["checks"] if item["id"] == "workflow_contract")
             self.assertIn("fetch-depth", contract["message"])
 
+    def test_workflow_contract_requires_nonempty_test_suite_guards(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = prepare_static_root(root)
+            workflow = root / ".github" / "workflows" / "governance.yml"
+            workflow.write_text(
+                workflow.read_text(encoding="utf-8").replace(
+                    "discover('tools/governance/tests', pattern='test_*.py').countTestCases()",
+                    "discover('tools/governance/tests', pattern='test_*.py').disabledCount()",
+                ),
+                encoding="utf-8",
+            )
+            report = run_reconcile(
+                root, "workflow", git_branch=task["branch"], git_changes=[]
+            )
+            self.assertFalse(report["ok"])
+            contract = next(
+                item for item in report["checks"] if item["id"] == "workflow_contract"
+            )
+            self.assertIn("governance tests reject an empty suite", contract["message"])
+
     def test_workflow_contract_requires_controlled_three_unit_matrix(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -388,8 +409,8 @@ class StaticProfileTests(AuthenticatedReceiptTestCase):
             workflow = root / ".github" / "workflows" / "governance.yml"
             workflow.write_text(
                 workflow.read_text(encoding="utf-8").replace(
-                    ", '--bootstrap-first-push', '--json'",
-                    ", '--bootstrap-first-push'",
+                    ", '--json']))",
+                    "]))",
                 ),
                 encoding="utf-8",
             )
@@ -412,6 +433,36 @@ class StaticProfileTests(AuthenticatedReceiptTestCase):
             self.assertFalse(report["ok"])
             contract = next(item for item in report["checks"] if item["id"] == "workflow_contract")
             self.assertIn("no duplicate governance test execution", contract["message"])
+
+    def test_workflow_contract_rejects_github_run_metadata_writeback(self) -> None:
+        forbidden_markers = (
+            "sync-github-run",
+            "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+            "secrets.GITHUB_TOKEN",
+            "github.token",
+            "GITHUB_RUN_ID",
+            "github.run_id",
+            "--run-id",
+            "--run-url",
+            "/actions/runs/",
+        )
+        for marker in forbidden_markers:
+            with self.subTest(marker=marker), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                task = prepare_static_root(root)
+                workflow = root / ".github" / "workflows" / "governance.yml"
+                workflow.write_text(
+                    workflow.read_text(encoding="utf-8") + "\n# " + marker + "\n",
+                    encoding="utf-8",
+                )
+                report = run_reconcile(
+                    root, "workflow", git_branch=task["branch"], git_changes=[]
+                )
+                self.assertFalse(report["ok"])
+                contract = next(
+                    item for item in report["checks"] if item["id"] == "workflow_contract"
+                )
+                self.assertIn("no GitHub run metadata writeback", contract["message"])
 
     def test_static_rejects_fixed_project_repository_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -648,6 +699,50 @@ class TrustedCiContextTests(AuthenticatedReceiptTestCase):
             self.assertEqual(task["branch"], branch["details"]["actual"])
             static_branch = next(item for item in static_report["checks"] if item["id"] == "branch")
             self.assertEqual("trusted_github_event", static_branch["details"]["source"])
+
+    def test_taskctl_ci_branch_gate_accepts_only_a_reconciled_detached_pr_head(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task, base_sha, _content_sha, control_sha = self.prepare_two_layer_commits(root)
+            git(root, "checkout", "--detach", control_sha)
+            environment = github_pull_request_environment(
+                root, base_sha, control_sha, "main", task["branch"]
+            )
+            with mock.patch.dict(os.environ, environment, clear=False):
+                taskctl._require_validation_branch(root, task, "ci")
+
+            untrusted = dict(environment)
+            untrusted["GITHUB_REPOSITORY"] = "attacker/material"
+            with mock.patch.dict(os.environ, untrusted, clear=False):
+                with self.assertRaisesRegex(Exception, "trusted GitHub CI context is invalid"):
+                    taskctl._require_validation_branch(root, task, "ci")
+
+    def test_main_push_detached_head_runs_the_single_controlled_ci_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task, base_sha, _content_sha, control_sha = self.prepare_two_layer_commits(root)
+            git(root, "branch", "main", base_sha)
+            git(root, "switch", "main")
+            git(root, "merge", "--no-ff", control_sha, "-m", "merge governed task")
+            merge_sha = git(root, "rev-parse", "HEAD")
+            git(root, "checkout", "--detach", merge_sha)
+            environment = github_push_environment(root, base_sha, merge_sha, "main")
+            with mock.patch.dict(os.environ, environment, clear=False):
+                report = run_reconcile(root, "ci")
+                with mock.patch("sys.stdout"):
+                    code = taskctl.main([
+                        "run-required", task["task_id"],
+                        "--phase", "ci",
+                        "--release-unit", "backend",
+                        "--environment", "github-actions:push:backend",
+                        "--root", str(root),
+                        "--json",
+                    ])
+            self.assertTrue(report["ok"], report)
+            self.assertEqual(0, code)
+            branch = next(item for item in report["checks"] if item["id"] == "branch")
+            self.assertEqual("main", branch["details"]["actual"])
+            self.assertEqual("trusted_github_event", branch["details"]["source"])
 
     def test_ci_rejects_event_head_that_is_not_checked_out(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

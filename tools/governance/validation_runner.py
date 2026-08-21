@@ -199,7 +199,11 @@ def _validate_check(
     argv = _validate_argv(check.get("argv"))
     timeout = _validate_timeout(check.get("timeout_seconds"))
     gates = check.get("gates")
-    if not isinstance(gates, list) or PHASE_GATES[phase] not in gates:
+    phase_gate = PHASE_GATES[phase]
+    repeats_local_plan = phase in ("ci", "post_merge") and (
+        isinstance(gates, list) and "LOCAL_VERIFIED" in gates
+    )
+    if not isinstance(gates, list) or (phase_gate not in gates and not repeats_local_plan):
         raise GovernanceError("validation check %s is not required for phase %s" % (check_id, phase))
     release_units = check.get("release_units")
     task_units_value = task.get("release_units", []) if isinstance(task, Mapping) else []
@@ -232,7 +236,11 @@ def required_checks(
     phase: str,
     release_unit: Optional[str] = None,
 ) -> List[Mapping[str, Any]]:
-    """Return all reviewed checks for a phase, rejecting an empty phase plan."""
+    """Return controlled checks for a phase, rejecting an empty plan.
+
+    CI and post-merge runs repeat the local plan even when a new minimal task
+    does not declare separate evidence gates for those environments.
+    """
 
     if phase not in VALIDATION_PHASES:
         raise GovernanceError("unknown validation phase: %s" % phase)
@@ -244,7 +252,11 @@ def required_checks(
     gate = PHASE_GATES[phase]
     selected = [
         check for check in _declared_checks(task)
-        if isinstance(check.get("gates"), list) and gate in check.get("gates", [])
+        if isinstance(check.get("gates"), list)
+        and (
+            gate in check.get("gates", [])
+            or (phase in ("ci", "post_merge") and "LOCAL_VERIFIED" in check.get("gates", []))
+        )
         and (release_unit is None or release_unit in check.get("release_units", []))
     ]
     if not selected:

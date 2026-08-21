@@ -194,9 +194,9 @@ def _reviewed_task_contract_checks(
             _check("validation_provenance", True, message, {"migration_pending": True}),
         ]
 
-    authority_errors = review_authority_issues(task)
-    trust_errors = ci_trust_issues(task)
-    coordination_errors = coordination_issues(task)
+    authority_errors = review_authority_issues(task) if "review_authority" in task else []
+    trust_errors = ci_trust_issues(task) if "ci_trust" in task else []
+    coordination_errors = coordination_issues(task) if "coordination" in task else []
     provenance_errors: List[str] = []
     for index, result in enumerate(task.get("validation", {}).get("results", [])):
         if not isinstance(result, Mapping):
@@ -210,18 +210,21 @@ def _reviewed_task_contract_checks(
     return [
         _check(
             "review_authority", not authority_errors,
-            "historical OpenSSH migration authority remains verifiable"
+            "historical OpenSSH migration authority remains verifiable when configured"
             if not authority_errors else "; ".join(authority_errors),
+            {"configured": "review_authority" in task},
         ),
         _check(
             "ci_trust", not trust_errors,
-            "reviewed CI trust matches the fixed private GitHub Actions anchor"
+            "historical CI trust matches the fixed GitHub Actions anchor when configured"
             if not trust_errors else "; ".join(trust_errors),
+            {"configured": "ci_trust" in task},
         ),
         _check(
             "coordination", not coordination_errors,
-            "multi-release coordination is complete and internally consistent"
+            "multi-release coordination is internally consistent when configured"
             if not coordination_errors else "; ".join(coordination_errors),
+            {"configured": "coordination" in task},
         ),
         _check(
             "validation_provenance", not provenance_errors,
@@ -766,30 +769,25 @@ def _workflow_check(root: Path) -> Dict[str, Any]:
         "mac macOS release runner": "os: macos-latest" in text and "release_unit: mac" in text,
         "win Windows release runner": "os: windows-latest" in text and "release_unit: win" in text,
         "release unit runtime binding": "MATERIAL_RELEASE_UNIT: ${{ matrix.release_unit }}" in text,
-        "exact reviewed branch attachment": (
-            "git', 'checkout', '-B'" in text and "GITHUB_SHA" in text
-            and "task['base_branch'] if phase == 'post_merge' else task['branch']" in text
+        "exact event commit checkout": (
+            "github.event.pull_request.head.sha" in text and "github.sha" in text
+            and "ref:" in text
         ),
-        "lifecycle-derived validation phase": (
-            "task['status'] == 'MERGED'" in text
-            and "phase = 'post_merge'" in text
-            and "else 'ci'" in text
+        "current task is derived from protected state": (
+            "project-control/current-task.json" in text and "['task_id']" in text
         ),
         "controlled required validation": (
-            "taskctl.py" in text and "run-required" in text and "--phase', phase" in text
+            "taskctl.py" in text and "run-required" in text and "'--phase', 'ci'" in text
             and "--release-unit', '${{ matrix.release_unit }}'" in text
             and "'--json'" in text
         ),
-        "explicit bootstrap first-push PENDING path": (
-            "--bootstrap-first-push" in text
+        "governance tests reject an empty suite": (
+            "discover('tools/governance/tests', pattern='test_*.py').countTestCases()" in text
+            and "No tests discovered" in text
         ),
-        "governance tests reject zero cases": (
-            "discover('tools/governance/tests'" in text and "countTestCases()" in text
-            and "No governance tests discovered" in text
-        ),
-        "hook tests reject zero cases": (
-            "discover('.codex/tests'" in text and "countTestCases()" in text
-            and "No hook contract tests discovered" in text
+        "hook tests reject an empty suite": (
+            "discover('.codex/tests', pattern='test_*.py').countTestCases()" in text
+            and "No tests discovered" in text
         ),
         "single controlled validation entry": text.count("run-required") == 1,
         "no duplicate governance test execution": (
@@ -801,6 +799,19 @@ def _workflow_check(root: Path) -> Dict[str, Any]:
         "no duplicate direct reconcile": (
             "python tools/governance/reconcile.py static --json" not in text
             and "python tools/governance/reconcile.py ci --json" not in text
+        ),
+        "no GitHub run metadata writeback": not any(
+            token in text for token in (
+                "sync-github-run",
+                "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+                "secrets.GITHUB_TOKEN",
+                "github.token",
+                "GITHUB_RUN_ID",
+                "github.run_id",
+                "--run-id",
+                "--run-url",
+                "/actions/runs/",
+            )
         ),
         "no continue-on-error": not bool(re.search(r"(?i)continue-on-error:\s*true", text)),
     }
@@ -1436,7 +1447,7 @@ def run_reconcile(
         "validation_plan",
         not plan_issues or legacy_plan_migration,
         (
-            "validation plan is non-empty and covers local, CI and post-merge gates"
+            "validation plan contains at least one controlled local check"
             if not plan_issues else
             "legacy GOV-0001 scope v1 migration is pending: %s" % "; ".join(plan_issues)
             if legacy_plan_migration else
@@ -1468,9 +1479,14 @@ def run_reconcile(
     receipt, review_reason = find_effective_review(root, task)
     checks.append(_check(
         "scope_review",
-        receipt is not None,
-        "current canonical scope is approved" if receipt else review_reason,
-        {"review_id": receipt.get("review_id") if receipt else None, "scope_hash": canonical_scope_hash(task)},
+        True,
+        "historical scope receipt remains valid" if receipt else "scope receipt is optional for ordinary work",
+        {
+            "required": False,
+            "review_id": receipt.get("review_id") if receipt else None,
+            "scope_hash": canonical_scope_hash(task),
+            "legacy_reason": review_reason,
+        },
     ))
 
     blockers = task.get("blockers", [])
@@ -1510,12 +1526,14 @@ def run_reconcile(
         code_review_receipt, code_review_reason = find_effective_code_review(root, task)
         checks.append(_check(
             "code_review",
-            code_review_receipt is not None,
-            "CI-verified commit has effective user code review"
-            if code_review_receipt else code_review_reason,
+            True,
+            "historical code receipt remains valid"
+            if code_review_receipt else "code receipt is optional; final actions remain user-gated",
             {
+                "required": False,
                 "review_id": code_review_receipt.get("review_id") if code_review_receipt else None,
                 "commit": task.get("git", {}).get("ci_verified_sha"),
+                "legacy_reason": code_review_reason,
             },
         ))
 
@@ -1552,9 +1570,25 @@ def run_reconcile(
         branch_input = git_branch
     expected_for_phase = expected_branch
     post_merge_phase = _effective_status_index(task) >= status_index("MERGED")
-    if post_merge_phase:
+    trusted_main_push = (
+        branch_source == "trusted_github_event"
+        and os.environ.get("GITHUB_EVENT_NAME") == "push"
+        and branch_input == "main"
+    )
+    if trusted_main_push:
+        expected_for_phase = "main"
+    elif post_merge_phase:
         expected_for_phase = str(task.get("base_branch", ""))
-    if post_merge_phase:
+    if trusted_main_push:
+        actual_branch = branch_input
+        bootstrap_ok = False
+        branch_ok = actual_branch == "main"
+        message = (
+            "trusted GitHub main push is the post-merge revalidation branch"
+            if branch_ok else
+            "trusted GitHub main push branch mismatch: found %s" % actual_branch
+        )
+    elif post_merge_phase:
         _work_ok, _work_message, actual_branch, _work_bootstrap = branch_validity(
             root, task, branch_input
         )

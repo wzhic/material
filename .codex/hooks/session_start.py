@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inject the current reviewed task when a Codex session starts or resumes."""
+"""Inject a concise current-task summary when a Codex session starts."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ from typing import Any, Dict
 from _governance import (
     GovernanceError,
     ORDINARY_WRITE_STATE,
-    _is_legacy_bootstrap_scope_v1,
     concise_reasons,
     emit_json,
     load_snapshot,
@@ -27,7 +26,7 @@ PREPARATION_WRITE_STATES = {
 
 
 NEXT_STATE = {
-    "DRAFT": "REVIEW_PENDING",
+    "DRAFT": "IN_PROGRESS",
     "REVIEW_PENDING": "APPROVED",
     "APPROVED": "READY",
     "READY": "IN_PROGRESS",
@@ -42,37 +41,36 @@ NEXT_STATE = {
 
 
 NEXT_STEP = {
-    "DRAFT": "Complete the recorded scope, then use taskctl transition to request review.",
+    "DRAFT": "Use taskctl begin to create the task branch and enter IN_PROGRESS.",
     "REVIEW_PENDING": (
-        "After the user explicitly approves in this Codex conversation, use the narrow "
-        "reviewctl record-conversation command, verify the bound receipt, then use "
-        "taskctl transition to APPROVED."
+        "This is a compatibility state. Reconcile the recorded task with taskctl and resume "
+        "toward IN_PROGRESS; routine work needs no scope receipt."
     ),
-    "APPROVED": "Reconcile the approved scope, then use taskctl transition to READY.",
-    "READY": "Use taskctl transition to IN_PROGRESS before ordinary implementation work.",
+    "APPROVED": "Resume this compatibility state toward IN_PROGRESS on its task branch.",
+    "READY": "Enter IN_PROGRESS before ordinary implementation work.",
     "IN_PROGRESS": (
         "Work only in scope, then use taskctl run-validation or taskctl run-required "
         "--phase local so the controlled runner derives every result before transition "
         "to LOCAL_VERIFIED."
     ),
     "LOCAL_VERIFIED": (
-        "Ordinary writes are frozen. Regular reviewed tasks use taskctl commit-task after the "
+        "Ordinary writes are frozen. Use taskctl commit-task after the "
         "complete local gate; exact unborn GOV-0001 keeps its bounded bootstrap transport. "
         "Same-scope local rework may use taskctl reopen before any content drift."
     ),
     "COMMITTED": (
-        "Regular reviewed tasks use taskctl push-task for a non-force feature-branch fast-forward; "
-        "exact GOV-0001 keeps its bounded bootstrap control transport. Then let CI rerun every "
-        "required check and use taskctl sync-github-run before transition to CI_VERIFIED."
+        "Use taskctl push-task for a non-force feature-branch fast-forward and prepare the PR. "
+        "Inspect GitHub Actions directly; do not import Run metadata into the task. Stop for "
+        "the user's final merge decision after every required job is green."
     ),
     "CI_VERIFIED": (
-        "After explicit user code approval in this conversation, record a commit-bound "
-        "conversation receipt before transition to CODE_REVIEWED."
+        "This compatibility state still requires the user's final merge decision; it does not "
+        "require a routine code-review receipt."
     ),
     "CODE_REVIEWED": "Merge through the controlled repository workflow, then transition to MERGED.",
     "MERGED": (
-        "Run required post_merge checks and use taskctl sync-github-run for the trusted "
-        "main-branch run before transition to POST_MERGE_VERIFIED."
+        "Confirm the merge result before closing the task. Deployment or release remains a "
+        "separate explicit user decision."
     ),
     "POST_MERGE_VERIFIED": "Confirm all release evidence and transition to DONE.",
     "DONE": "Create and select a new DRAFT task before starting another requirement.",
@@ -103,7 +101,7 @@ PROHIBITED_PATHS = [
     },
     {
         "pattern": "<outside task.allowed_paths>",
-        "reason": "All other writes must stay inside the current reviewed allowed_paths.",
+        "reason": "All other writes must stay inside the current task allowed_paths.",
     },
 ]
 
@@ -123,6 +121,22 @@ def _next_state_and_step(task: Dict[str, Any]) -> tuple:
         status,
         "Create or reconcile a valid task before performing write-capable work.",
     )
+
+
+def _open_subtasks(task: Dict[str, Any]) -> list:
+    """Return only the small, non-sensitive part of active subtask records."""
+
+    records = task.get("subtasks", [])
+    if not isinstance(records, list):
+        return []
+    open_records = []
+    for record in records:
+        if not isinstance(record, dict) or record.get("status") != "in_progress":
+            continue
+        values = {key: record.get(key) for key in ("id", "name", "purpose")}
+        if all(isinstance(value, str) and value.strip() for value in values.values()):
+            open_records.append(values)
+    return open_records
 
 
 def _context_document(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -146,21 +160,18 @@ def _context_document(payload: Dict[str, Any]) -> Dict[str, Any]:
             "write_mode": "FAIL_CLOSED",
             "reason": str(exc),
             "next_state": None,
-            "next_step": "Reconcile repository task and review state before write-capable work.",
+            "next_step": "Reconcile repository task state before write-capable work.",
             "prohibited_paths": PROHIBITED_PATHS,
             "instruction": "Do not start work. Only read-only inspection is permitted.",
         }
 
     task = snapshot.task or {}
-    requirement = task.get("requirement") if isinstance(task.get("requirement"), dict) else {}
-    review = snapshot.review or {}
     next_state, next_step = _next_state_and_step(task)
     status = task.get("status")
     blockers = task.get("blockers") if isinstance(task.get("blockers"), list) else []
     ordinary_writes_allowed = (
         snapshot.valid
         and status == ORDINARY_WRITE_STATE
-        and snapshot.review is not None
         and not blockers
     )
     preparation_writes_allowed = snapshot.valid and status in PREPARATION_WRITE_STATES
@@ -174,7 +185,7 @@ def _context_document(payload: Dict[str, Any]) -> Dict[str, Any]:
     elif ordinary_writes_allowed:
         write_mode = "IN_SCOPE_WRITES_ALLOWED"
         instruction = (
-            "Ordinary writes are allowed only inside reviewed allowed_paths while the "
+            "Ordinary writes are allowed only inside current-task allowed_paths while the "
             "task remains IN_PROGRESS; do not bypass validation."
         )
     elif preparation_writes_allowed:
@@ -198,12 +209,6 @@ def _context_document(payload: Dict[str, Any]) -> Dict[str, Any]:
         )
         if status == ORDINARY_WRITE_STATE and blockers:
             next_step = "Resolve the recorded blockers through taskctl before ordinary work resumes."
-        elif status == ORDINARY_WRITE_STATE and snapshot.review is None:
-            next_step = (
-                "Verify the scope review with reviewctl; if absent, wait for an explicit "
-                "user decision in the Codex conversation, record it through the narrow "
-                "reviewctl record-conversation path, then verify it before work resumes."
-            )
     context: Dict[str, Any] = {
         "governance": "READY" if snapshot.valid else "FAIL_CLOSED",
         "write_mode": write_mode,
@@ -211,48 +216,18 @@ def _context_document(payload: Dict[str, Any]) -> Dict[str, Any]:
         "task": {
             "id": task.get("task_id"),
             "status": task.get("status"),
-            "scope_version": task.get("scope_version"),
-            "legacy_g0_v1_migration": _is_legacy_bootstrap_scope_v1(task),
-        },
-        "requirement": {
-            "id": requirement.get("id"),
-            "interaction_kind": requirement.get("interaction_kind"),
-            "name": requirement.get("name"),
-            "version": requirement.get("version"),
         },
         "branch": {
             "base": task.get("base_branch"),
             "expected": task.get("branch"),
             "actual": snapshot.actual_branch,
         },
-        "scope": {
-            "release_units": task.get("release_units", []),
-            "allowed_paths": task.get("allowed_paths", []),
-            "allowed_commands": task.get("allowed_commands", []),
-            "allowed_tools": task.get("allowed_tools", []),
-            "required_docs": task.get("required_docs", []),
-            "validation": task.get("validation", {}),
-        },
-        "review_authority": task.get("review_authority"),
-        "ci_trust": task.get("ci_trust"),
-        "coordination": task.get("coordination"),
-        "review": {
-            "id": review.get("review_id"),
-            "decision": review.get("decision"),
-            "approver": review.get("approver"),
-            "expires_at": review.get("expires_at"),
-            "effective": snapshot.review is not None,
-            "reason": snapshot.review_reason,
-            "approval_mode": review.get("approval_mode", "historical-signed"),
-            "cryptographic_identity_proof": bool(review.get("signature")),
-        },
-        "dependencies": task.get("dependencies", []),
+        "allowed_paths": task.get("allowed_paths", []),
+        "blockers": blockers,
+        "open_subtasks": _open_subtasks(task),
         "next_state": next_state,
         "next_step": next_step,
         "prohibited_paths": PROHIBITED_PATHS,
-        "assumptions": task.get("assumptions", []),
-        "open_questions": task.get("open_questions", []),
-        "blockers": task.get("blockers", []),
         "reconciliation_issues": list(snapshot.reasons),
         "instruction": instruction,
     }

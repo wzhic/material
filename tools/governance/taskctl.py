@@ -4,16 +4,17 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import copy
 import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, Iterator, List, Mapping, Optional, Tuple
 
 from core import (
-    GATE_PHASES,
     GovernanceError,
     NORMAL_STATES,
     SCOPE_EDITABLE_FIELDS,
@@ -32,8 +33,8 @@ from core import (
     current_branch,
     current_task_id,
     default_root,
+    find_effective_final_action_review,
     find_effective_review,
-    find_effective_code_review,
     find_effective_validation_waiver,
     json_result,
     legacy_g0_v1_migration,
@@ -47,6 +48,7 @@ from core import (
     recovery_proposal_path,
     review_validity,
     run_git,
+    subtask_sensitive_text_reason,
     task_path,
     utc_now,
     validation_gate_status,
@@ -488,7 +490,6 @@ def _require_regular_task_transport(
 ) -> None:
     _require_current_task(root, task)
     _require_complete_validation_plan(task)
-    _require_scope_review(root, task)
     _require_work_branch(root, task)
     if task.get("task_id") == BOOTSTRAP_TASK_ID:
         raise GovernanceError("regular task Git transport cannot replace the bounded GOV-0001 bootstrap flow")
@@ -962,6 +963,24 @@ def _require_scope_review(root: Path, task: Dict[str, Any]) -> None:
 
 
 def _require_validation_branch(root: Path, task: Dict[str, Any], phase: str) -> None:
+    if phase == "ci" and os.environ.get("GITHUB_ACTIONS") == "true":
+        # Actions checks out the exact event SHA in detached-HEAD mode.  Trust
+        # that checkout only after the read-only CI reconciler binds the event,
+        # repository, commit, branch, changed paths and release runner.
+        from reconcile import run_reconcile
+
+        report = run_reconcile(root, "ci")
+        if not report.get("ok"):
+            failed = [
+                str(item.get("message"))
+                for item in report.get("checks", [])
+                if item.get("status") == "failed"
+            ]
+            raise GovernanceError(
+                "trusted GitHub CI context is invalid: %s"
+                % ("; ".join(failed) or "CI reconciliation failed")
+            )
+        return
     if phase in ("local", "ci"):
         _require_work_branch(root, task)
         return
@@ -972,6 +991,230 @@ def _require_validation_branch(root: Path, task: Dict[str, Any], phase: str) -> 
     if not isinstance(expected, str) or not expected.strip() or actual != expected:
         raise GovernanceError(
             "post_merge validation branch mismatch: expected %s, found %s" % (expected, actual)
+        )
+
+
+_TASK_RECORD_LOCK_TIMEOUT_SECONDS = 10.0
+
+
+@contextlib.contextmanager
+def _task_record_lock(root: Path, task_id: str) -> Iterator[None]:
+    """Serialize short task-record mutations across agents and processes."""
+
+    record_path = task_path(root, task_id)
+    record_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = record_path.with_name(".%s.lock" % record_path.name)
+    deadline = time.monotonic() + _TASK_RECORD_LOCK_TIMEOUT_SECONDS
+    while True:
+        try:
+            os.mkdir(lock_path)
+            break
+        except FileExistsError:
+            if time.monotonic() >= deadline:
+                raise GovernanceError(
+                    "timed out waiting for task record lock: %s" % lock_path.name
+                )
+            time.sleep(0.01)
+        except OSError as exc:
+            raise GovernanceError("cannot acquire task record lock: %s" % exc) from exc
+    try:
+        yield
+    finally:
+        try:
+            os.rmdir(lock_path)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise GovernanceError("cannot release task record lock: %s" % exc) from exc
+
+
+def _bounded_subtask_text(
+    value: str,
+    field: str,
+    maximum: int,
+    *,
+    reject_sensitive: bool = False,
+) -> str:
+    if not isinstance(value, str) or not value.strip() or len(value) > maximum or "\x00" in value:
+        raise GovernanceError("%s must be a non-empty bounded string" % field)
+    normalized = value.strip()
+    if reject_sensitive:
+        sensitive_reason = subtask_sensitive_text_reason(normalized)
+        if sensitive_reason is not None:
+            raise GovernanceError(
+                "%s resembles %s; record only a redacted summary"
+                % (field, sensitive_reason)
+            )
+    return normalized
+
+
+def _start_subtask_record(
+    root: Path,
+    task_id: str,
+    identifier: str,
+    name: str,
+    purpose: str,
+    actor: str,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    with _task_record_lock(root, task_id):
+        task = load_task(root, task_id)
+        _require_current_task(root, task)
+        if task.get("status") != "IN_PROGRESS":
+            raise GovernanceError("subtask-start requires the current task to be IN_PROGRESS")
+        if actor != "Codex":
+            raise GovernanceError("subtask-start must record --actor Codex exactly")
+        normalized_id = _bounded_subtask_text(identifier, "subtask.id", 128)
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", normalized_id):
+            raise GovernanceError("subtask.id contains unsupported characters")
+        subtasks = task.setdefault("subtasks", [])
+        if any(item.get("id") == normalized_id for item in subtasks):
+            raise GovernanceError("subtask id already exists: %s" % normalized_id)
+        timestamp = utc_now()
+        record = {
+            "id": normalized_id,
+            "name": _bounded_subtask_text(name, "subtask.name", 512),
+            "purpose": _bounded_subtask_text(
+                purpose, "subtask.purpose", 512, reject_sensitive=True
+            ),
+            "status": "in_progress",
+            "started_at": timestamp,
+            "finished_at": None,
+            "result": None,
+        }
+        subtasks.append(record)
+        task["updated_at"] = timestamp
+        validate_task(task)
+        write_json_atomic(task_path(root, task_id), task)
+        return task, record
+
+
+def _finish_subtask_record(
+    root: Path,
+    task_id: str,
+    identifier: str,
+    status: str,
+    result: str,
+    actor: str,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    with _task_record_lock(root, task_id):
+        task = load_task(root, task_id)
+        _require_current_task(root, task)
+        if task.get("status") != "IN_PROGRESS":
+            raise GovernanceError("subtask-finish requires the current task to be IN_PROGRESS")
+        if actor != "Codex":
+            raise GovernanceError("subtask-finish must record --actor Codex exactly")
+        normalized_id = _bounded_subtask_text(identifier, "subtask.id", 128)
+        matching = [item for item in task.get("subtasks", []) if item.get("id") == normalized_id]
+        if len(matching) != 1:
+            raise GovernanceError("subtask id is not recorded exactly once: %s" % normalized_id)
+        record = matching[0]
+        if record.get("status") != "in_progress":
+            raise GovernanceError("subtask is already finished: %s" % normalized_id)
+        timestamp = utc_now()
+        record["status"] = status
+        record["finished_at"] = timestamp
+        record["result"] = _bounded_subtask_text(
+            result, "subtask.result", 4096, reject_sensitive=True
+        )
+        task["updated_at"] = timestamp
+        validate_task(task)
+        write_json_atomic(task_path(root, task_id), task)
+        return task, record
+
+
+def _create_task_branch(
+    root: Path,
+    task: Dict[str, Any],
+    actor: str,
+    reason: str,
+) -> str:
+    if actor != "Codex":
+        raise GovernanceError("task branch creation must record --actor Codex exactly")
+    if not reason.strip():
+        raise GovernanceError("task branch reason must be non-empty")
+    expected = task.get("branch")
+    base = task.get("base_branch")
+    if not isinstance(expected, str) or not expected.strip():
+        raise GovernanceError("task branch is missing")
+    if not isinstance(base, str) or not base.strip() or expected == base:
+        raise GovernanceError("task branch must differ from its base branch")
+    actual, branch_error = current_branch(root)
+    if branch_error:
+        raise GovernanceError(branch_error)
+    if actual != base:
+        raise GovernanceError(
+            "task branch must start from base branch %s, found %s" % (base, actual)
+        )
+    _existing, existing_error = run_git(root, ("show-ref", "--verify", "refs/heads/" + expected))
+    if existing_error is None:
+        raise GovernanceError("task branch already exists: %s" % expected)
+    _git(root, ("switch", "-c", expected), "cannot create task branch")
+    actual, branch_error = current_branch(root)
+    if branch_error or actual != expected:
+        raise GovernanceError("created branch does not match task branch")
+    timestamp = utc_now()
+    task.setdefault("history", []).append({
+        "event": "local_branch_started",
+        "at": timestamp,
+        "actor": actor,
+        "reason": reason,
+        "base_branch": base,
+        "branch": expected,
+    })
+    return timestamp
+
+
+def _require_merged_commit_relation(
+    root: Path,
+    task: Mapping[str, Any],
+    merged_commit: str,
+) -> None:
+    """Bind a merge record to reviewed content already contained by the target branch."""
+
+    committed = normalize_commit(
+        task.get("git", {}).get("committed_sha"),
+        "task.git.committed_sha",
+    )
+    merged = normalize_commit(merged_commit, "merged commit")
+    _output, commit_error = run_git(root, ("cat-file", "-e", merged + "^{commit}"))
+    if commit_error is not None:
+        raise GovernanceError("merged commit is unavailable: %s" % commit_error)
+    _output, ancestor_error = run_git(
+        root, ("merge-base", "--is-ancestor", committed, merged)
+    )
+    if ancestor_error is not None:
+        raise GovernanceError(
+            "task.git.committed_sha is not an ancestor of the merged commit"
+        )
+
+    base_branch = task.get("base_branch")
+    if not isinstance(base_branch, str) or not base_branch.strip():
+        raise GovernanceError("merge target base_branch is missing")
+    branch = base_branch.strip()
+    candidate_refs = (
+        branch if branch.startswith("refs/") else "refs/heads/" + branch,
+        "refs/remotes/origin/" + branch.removeprefix("refs/heads/"),
+    )
+    resolved: Dict[str, str] = {}
+    for reference in dict.fromkeys(candidate_refs):
+        value, error = run_git(root, ("rev-parse", "--verify", reference + "^{commit}"))
+        if error is None and value:
+            resolved[reference] = normalize_commit(value, reference)
+    if not resolved:
+        raise GovernanceError(
+            "merge target branch is unavailable locally: %s" % base_branch
+        )
+    containing_refs: List[str] = []
+    for reference, tip in resolved.items():
+        _output, relation_error = run_git(
+            root, ("merge-base", "--is-ancestor", merged, tip)
+        )
+        if relation_error is None:
+            containing_refs.append(reference)
+    if not containing_refs:
+        raise GovernanceError(
+            "merged commit is not contained in the target branch %s"
+            % base_branch
         )
 
 
@@ -1009,7 +1252,6 @@ def _transition(
             raise GovernanceError(
                 "requirement.interaction_kind must be recorded as ui, non_ui or mixed before READY"
             )
-
     normalized_commit: Optional[str] = None
     if target in ("COMMITTED", "MERGED"):
         if not commit:
@@ -1018,19 +1260,25 @@ def _transition(
     elif commit:
         raise GovernanceError("--commit is only valid when entering COMMITTED or MERGED")
 
-    approval_required = target in NORMAL_STATES[2:] or (
-        current in NORMAL_STATES[2:] and target not in ("CANCELLED", "FAILED", "BLOCKED")
-    )
-    if approval_required:
-        effective_review, reason_invalid = find_effective_review(root, task)
-        if effective_review is None:
-            raise GovernanceError("current scope is not approved: %s" % reason_invalid)
-
     target_index = NORMAL_STATES.index(target) if target in NORMAL_STATES else -1
-    required_gates = [
-        gate_name for gate_name in GATE_PHASES
-        if target_index >= NORMAL_STATES.index(gate_name)
-    ]
+    if target_index >= NORMAL_STATES.index("LOCAL_VERIFIED"):
+        open_subtasks = [
+            str(item.get("id"))
+            for item in task.get("subtasks", [])
+            if isinstance(item, Mapping) and item.get("status") == "in_progress"
+        ]
+        if open_subtasks:
+            raise GovernanceError(
+                "cannot enter %s while subtasks are in progress: %s"
+                % (target, ", ".join(open_subtasks))
+            )
+    required_gates: List[str] = []
+    if target_index >= NORMAL_STATES.index("LOCAL_VERIFIED"):
+        required_gates.append("LOCAL_VERIFIED")
+    if target == "CI_VERIFIED":
+        required_gates.append("CI_VERIFIED")
+    if target == "POST_MERGE_VERIFIED":
+        required_gates.append("POST_MERGE_VERIFIED")
     for gate_name in required_gates:
         gate = validation_gate_status(root, task, gate_name)
         if gate["missing"]:
@@ -1039,10 +1287,12 @@ def _transition(
                 ", ".join("%s (%s)" % (item["check_id"], item["reason"]) for item in gate["missing"]),
             ))
 
-    if target_index >= NORMAL_STATES.index("CODE_REVIEWED"):
-        code_receipt, code_reason = find_effective_code_review(root, task)
-        if code_receipt is None:
-            raise GovernanceError("verified commit has no effective user code review: %s" % code_reason)
+    if target == "MERGED":
+        final_receipt, final_reason = find_effective_final_action_review(root, task, "merge")
+        if final_receipt is None:
+            raise GovernanceError("final merge has no effective user decision: %s" % final_reason)
+        assert normalized_commit is not None
+        _require_merged_commit_relation(root, task, normalized_commit)
 
     timestamp = utc_now()
     task.setdefault("history", []).append({
@@ -1253,12 +1503,52 @@ def build_parser() -> argparse.ArgumentParser:
 
     start_branch = subparsers.add_parser(
         "start-branch",
-        help="create and switch to the reviewed local task branch from its base branch",
+        help="create and switch to the local task branch from its base branch",
     )
     start_branch.add_argument("task_id")
     start_branch.add_argument("--actor", required=True)
     start_branch.add_argument("--reason", required=True)
     common(start_branch)
+
+    begin = subparsers.add_parser(
+        "begin",
+        help="create the task branch and enter IN_PROGRESS without a scope receipt",
+    )
+    begin.add_argument("task_id")
+    begin.add_argument("--actor", required=True)
+    begin.add_argument("--reason", required=True)
+    common(begin)
+
+    subtask_start = subparsers.add_parser(
+        "subtask-start",
+        help="record a lightweight child task or subagent before it starts",
+    )
+    subtask_start.add_argument("task_id")
+    subtask_start.add_argument("--id", required=True, dest="subtask_id")
+    subtask_start.add_argument("--name", required=True)
+    subtask_start.add_argument("--purpose", required=True)
+    subtask_start.add_argument("--actor", required=True)
+    common(subtask_start)
+
+    subtask_finish = subparsers.add_parser(
+        "subtask-finish",
+        help="finish a recorded child task or subagent with a concise result",
+    )
+    subtask_finish.add_argument("task_id")
+    subtask_finish.add_argument("--id", required=True, dest="subtask_id")
+    subtask_finish.add_argument(
+        "--status", required=True, choices=("completed", "failed", "cancelled")
+    )
+    subtask_finish.add_argument("--result", required=True)
+    subtask_finish.add_argument("--actor", required=True)
+    common(subtask_finish)
+
+    subtask_list = subparsers.add_parser(
+        "subtask-list",
+        help="show the lightweight subtask records for one task",
+    )
+    subtask_list.add_argument("task_id")
+    common(subtask_list)
 
     commit_task = subparsers.add_parser(
         "commit-task",
@@ -1366,62 +1656,112 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
 
         if args.command == "transition":
-            task = load_task(root, args.task_id)
-            changed = _transition(root, task, args.target, args.actor, args.reason, args.commit)
+            with _task_record_lock(root, args.task_id):
+                task = load_task(root, args.task_id)
+                changed = _transition(root, task, args.target, args.actor, args.reason, args.commit)
             _emit({"ok": True, "task": changed, "message": "transition recorded"}, args.json)
             return 0
 
-        if args.command == "start-branch":
+        if args.command == "subtask-list":
+            task = load_task(root, args.task_id)
+            subtasks = list(task.get("subtasks", []))
+            _emit({
+                "ok": True,
+                "task_id": task["task_id"],
+                "subtasks": subtasks,
+                "open": [item for item in subtasks if item.get("status") == "in_progress"],
+            }, args.json)
+            return 0
+
+        if args.command == "subtask-start":
+            task, record = _start_subtask_record(
+                root,
+                args.task_id,
+                args.subtask_id,
+                args.name,
+                args.purpose,
+                args.actor,
+            )
+            _emit({
+                "ok": True,
+                "task_id": task["task_id"],
+                "subtask": record,
+                "message": "subtask start recorded",
+            }, args.json)
+            return 0
+
+        if args.command == "subtask-finish":
+            task, record = _finish_subtask_record(
+                root,
+                args.task_id,
+                args.subtask_id,
+                args.status,
+                args.result,
+                args.actor,
+            )
+            _emit({
+                "ok": True,
+                "task_id": task["task_id"],
+                "subtask": record,
+                "message": "subtask finish recorded",
+            }, args.json)
+            return 0
+
+        if args.command == "begin":
             task = load_task(root, args.task_id)
             _require_current_task(root, task)
             _require_complete_validation_plan(task)
-            _require_scope_review(root, task)
-            if args.actor != "Codex":
-                raise GovernanceError("start-branch must record --actor Codex exactly")
-            if not args.reason.strip():
-                raise GovernanceError("start-branch reason must be non-empty")
-            if task.get("status") not in ("APPROVED", "READY"):
-                raise GovernanceError("start-branch requires task status APPROVED or READY")
-            expected = task.get("branch")
-            base = task.get("base_branch")
-            if not isinstance(expected, str) or not expected.strip():
-                raise GovernanceError("reviewed task branch is missing")
-            if not isinstance(base, str) or not base.strip() or expected == base:
-                raise GovernanceError("reviewed task branch must differ from its base branch")
-            actual, branch_error = current_branch(root)
-            if branch_error:
-                raise GovernanceError(branch_error)
-            if actual != base:
+            _require_done_dependencies(root, task)
+            if task.get("blockers"):
+                raise GovernanceError("begin requires blockers to be resolved")
+            if task.get("status") not in ("DRAFT", "REVIEW_PENDING", "APPROVED", "READY"):
                 raise GovernanceError(
-                    "start-branch must run from reviewed base branch %s, found %s" % (base, actual)
+                    "begin requires task status DRAFT, REVIEW_PENDING, APPROVED or READY"
                 )
-            _existing, existing_error = run_git(
-                root, ("show-ref", "--verify", "refs/heads/" + expected)
-            )
-            if existing_error is None:
-                raise GovernanceError("reviewed task branch already exists: %s" % expected)
-            _git(root, ("switch", "-c", expected), "cannot create reviewed task branch")
-            actual, branch_error = current_branch(root)
-            if branch_error or actual != expected:
-                raise GovernanceError("created branch does not match reviewed task branch")
-            timestamp = utc_now()
+            if task.get("requirement", {}).get("interaction_kind") not in (
+                "ui", "non_ui", "mixed",
+            ):
+                raise GovernanceError("begin requires requirement.interaction_kind")
+            previous = str(task["status"])
+            timestamp = _create_task_branch(root, task, args.actor, args.reason)
             task.setdefault("history", []).append({
-                "event": "local_branch_started",
+                "event": "task_started",
+                "from": previous,
+                "to": "IN_PROGRESS",
                 "at": timestamp,
                 "actor": args.actor,
                 "reason": args.reason,
-                "base_branch": base,
-                "branch": expected,
             })
+            task["status"] = "IN_PROGRESS"
+            task.pop("exception", None)
             task["updated_at"] = timestamp
             validate_task(task)
             write_json_atomic(task_path(root, args.task_id), task)
             _emit({
                 "ok": True,
                 "task": task,
-                "branch": expected,
-                "base_branch": base,
-                "message": "reviewed local task branch created",
+                "branch": task["branch"],
+                "base_branch": task["base_branch"],
+                "message": "task branch created and task entered IN_PROGRESS",
+            }, args.json)
+            return 0
+
+        if args.command == "start-branch":
+            task = load_task(root, args.task_id)
+            _require_current_task(root, task)
+            _require_complete_validation_plan(task)
+            if task.get("status") not in ("APPROVED", "READY"):
+                raise GovernanceError("start-branch requires task status APPROVED or READY")
+            timestamp = _create_task_branch(root, task, args.actor, args.reason)
+            task["updated_at"] = timestamp
+            validate_task(task)
+            write_json_atomic(task_path(root, args.task_id), task)
+            _emit({
+                "ok": True,
+                "task": task,
+                "branch": task["branch"],
+                "base_branch": task["base_branch"],
+                "message": "local task branch created",
             }, args.json)
             return 0
 
@@ -1462,7 +1802,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             task = load_task(root, args.task_id)
             _require_current_task(root, task)
             _require_complete_validation_plan(task)
-            _require_scope_review(root, task)
             _require_validation_branch(root, task, args.phase)
             if not args.evidence.strip() or not args.actor.strip():
                 raise GovernanceError("validation evidence and actor must be non-empty")
@@ -1551,7 +1890,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             task = load_task(root, args.task_id)
             _require_current_task(root, task)
             _require_complete_validation_plan(task)
-            _require_scope_review(root, task)
             _require_validation_branch(root, task, args.phase)
             expected_state = _PHASE_RECORD_STATES[args.phase]
             if task["status"] != expected_state:
@@ -1678,7 +2016,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             task = load_task(root, args.task_id)
             _require_current_task(root, task)
             _require_complete_validation_plan(task)
-            _require_scope_review(root, task)
             phase = "local" if args.command == "run-validation" else args.phase
             bootstrap_first_push = bool(
                 args.command == "run-required" and args.bootstrap_first_push
@@ -1781,9 +2118,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "controlled validation changed managed content or protected governance state; "
                     "no result was recorded"
                 )
-            # CI and post-merge process reports are intentionally ephemeral.
-            # Only sync-github-run may persist PASS for those phases after the
-            # private GitHub REST API confirms the exact run and commit.
+            # CI process reports remain ephemeral: the Actions job result is
+            # authoritative and ordinary work does not copy Run metadata into
+            # the local task record.  The legacy sync command is read-compatible
+            # only and is not part of the current workflow.
             if phase == "local":
                 stored_results = []
                 for derived in batch["results"]:
@@ -1806,7 +2144,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "ok": batch["status"] == "passed",
                     "batch": batch,
                     "message": (
-                        "controlled CI process checks completed; PASS remains pending GitHub REST sync"
+                        "controlled CI checks completed; the Actions job result is authoritative "
+                        "and is not persisted in the local task record"
                     ),
                 }
             _emit(payload, args.json)
@@ -1816,7 +2155,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             task = load_task(root, args.task_id)
             _require_current_task(root, task)
             _require_complete_validation_plan(task)
-            _require_scope_review(root, task)
             _require_work_branch(root, task)
             if args.actor != "Codex":
                 raise GovernanceError(
@@ -1972,7 +2310,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             task = load_task(root, args.task_id)
             _require_current_task(root, task)
             _require_complete_validation_plan(task)
-            _require_scope_review(root, task)
             _require_work_branch(root, task)
             if args.actor != "Codex":
                 raise GovernanceError("recover-committed must record --actor Codex exactly")
@@ -2082,7 +2419,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             task = load_task(root, args.task_id)
             _require_current_task(root, task)
             _require_complete_validation_plan(task)
-            _require_scope_review(root, task)
             _require_work_branch(root, task)
             if args.actor != "Codex":
                 raise GovernanceError("reopen must record --actor Codex exactly")
