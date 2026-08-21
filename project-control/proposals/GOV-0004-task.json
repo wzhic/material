@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0004",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "requirement": {"id": "治理精简-REQ-0004", "name": "治理精简", "version": "v1.0", "interaction_kind": "non_ui"},
+  "summary": "修复控制器先选择任务、后切换分支时形成的自锁，使任务选择与既有本地任务分支切换成为单个受控操作；只处理控制流程和回归测试，不改变产品范围。",
+  "release_units": ["mac", "win", "backend"],
+  "branch": "codex/gov-0004-atomic-task-activation",
+  "base_branch": "codex/req-0003-app-0003-product-library-prd",
+  "allowed_paths": [".codex/hooks/_governance.py", ".codex/tests/test_hooks.py", "project-control/**", "tools/governance/taskctl.py", "tools/governance/tests/test_cli.py"],
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/taskctl.py begin GOV-0004",
+    "python3 tools/governance/taskctl.py run-required GOV-0004",
+    "python3 tools/governance/taskctl.py commit-task GOV-0004",
+    "python3 tools/governance/taskctl.py subtask-start GOV-0004",
+    "python3 tools/governance/taskctl.py subtask-finish GOV-0004"
+  ],
+  "allowed_tools": ["apply_patch", "ApplyPatch", "Bash", "Read", "Glob", "Grep"],
+  "dependencies": [],
+  "required_docs": ["docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md"],
+  "validation": {
+    "required": [
+      {"id": "governance_unit_tests", "argv": ["python3", "-m", "unittest", "discover", "-s", "tools/governance/tests", "-p", "test_*.py", "-v"], "timeout_seconds": 1200, "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"], "release_units": ["mac", "win", "backend"]},
+      {"id": "hook_contract_tests", "argv": ["python3", "-m", "unittest", "discover", "-s", ".codex/tests", "-p", "test_*.py", "-v"], "timeout_seconds": 600, "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"], "release_units": ["mac", "win", "backend"]},
+      {"id": "repository_reconcile", "argv": ["python3", "tools/governance/reconcile.py", "static", "--json"], "timeout_seconds": 120, "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"], "release_units": ["mac", "win", "backend"]}
+    ],
+    "results": []
+  },
+  "assumptions": [{"id": "GOV-0004-ASM-001", "statement": "本任务只修复 Codex 自建控制器的任务切换死锁，属于普通可逆治理缺陷修复，不需要用户重复授权。", "status": "confirmed", "source": "用户要求 Codex 自行闭环解决自建任务和门禁"}],
+  "open_questions": [],
+  "blockers": [],
+  "review_authority": {"scheme": "ssh-keygen-y-v1", "identity": "material-project-owner", "namespace": "material-governance-review", "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review", "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E"},
+  "ci_trust": {"provider": "github_actions_rest_v1", "repository": "wzhic/material", "workflow_path": ".github/workflows/governance.yml", "api_base": "https://api.github.com", "api_version": "2026-03-10", "private": true, "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN", "ci_events": ["pull_request", "push"], "post_merge_events": ["push"], "required_jobs": {"pull_request": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"], "push": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"]}},
+  "coordination": {"mode": "coordinated-multi", "coordinator_task": "GOV-0004", "unit_tasks": {"mac": "GOV-0004", "win": "GOV-0004", "backend": "GOV-0004"}, "compatibility_matrix_doc": "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md", "deployment_order": ["backend", "mac", "win"], "rollback_order": ["win", "mac", "backend"], "unit_validation_checks": {"mac": ["governance_unit_tests", "hook_contract_tests", "repository_reconcile"], "win": ["governance_unit_tests", "hook_contract_tests", "repository_reconcile"], "backend": ["governance_unit_tests", "hook_contract_tests", "repository_reconcile"]}, "unit_rollback_checks": {"mac": ["hook_contract_tests"], "win": ["hook_contract_tests"], "backend": ["governance_unit_tests"]}}
+}
