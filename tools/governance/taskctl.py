@@ -631,15 +631,6 @@ def _task_commit(
             % ", ".join(unrelated_staged)
         )
     preserved = sorted(set(candidates) - set(selected))
-    foreign_control = [
-        path for path in preserved
-        if _protected_control_path(path) and not _task_owned_control_path(root, task, path)
-    ]
-    if foreign_control:
-        raise GovernanceError(
-            "commit-task found protected state owned by another task: %s"
-            % ", ".join(sorted(foreign_control))
-        )
 
     _git(root, tuple(["add", "--all", "--"] + selected), "cannot stage manifest-owned task content")
     staged = _nul_paths(
@@ -674,15 +665,15 @@ def _task_commit(
 
     transitioned = _transition(root, task, "COMMITTED", actor, reason, content_sha)
     control_candidates = _changed_worktree_paths(root)
+    # Protected state is writable only through taskctl/reviewctl.  Commit all
+    # pending protected records together so a single maintainer can hand off a
+    # newly queued or terminal task without leaving an uncommittable control
+    # record behind.  Ordinary files outside the manifest remain untouched.
     control_owned = [
-        path for path in control_candidates if _task_owned_control_path(root, task, path)
+        path for path in control_candidates if _protected_control_path(path)
     ]
-    unexpected_control = [
-        path for path in control_candidates
-        if _protected_control_path(path) and path not in control_owned
-    ]
-    if not control_owned or unexpected_control:
-        raise GovernanceError("content commit transition produced foreign or empty protected state")
+    if not control_owned:
+        raise GovernanceError("content commit transition produced empty protected state")
     _git(
         root,
         tuple(["add", "--all", "--"] + sorted(control_owned)),

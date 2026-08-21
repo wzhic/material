@@ -109,6 +109,48 @@ class TaskCtlTests(AuthenticatedReceiptTestCase):
             self.assertIsNone(error, dirty)
             self.assertEqual("", dirty)
 
+    def test_commit_task_carries_pending_protected_handoff_records(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = self._prepare_committable_task(root)
+            write_json(
+                root / "project-control" / "tasks" / "NEXT-TEST.json",
+                {"schema_version": 1, "task_id": "NEXT-TEST", "status": "CANCELLED"},
+            )
+            write_json(
+                root / "project-control" / "reviews" / "NEXT-TEST-R001.json",
+                {
+                    "schema_version": 3,
+                    "review_id": "NEXT-TEST-R001",
+                    "task_id": "NEXT-TEST",
+                    "kind": "scope",
+                    "decision": "approved",
+                },
+            )
+            task["validation"]["results"] = [valid_local_pass(root, task)]
+            write_json(root / "project-control" / "tasks" / "GOV-TEST.json", task)
+
+            stored = self._commit_prepared_task(root)
+
+            content_sha = stored["git"]["committed_sha"]
+            control_sha, error = core.run_git(root, ("rev-parse", "HEAD"))
+            self.assertIsNone(error, control_sha)
+            changed, error = core.run_git(
+                root, ("diff", "--name-only", content_sha + ".." + str(control_sha))
+            )
+            self.assertIsNone(error, changed)
+            self.assertEqual(
+                [
+                    "project-control/reviews/NEXT-TEST-R001.json",
+                    "project-control/tasks/GOV-TEST.json",
+                    "project-control/tasks/NEXT-TEST.json",
+                ],
+                changed.splitlines(),
+            )
+            dirty, error = core.run_git(root, ("status", "--porcelain", "--untracked-files=all"))
+            self.assertIsNone(error, dirty)
+            self.assertEqual("", dirty)
+
     def test_commit_task_preserves_unstaged_unrelated_work(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
