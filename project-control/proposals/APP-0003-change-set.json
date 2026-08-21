@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "task_id": "APP-0003",
-  "base_head": "b68fabf79deb22d4d81802effd01215c1b4ac582",
+  "base_head": "0c52aef2aac620a24017ffeae0ddac5a9cc1d07a",
   "paths": [
     "docs/requirements/产品库-REQ-0003/产品库-REQ-0003-v1.0.md"
   ]
