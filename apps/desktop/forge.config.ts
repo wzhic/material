@@ -7,6 +7,7 @@ import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-nati
 import { WebpackPlugin } from '@electron-forge/plugin-webpack';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import electronChecksums from 'electron/checksums.json';
 
 import { mainConfig } from './webpack.main.config';
 import { rendererConfig } from './webpack.renderer.config';
@@ -14,7 +15,12 @@ import { rendererConfig } from './webpack.renderer.config';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
-    download: { cacheRoot: `${__dirname}/.electron-cache` },
+    // The Electron npm package ships release checksums. Passing them here keeps
+    // cached packaging verifiable without fetching SHASUMS256.txt on every run.
+    download: {
+      cacheRoot: `${__dirname}/.electron-cache`,
+      checksums: electronChecksums,
+    },
   },
   rebuildConfig: {},
   makers: [
