@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0002",
-  "reason": "continue approved one-command application initialization while GOV-0002 waits for GitHub CI",
+  "previous_task_id": "APP-0002",
+  "reason": "return to the committed bootstrap task solely to create the separate governance-simplification handoff; APP-0002 remains recorded as deferred",
   "schema_version": 1,
-  "selected_at": "2026-08-20T01:37:14+00:00",
+  "selected_at": "2026-08-21T10:45:17+00:00",
   "selected_by": "Codex",
   "task_id": "APP-0001"
 }
