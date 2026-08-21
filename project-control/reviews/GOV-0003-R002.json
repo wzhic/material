@@ -1,0 +1,21 @@
+{
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "codex-conversation:2026-08-21:recorded-subagent-aliases",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "允许任务生成子agent和子任务，但是子agent和子任务的记录都需要有记录",
+  "decided_at": "2026-08-21T10:53:25+00:00",
+  "decision": "approved",
+  "expires_at": null,
+  "kind": "scope",
+  "project_id": "material",
+  "reason": "exact collaboration aliases implement the user-approved recorded-subagent workflow without changing scope",
+  "recorded_by": "Codex",
+  "review_id": "GOV-0003-R002",
+  "schema_version": 3,
+  "scope_hash": "sha256:2beec7b9641215c1b67ddfc614875923575bd0fbf91a87abd8b741e6b58b4e8a",
+  "scope_version": 2,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "supersedes": null,
+  "task_id": "GOV-0003"
+}

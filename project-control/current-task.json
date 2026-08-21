@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0002",
-  "reason": "continue approved one-command application initialization while GOV-0002 waits for GitHub CI",
+  "previous_task_id": "APP-0001",
+  "reason": "start the user-requested minimal governance and recorded subagent workflow task",
   "schema_version": 1,
-  "selected_at": "2026-08-20T01:37:14+00:00",
+  "selected_at": "2026-08-21T10:52:15+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0001"
+  "task_id": "GOV-0003"
 }

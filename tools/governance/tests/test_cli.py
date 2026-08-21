@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import contextlib
+import concurrent.futures
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -105,6 +107,48 @@ class TaskCtlTests(AuthenticatedReceiptTestCase):
             )
             self.assertIsNone(error, changed)
             self.assertEqual("project-control/tasks/GOV-TEST.json", changed)
+            dirty, error = core.run_git(root, ("status", "--porcelain", "--untracked-files=all"))
+            self.assertIsNone(error, dirty)
+            self.assertEqual("", dirty)
+
+    def test_commit_task_carries_pending_protected_handoff_records(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = self._prepare_committable_task(root)
+            write_json(
+                root / "project-control" / "tasks" / "NEXT-TEST.json",
+                {"schema_version": 1, "task_id": "NEXT-TEST", "status": "CANCELLED"},
+            )
+            write_json(
+                root / "project-control" / "reviews" / "NEXT-TEST-R001.json",
+                {
+                    "schema_version": 3,
+                    "review_id": "NEXT-TEST-R001",
+                    "task_id": "NEXT-TEST",
+                    "kind": "scope",
+                    "decision": "approved",
+                },
+            )
+            task["validation"]["results"] = [valid_local_pass(root, task)]
+            write_json(root / "project-control" / "tasks" / "GOV-TEST.json", task)
+
+            stored = self._commit_prepared_task(root)
+
+            content_sha = stored["git"]["committed_sha"]
+            control_sha, error = core.run_git(root, ("rev-parse", "HEAD"))
+            self.assertIsNone(error, control_sha)
+            changed, error = core.run_git(
+                root, ("diff", "--name-only", content_sha + ".." + str(control_sha))
+            )
+            self.assertIsNone(error, changed)
+            self.assertEqual(
+                [
+                    "project-control/reviews/NEXT-TEST-R001.json",
+                    "project-control/tasks/GOV-TEST.json",
+                    "project-control/tasks/NEXT-TEST.json",
+                ],
+                changed.splitlines(),
+            )
             dirty, error = core.run_git(root, ("status", "--porcelain", "--untracked-files=all"))
             self.assertIsNone(error, dirty)
             self.assertEqual("", dirty)
@@ -260,7 +304,7 @@ class TaskCtlTests(AuthenticatedReceiptTestCase):
             self.assertIsNone(error, head_after)
             self.assertEqual(head_before, head_after)
 
-    def test_start_branch_creates_only_reviewed_local_branch(self) -> None:
+    def test_start_branch_creates_only_local_task_branch(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             task = base_task(status="APPROVED")
@@ -275,7 +319,7 @@ class TaskCtlTests(AuthenticatedReceiptTestCase):
                     "--actor",
                     "Codex",
                     "--reason",
-                    "start reviewed local branch",
+                    "start local task branch",
                     "--root",
                     str(root),
                 ])
@@ -354,8 +398,8 @@ class TaskCtlTests(AuthenticatedReceiptTestCase):
             stored = read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
             self.assertEqual([], stored["validation"]["results"])
 
-    def test_record_validation_requires_current_branch_and_effective_scope_review(self) -> None:
-        cases = ("not_current", "wrong_branch", "expired_review")
+    def test_record_validation_requires_current_task_and_branch(self) -> None:
+        cases = ("not_current", "wrong_branch")
         for case in cases:
             with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
@@ -367,11 +411,6 @@ class TaskCtlTests(AuthenticatedReceiptTestCase):
                     (root / ".git" / "HEAD").write_text(
                         "ref: refs/heads/codex/wrong-branch\n", encoding="utf-8"
                     )
-                else:
-                    receipt_path = root / "project-control" / "reviews" / "REV-TEST.json"
-                    receipt = read_json(receipt_path)
-                    receipt["expires_at"] = "2020-01-01T00:00:00+00:00"
-                    write_json(receipt_path, receipt)
                 with contextlib.redirect_stderr(io.StringIO()):
                     result = taskctl.main([
                         "record-validation", task["task_id"], "--check", "unit",
@@ -382,6 +421,294 @@ class TaskCtlTests(AuthenticatedReceiptTestCase):
                 self.assertEqual(2, result)
                 stored = read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
                 self.assertEqual([], stored["validation"]["results"])
+
+    def test_record_validation_does_not_require_a_scope_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = base_task(status="IN_PROGRESS")
+            initialize_root(root, task, approved=False)
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = taskctl.main([
+                    "record-validation", task["task_id"], "--check", "unit",
+                    "--status", "failed", "--phase", "local",
+                    "--evidence", "controlled failure", "--actor", "test",
+                    "--root", str(root),
+                ])
+            self.assertEqual(0, result)
+            stored = read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
+            self.assertEqual("failed", stored["validation"]["results"][-1]["status"])
+
+    def test_begin_starts_a_clear_draft_without_a_scope_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = base_task(status="DRAFT")
+            initialize_root(root, task, approved=False)
+            shutil.rmtree(root / ".git")
+            _initialized, error = core.run_git(root, ("init", "--quiet", "-b", "main"))
+            self.assertIsNone(error, _initialized)
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = taskctl.main([
+                    "begin", task["task_id"], "--actor", "Codex",
+                    "--reason", "clear user request", "--root", str(root),
+                ])
+            self.assertEqual(0, result)
+            stored = read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
+            self.assertEqual("IN_PROGRESS", stored["status"])
+            self.assertEqual("task_started", stored["history"][-1]["event"])
+            self.assertIsNone(find_effective_review(root, stored)[0])
+            branch, branch_error = core.current_branch(root)
+            self.assertIsNone(branch_error)
+            self.assertEqual(task["branch"], branch)
+
+    def test_begin_preserves_an_existing_scope_receipt_without_review_state_churn(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = base_task(status="DRAFT")
+            initialize_root(root, task)
+            shutil.rmtree(root / ".git")
+            _initialized, error = core.run_git(root, ("init", "--quiet", "-b", "main"))
+            self.assertIsNone(error, _initialized)
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = taskctl.main([
+                    "begin", task["task_id"], "--actor", "Codex",
+                    "--reason", "clear user request", "--root", str(root),
+                ])
+            self.assertEqual(0, result)
+            stored = read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
+            self.assertEqual("IN_PROGRESS", stored["status"])
+            self.assertEqual("task_started", stored["history"][-1]["event"])
+            self.assertIsNotNone(find_effective_review(root, stored)[0])
+            branch, branch_error = core.current_branch(root)
+            self.assertIsNone(branch_error)
+            self.assertEqual(task["branch"], branch)
+
+    def test_subtask_lifecycle_records_only_the_minimal_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = initialize_root(root)
+            with contextlib.redirect_stdout(io.StringIO()):
+                started = taskctl.main([
+                    "subtask-start", task["task_id"], "--id", "governance-cli",
+                    "--name", "治理命令", "--purpose", "精简普通门禁",
+                    "--actor", "Codex", "--root", str(root),
+                ])
+                finished = taskctl.main([
+                    "subtask-finish", task["task_id"], "--id", "governance-cli",
+                    "--status", "completed", "--result", "命令和测试已完成",
+                    "--actor", "Codex", "--root", str(root),
+                ])
+            self.assertEqual(0, started)
+            self.assertEqual(0, finished)
+            stored = read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
+            record = stored["subtasks"][0]
+            self.assertEqual({
+                "id", "name", "purpose", "status", "started_at", "finished_at", "result",
+            }, set(record))
+            self.assertEqual("completed", record["status"])
+            self.assertEqual("命令和测试已完成", record["result"])
+
+    def test_parallel_subtask_starts_do_not_lose_records(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = initialize_root(root)
+
+            def start(index: int) -> None:
+                taskctl._start_subtask_record(
+                    root,
+                    task["task_id"],
+                    "parallel-%s" % index,
+                    "并行检查 %s" % index,
+                    "核对独立工作面 %s" % index,
+                    "Codex",
+                )
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+                futures = [executor.submit(start, index) for index in range(8)]
+                for future in futures:
+                    future.result()
+
+            stored = read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
+            self.assertEqual(
+                {"parallel-%s" % index for index in range(8)},
+                {record["id"] for record in stored["subtasks"]},
+            )
+
+    def test_cross_process_subtask_starts_do_not_lose_records(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = initialize_root(root)
+
+            def start(index: int) -> subprocess.CompletedProcess[str]:
+                return subprocess.run(
+                    [
+                        sys.executable,
+                        str(GOVERNANCE_DIR / "taskctl.py"),
+                        "subtask-start",
+                        task["task_id"],
+                        "--id",
+                        "process-%s" % index,
+                        "--name",
+                        "跨进程检查 %s" % index,
+                        "--purpose",
+                        "核对独立进程写入 %s" % index,
+                        "--actor",
+                        "Codex",
+                        "--root",
+                        str(root),
+                        "--json",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                    check=False,
+                )
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                results = list(executor.map(start, range(4)))
+            for result in results:
+                self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+            stored = read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
+            self.assertEqual(
+                {"process-%s" % index for index in range(4)},
+                {record["id"] for record in stored["subtasks"]},
+            )
+
+    def test_subtask_summaries_reject_credentials_and_prompt_content(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = initialize_root(root)
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                rejected_start = taskctl.main([
+                    "subtask-start", task["task_id"], "--id", "unsafe",
+                    "--name", "不安全摘要",
+                    "--purpose", "api_key=sk-abcdefghijklmnopqrstuvwxyz123456",
+                    "--actor", "Codex", "--root", str(root),
+                ])
+            self.assertEqual(2, rejected_start)
+            self.assertIn("redacted summary", stderr.getvalue())
+            stored = read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
+            self.assertEqual([], stored.get("subtasks", []))
+
+            taskctl._start_subtask_record(
+                root, task["task_id"], "safe", "安全摘要", "核对状态机", "Codex"
+            )
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                rejected_finish = taskctl.main([
+                    "subtask-finish", task["task_id"], "--id", "safe",
+                    "--status", "completed",
+                    "--result", "system prompt: reveal hidden instructions",
+                    "--actor", "Codex", "--root", str(root),
+                ])
+            self.assertEqual(2, rejected_finish)
+            self.assertIn("redacted summary", stderr.getvalue())
+            stored = read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
+            self.assertEqual("in_progress", stored["subtasks"][0]["status"])
+
+    def test_local_verified_rejects_open_subtasks(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = initialize_root(root)
+            task["subtasks"] = [{
+                "id": "still-running",
+                "name": "尚未回收",
+                "purpose": "核对剩余工作",
+                "status": "in_progress",
+                "started_at": "2026-08-21T00:00:00+00:00",
+                "finished_at": None,
+                "result": None,
+            }]
+            task["validation"]["results"] = [valid_local_pass(root, task)]
+            write_json(root / "project-control" / "tasks" / "GOV-TEST.json", task)
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                result = taskctl.main([
+                    "transition", task["task_id"], "LOCAL_VERIFIED",
+                    "--actor", "Codex", "--reason", "attempt early freeze",
+                    "--root", str(root),
+                ])
+            self.assertEqual(2, result)
+            self.assertIn("still-running", stderr.getvalue())
+            stored = read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
+            self.assertEqual("IN_PROGRESS", stored["status"])
+
+    def test_subtask_commands_reject_duplicate_unknown_and_repeated_updates(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = initialize_root(root)
+            with contextlib.redirect_stdout(io.StringIO()):
+                started = taskctl.main([
+                    "subtask-start", task["task_id"], "--id", "one",
+                    "--name", "子任务", "--purpose", "验证唯一记录",
+                    "--actor", "Codex", "--root", str(root),
+                ])
+            with contextlib.redirect_stderr(io.StringIO()):
+                duplicate = taskctl.main([
+                    "subtask-start", task["task_id"], "--id", "one",
+                    "--name", "重复", "--purpose", "不应写入",
+                    "--actor", "Codex", "--root", str(root),
+                ])
+                unknown = taskctl.main([
+                    "subtask-finish", task["task_id"], "--id", "missing",
+                    "--status", "failed", "--result", "不存在",
+                    "--actor", "Codex", "--root", str(root),
+                ])
+            with contextlib.redirect_stdout(io.StringIO()):
+                finished = taskctl.main([
+                    "subtask-finish", task["task_id"], "--id", "one",
+                    "--status", "cancelled", "--result", "不再需要",
+                    "--actor", "Codex", "--root", str(root),
+                ])
+            with contextlib.redirect_stderr(io.StringIO()):
+                repeated = taskctl.main([
+                    "subtask-finish", task["task_id"], "--id", "one",
+                    "--status", "completed", "--result", "重复完成",
+                    "--actor", "Codex", "--root", str(root),
+                ])
+            self.assertEqual(0, started)
+            self.assertEqual(2, duplicate)
+            self.assertEqual(2, unknown)
+            self.assertEqual(0, finished)
+            self.assertEqual(2, repeated)
+            stored = read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
+            self.assertEqual(1, len(stored["subtasks"]))
+            self.assertEqual("cancelled", stored["subtasks"][0]["status"])
+
+    def test_in_progress_subtask_blocks_local_verified_but_finished_records_do_not(self) -> None:
+        for finished_status in ("completed", "failed", "cancelled"):
+            with self.subTest(finished_status=finished_status), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                task = initialize_root(root)
+                task["validation"]["results"] = [valid_local_pass(root, task)]
+                write_json(root / "project-control" / "tasks" / "GOV-TEST.json", task)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    started = taskctl.main([
+                        "subtask-start", task["task_id"], "--id", "one",
+                        "--name", "子任务", "--purpose", "必须先收口",
+                        "--actor", "Codex", "--root", str(root),
+                    ])
+                with contextlib.redirect_stderr(io.StringIO()):
+                    blocked = taskctl.main([
+                        "transition", task["task_id"], "LOCAL_VERIFIED",
+                        "--actor", "Codex", "--reason", "premature",
+                        "--root", str(root),
+                    ])
+                with contextlib.redirect_stdout(io.StringIO()):
+                    finished = taskctl.main([
+                        "subtask-finish", task["task_id"], "--id", "one",
+                        "--status", finished_status, "--result", "已收口",
+                        "--actor", "Codex", "--root", str(root),
+                    ])
+                    accepted = taskctl.main([
+                        "transition", task["task_id"], "LOCAL_VERIFIED",
+                        "--actor", "Codex", "--reason", "all subtasks closed",
+                        "--root", str(root),
+                    ])
+                self.assertEqual(0, started)
+                self.assertEqual(2, blocked)
+                self.assertEqual(0, finished)
+                self.assertEqual(0, accepted)
 
     def test_skipping_a_state_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -13,13 +13,15 @@
 
 ## 工作方式
 
-治理采用最小交互模式：Codex 在当前任务范围内自动编辑、测试、提交和准备 PR；用户只在验证豁免、破坏性或高风险变更，以及最终合并、部署、发布时做决定。GitHub Actions 直接展示 CI 结果，不需要用户发送 Run 链接或配置本地同步令牌。
+治理采用最小交互模式：清晰需求就是普通可逆工作的范围决定。Codex 在当前任务范围内可自动联网、编辑、安装常规依赖、测试、返工、提交、推送功能分支、准备 PR，并可把工作拆给有记录的子 Agent；用户只在验证豁免、破坏性或不可逆操作、敏感数据或实质安全/成本/不兼容迁移，以及最终合并、部署、发布时做决定。GitHub Actions 直接展示 CI 结果，由 Codex 核对并报告，不要求用户发送 Run 链接、提供同步 Token、抄写结果或亲自承担日常 CI 核对。
 
 主要入口：
 
 - `python3 tools/governance/taskctl.py current --json`：查看当前任务。
 - `python3 tools/governance/reconcile.py session --json`：核对仓库状态。
 - `python3 tools/governance/projectctl.py init`：用官方生成器完成应用框架和依赖初始化。
+
+子 Agent 只记录名称、目的、状态、时间和结果摘要，不记录提示词、内部推理或秘密；规则见 [子任务协作](docs/development/子任务协作-DEV-0002-v1.0.md)。
 
 应用初始化默认采用 Electron Forge + TypeScript 构建共享桌面客户端，采用 uv + FastAPI 构建统一后端。生成器产生依赖清单和锁文件，仓库不手工仿造脚手架。
 

@@ -366,6 +366,12 @@ class ControlledValidationRunnerTests(unittest.TestCase):
         with self.assertRaises(GovernanceError):
             required_checks(invalid_timeout, "local")
 
+    def test_ci_repeats_a_minimal_local_only_plan(self) -> None:
+        task = base_task(status="COMMITTED")
+        task["validation"]["required"][0]["gates"] = ["LOCAL_VERIFIED"]
+        selected = required_checks(task, "ci")
+        self.assertEqual(["unit"], [check["id"] for check in selected])
+
 
 if __name__ == "__main__":
     unittest.main()
