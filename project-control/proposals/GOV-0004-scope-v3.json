@@ -1,0 +1,5 @@
+{
+  "task_id": "GOV-0004",
+  "branch": "codex/req-0004-gov-0004-atomic-task-activation",
+  "base_branch": "codex/gov-0004-atomic-task-activation"
+}

@@ -1,0 +1,12 @@
+{
+  "task_id": "GOV-0004",
+  "allowed_paths": [
+    ".codex/hooks/_governance.py",
+    ".codex/tests/test_hooks.py",
+    "project-control/**",
+    "tools/governance/reconcile.py",
+    "tools/governance/taskctl.py",
+    "tools/governance/tests/test_cli.py",
+    "tools/governance/tests/test_reconcile_ci_static.py"
+  ]
+}

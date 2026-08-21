@@ -997,6 +997,32 @@ class GovernanceConsistencyTests(unittest.TestCase):
                 active["details"]["active"],
             )
 
+    def test_noncurrent_blocked_task_is_frozen_not_active_work(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = prepare_static_root(root)
+            blocked = base_task(status="BLOCKED")
+            blocked["task_id"] = "GOV-BLOCKED"
+            blocked["branch"] = "codex/req-blocked-gov-blocked-waiting"
+            blocked["coordination"]["coordinator_task"] = "GOV-BLOCKED"
+            blocked["coordination"]["unit_tasks"] = {
+                "mac": "GOV-BLOCKED", "win": "GOV-BLOCKED", "backend": "GOV-BLOCKED",
+            }
+            blocked["exception"] = {
+                "previous_status": "IN_PROGRESS",
+                "reason": "frozen while another task resolves the blocker",
+                "recorded_at": "2026-08-21T00:00:00+00:00",
+            }
+            write_json(root / "project-control" / "tasks" / "GOV-BLOCKED.json", blocked)
+
+            report = run_reconcile(root, "session", git_branch=task["branch"], git_changes=[])
+            active = next(item for item in report["checks"] if item["id"] == "active_task")
+            self.assertEqual("passed", active["status"], active)
+            self.assertEqual(
+                [{"task_id": task["task_id"], "status": task["status"]}],
+                active["details"]["active"],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

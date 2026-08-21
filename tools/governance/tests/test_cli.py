@@ -792,6 +792,160 @@ class TaskCtlTests(AuthenticatedReceiptTestCase):
                 root / "project-control" / "current-task.json"
             )["task_id"])
 
+    def test_set_current_atomically_switches_to_existing_target_branch(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            active = initialize_root(root)
+            target = base_task(status="DRAFT")
+            target["task_id"] = "GOV-NEXT"
+            target["branch"] = "codex/next-task"
+            write_json(root / "project-control" / "tasks" / "GOV-NEXT.json", target)
+
+            shutil.rmtree(root / ".git")
+            _output, error = core.run_git(root, ("init", "--quiet", "-b", "main"))
+            self.assertIsNone(error, _output)
+            _output, error = core.run_git(root, ("add", "--all"))
+            self.assertIsNone(error, _output)
+            _output, error = core.run_git(root, (
+                "-c", "user.name=Governance Test",
+                "-c", "user.email=governance-test@example.invalid",
+                "-c", "commit.gpgSign=false",
+                "commit", "--quiet", "-m", "baseline",
+            ))
+            self.assertIsNone(error, _output)
+            _output, error = core.run_git(root, ("switch", "-c", active["branch"]))
+            self.assertIsNone(error, _output)
+
+            head, error = core.run_git(root, ("rev-parse", "HEAD"))
+            self.assertIsNone(error, head)
+            active["status"] = "COMMITTED"
+            active["git"] = {"committed_sha": head}
+            write_json(root / "project-control" / "tasks" / "GOV-TEST.json", active)
+            _output, error = core.run_git(root, ("add", "--all"))
+            self.assertIsNone(error, _output)
+            _output, error = core.run_git(root, (
+                "-c", "user.name=Governance Test",
+                "-c", "user.email=governance-test@example.invalid",
+                "-c", "commit.gpgSign=false",
+                "commit", "--quiet", "-m", "record committed task",
+            ))
+            self.assertIsNone(error, _output)
+            _output, error = core.run_git(root, ("branch", target["branch"]))
+            self.assertIsNone(error, _output)
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = taskctl.main([
+                    "set-current", "GOV-NEXT", "--actor", "Codex",
+                    "--reason", "activate existing task branch", "--root", str(root), "--json",
+                ])
+            self.assertEqual(0, result)
+            branch, branch_error = core.current_branch(root)
+            self.assertIsNone(branch_error, branch)
+            self.assertEqual(target["branch"], branch)
+            self.assertEqual("GOV-NEXT", read_json(
+                root / "project-control" / "current-task.json"
+            )["task_id"])
+
+    def test_set_current_does_not_switch_existing_branch_with_dirty_worktree(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            active = initialize_root(root)
+            target = base_task(status="DRAFT")
+            target["task_id"] = "GOV-NEXT"
+            target["branch"] = "codex/next-task"
+            write_json(root / "project-control" / "tasks" / "GOV-NEXT.json", target)
+
+            shutil.rmtree(root / ".git")
+            _output, error = core.run_git(root, ("init", "--quiet", "-b", "main"))
+            self.assertIsNone(error, _output)
+            _output, error = core.run_git(root, ("add", "--all"))
+            self.assertIsNone(error, _output)
+            _output, error = core.run_git(root, (
+                "-c", "user.name=Governance Test",
+                "-c", "user.email=governance-test@example.invalid",
+                "-c", "commit.gpgSign=false",
+                "commit", "--quiet", "-m", "baseline",
+            ))
+            self.assertIsNone(error, _output)
+            _output, error = core.run_git(root, ("switch", "-c", active["branch"]))
+            self.assertIsNone(error, _output)
+            head, error = core.run_git(root, ("rev-parse", "HEAD"))
+            self.assertIsNone(error, head)
+            active["status"] = "COMMITTED"
+            active["git"] = {"committed_sha": head}
+            write_json(root / "project-control" / "tasks" / "GOV-TEST.json", active)
+            _output, error = core.run_git(root, ("add", "--all"))
+            self.assertIsNone(error, _output)
+            _output, error = core.run_git(root, (
+                "-c", "user.name=Governance Test",
+                "-c", "user.email=governance-test@example.invalid",
+                "-c", "commit.gpgSign=false",
+                "commit", "--quiet", "-m", "record committed task",
+            ))
+            self.assertIsNone(error, _output)
+            _output, error = core.run_git(root, ("branch", target["branch"]))
+            self.assertIsNone(error, _output)
+            (root / "docs" / "governance" / "test.md").write_text(
+                "uncommitted change\n", encoding="utf-8"
+            )
+
+            with contextlib.redirect_stderr(io.StringIO()):
+                result = taskctl.main([
+                    "set-current", "GOV-NEXT", "--actor", "Codex",
+                    "--reason", "must not lose dirty work", "--root", str(root),
+                ])
+            self.assertEqual(2, result)
+            branch, branch_error = core.current_branch(root)
+            self.assertIsNone(branch_error, branch)
+            self.assertEqual(active["branch"], branch)
+            self.assertEqual(active["task_id"], read_json(
+                root / "project-control" / "current-task.json"
+            )["task_id"])
+
+    def test_repair_task_can_restore_its_blocked_committed_base_task(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            blocked = initialize_root(root)
+            committed_sha = "a" * 40
+            blocked["git"] = {"committed_sha": committed_sha}
+            blocked["status"] = "BLOCKED"
+            blocked["exception"] = {
+                "previous_status": "COMMITTED",
+                "reason": "repair task required",
+                "recorded_at": "2026-08-21T00:00:00+00:00",
+            }
+            write_json(root / "project-control" / "tasks" / "GOV-TEST.json", blocked)
+
+            repair = base_task(status="IN_PROGRESS")
+            repair["task_id"] = "GOV-REPAIR"
+            repair["branch"] = "codex/repair-task"
+            repair["base_branch"] = blocked["branch"]
+            repair["coordination"]["coordinator_task"] = "GOV-REPAIR"
+            repair["coordination"]["unit_tasks"] = {
+                unit: "GOV-REPAIR" for unit in repair["release_units"]
+            }
+            write_json(root / "project-control" / "tasks" / "GOV-REPAIR.json", repair)
+            write_json(root / "project-control" / "current-task.json", {
+                "schema_version": 1,
+                "task_id": "GOV-REPAIR",
+                "selected_at": "2026-08-21T00:00:00+00:00",
+                "selected_by": "Codex",
+                "reason": "repair blocked task activation",
+                "previous_task_id": "GOV-TEST",
+            })
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = taskctl.main([
+                    "transition", "GOV-TEST", "COMMITTED",
+                    "--actor", "Codex", "--reason", "restore unchanged base task",
+                    "--commit", committed_sha, "--root", str(root), "--json",
+                ])
+            self.assertEqual(0, result)
+            restored = read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
+            self.assertEqual("COMMITTED", restored["status"])
+            self.assertNotIn("exception", restored)
+            self.assertEqual(committed_sha, restored["git"]["committed_sha"])
+
     def test_ready_requires_done_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
