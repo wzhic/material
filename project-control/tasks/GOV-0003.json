@@ -149,6 +149,11 @@
   },
   "created_at": "2026-08-21T10:52:12+00:00",
   "dependencies": [],
+  "exception": {
+    "previous_status": "COMMITTED",
+    "reason": "PR #3 CI 将标准 base-sync merge 误判为必须绑定 DONE 后继任务",
+    "recorded_at": "2026-08-23T10:29:59+00:00"
+  },
   "git": {
     "committed_sha": "3efb089fa250225c0242f5602aae7ee9381c61d3"
   },
@@ -326,6 +331,13 @@
       "from": "LOCAL_VERIFIED",
       "reason": "记录已验证 CI 适用性修复的内容提交",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-23T10:29:59+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #3 CI 将标准 base-sync merge 误判为必须绑定 DONE 后继任务",
+      "to": "BLOCKED"
     }
   ],
   "open_questions": [],
@@ -1457,7 +1469,7 @@
     }
   ],
   "scope_version": 3,
-  "status": "COMMITTED",
+  "status": "BLOCKED",
   "subtasks": [
     {
       "finished_at": "2026-08-21T11:18:03+00:00",
@@ -1570,7 +1582,7 @@
   ],
   "summary": "将治理收缩为范围、受保护记录、不安全 Git、真实验证和最终发布五类关键边界；普通可逆编辑、联网、依赖、分支 push、PR 准备和子 Agent 协作不再逐项审批。子 Agent 与子任务只记录名称、目的、状态和结果，不保存提示词或内部推理。",
   "task_id": "GOV-0003",
-  "updated_at": "2026-08-23T10:24:18+00:00",
+  "updated_at": "2026-08-23T10:29:59+00:00",
   "validation": {
     "required": [
       {
