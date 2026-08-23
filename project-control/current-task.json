@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0001",
-  "reason": "选择 PR #14 堆栈归因修复任务",
+  "previous_task_id": "GOV-0016",
+  "reason": "恢复 APP-0001 并继续已授权的 PR 栈合并",
   "schema_version": 1,
-  "selected_at": "2026-08-23T11:45:01+00:00",
+  "selected_at": "2026-08-23T12:07:35+00:00",
   "selected_by": "Codex",
-  "task_id": "GOV-0016"
+  "task_id": "APP-0001"
 }
