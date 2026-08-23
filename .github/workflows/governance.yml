@@ -49,7 +49,7 @@ jobs:
 
       - name: Require non-empty governance test suites
         run: >-
-          python -c "import unittest; loader = unittest.defaultTestLoader; counts = {'governance': loader.discover('tools/governance/tests', pattern='test_*.py').countTestCases(), 'hooks': loader.discover('.codex/tests', pattern='test_*.py').countTestCases()}; missing = [name for name, count in counts.items() if count == 0]; print('Discovered test counts:', counts); raise SystemExit('No tests discovered: ' + ', '.join(missing) if missing else 0)"
+          python -c "import unittest; counts = {'governance': unittest.TestLoader().discover('tools/governance/tests', pattern='test_*.py').countTestCases(), 'hooks': unittest.TestLoader().discover('.codex/tests', pattern='test_*.py').countTestCases()}; missing = [name for name, count in counts.items() if count == 0]; print('Discovered test counts:', counts); raise SystemExit('No tests discovered: ' + ', '.join(missing) if missing else 0)"
 
       - name: Run current task checks through controlled runner
         run: >-

@@ -388,6 +388,13 @@ class StaticProfileTests(AuthenticatedReceiptTestCase):
             )
             self.assertIn("governance tests reject an empty suite", contract["message"])
 
+    def test_workflow_uses_independent_test_loaders_for_each_suite(self) -> None:
+        workflow = (
+            REPOSITORY_ROOT / ".github" / "workflows" / "governance.yml"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("unittest.defaultTestLoader", workflow)
+        self.assertEqual(2, workflow.count("unittest.TestLoader().discover("))
+
     def test_workflow_contract_requires_controlled_three_unit_matrix(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

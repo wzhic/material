@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0008",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "requirement": {"id": "治理精简-REQ-0004", "name": "治理精简", "version": "v1.0", "interaction_kind": "non_ui"},
+  "summary": "在干净的 GOV-0007 基线上修复 Windows Python 3.9 复用 unittest 默认加载器导致的 CI 测试发现失败，并增加最小回归断言；替代未进入 PR 的 GOV-0006 分支。",
+  "release_units": ["mac", "win", "backend"],
+  "branch": "codex/req-0004-gov-0008-windows-ci-loader-fix",
+  "base_branch": "codex/req-0004-gov-0007-atomic-task-activation",
+  "allowed_paths": [
+    ".github/workflows/governance.yml",
+    "project-control/**",
+    "tools/governance/tests/test_reconcile_ci_static.py"
+  ],
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/taskctl.py begin GOV-0008",
+    "python3 tools/governance/taskctl.py run-required GOV-0008",
+    "python3 tools/governance/taskctl.py commit-task GOV-0008",
+    "python3 tools/governance/taskctl.py push-task GOV-0008"
+  ],
+  "allowed_tools": ["apply_patch", "ApplyPatch", "Bash", "Read", "Glob", "Grep"],
+  "dependencies": [],
+  "required_docs": ["docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md"],
+  "validation": {"required": [
+    {"id": "governance_unit_tests", "argv": ["python3", "-m", "unittest", "discover", "-s", "tools/governance/tests", "-p", "test_*.py", "-v"], "timeout_seconds": 1200, "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"], "release_units": ["mac", "win", "backend"]},
+    {"id": "hook_contract_tests", "argv": ["python3", "-m", "unittest", "discover", "-s", ".codex/tests", "-p", "test_*.py", "-v"], "timeout_seconds": 600, "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"], "release_units": ["mac", "win", "backend"]},
+    {"id": "repository_reconcile", "argv": ["python3", "tools/governance/reconcile.py", "static", "--json"], "timeout_seconds": 120, "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"], "release_units": ["mac", "win", "backend"]}
+  ], "results": []},
+  "assumptions": [{"id": "GOV-0008-ASM-001", "statement": "GOV-0006 的修复内容已通过本地验证，但其上游基线已被 GOV-0007 替代；本任务只迁移同一两行行为差异与回归测试，旧分支保留历史且不进入 PR。", "status": "confirmed", "source": "边界回归与用户要求最小收口"}],
+  "open_questions": [],
+  "blockers": [],
+  "review_authority": {"scheme": "ssh-keygen-y-v1", "identity": "material-project-owner", "namespace": "material-governance-review", "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review", "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E"},
+  "ci_trust": {"provider": "github_actions_rest_v1", "repository": "wzhic/material", "workflow_path": ".github/workflows/governance.yml", "api_base": "https://api.github.com", "api_version": "2026-03-10", "private": true, "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN", "ci_events": ["pull_request", "push"], "post_merge_events": ["push"], "required_jobs": {"pull_request": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"], "push": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"]}},
+  "coordination": {"mode": "coordinated-multi", "coordinator_task": "GOV-0008", "unit_tasks": {"mac": "GOV-0008", "win": "GOV-0008", "backend": "GOV-0008"}, "compatibility_matrix_doc": "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md", "deployment_order": ["backend", "mac", "win"], "rollback_order": ["win", "mac", "backend"], "unit_validation_checks": {"mac": ["governance_unit_tests", "hook_contract_tests", "repository_reconcile"], "win": ["governance_unit_tests", "hook_contract_tests", "repository_reconcile"], "backend": ["governance_unit_tests", "hook_contract_tests", "repository_reconcile"]}, "unit_rollback_checks": {"mac": ["hook_contract_tests"], "win": ["hook_contract_tests"], "backend": ["governance_unit_tests"]}}
+}
