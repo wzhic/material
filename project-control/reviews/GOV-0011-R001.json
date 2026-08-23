@@ -1,0 +1,23 @@
+{
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "conversation-2026-08-23-merge-all-pr-stack",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "合并全部 PR 栈",
+  "decided_at": "2026-08-23T08:54:55+00:00",
+  "decision": "approved",
+  "expires_at": "2026-08-30T23:59:59+08:00",
+  "from_status": "LOCAL_VERIFIED",
+  "kind": "rework",
+  "project_id": "material",
+  "reason": "提交清单属于同范围控制文件，需纳入受控本地证据",
+  "recorded_by": "Codex",
+  "review_id": "GOV-0011-R001",
+  "schema_version": 3,
+  "scope_hash": "sha256:2b52142ff35ee51c938caa3ad19e09531f7612eee3d8ab46e94bf85844410954",
+  "scope_version": 1,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "subject": "workspace:sha256:96d356dc0f34a19e39712940eaf7cd6bd56cf39b885b460ae9ee0caae83a9f77",
+  "supersedes": null,
+  "task_id": "GOV-0011"
+}
