@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0007",
-  "reason": "GOV-0007 已完成，继续合并 APP-0003 PR",
+  "previous_task_id": "APP-0003",
+  "reason": "PR #3 CI 失败后创建独立的可信 base-sync merge 修复任务",
   "schema_version": 1,
-  "selected_at": "2026-08-23T10:12:15+00:00",
+  "selected_at": "2026-08-23T10:35:20+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0003"
+  "task_id": "GOV-0013"
 }
