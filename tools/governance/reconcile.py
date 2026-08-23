@@ -767,6 +767,10 @@ def _workflow_check(root: Path) -> Dict[str, Any]:
         "trusted PR head checkout": "github.event.pull_request.head.sha" in text and "github.sha" in text,
         "fixed repository guard": "github.repository == 'wzhic/material'" in text,
         "Python 3.9": bool(re.search(r"python-version:\s*[\"']?3\.9[\"']?", text)),
+        "official pinned uv setup": (
+            "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9" in text
+            and bool(re.search(r"(?m)^\s+version:\s*[\"']0\.12\.5[\"']\s*$", text))
+        ),
         "backend Linux release runner": "os: ubuntu-latest" in text and "release_unit: backend" in text,
         "mac macOS release runner": "os: macos-latest" in text and "release_unit: mac" in text,
         "win Windows release runner": "os: windows-latest" in text and "release_unit: win" in text,
