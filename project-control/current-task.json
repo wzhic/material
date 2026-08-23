@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0008",
-  "reason": "activate-separate-Windows-portability-fix",
+  "previous_task_id": "GOV-0009",
+  "reason": "continue-exact-Windows-runner-temp-environment-fix",
   "schema_version": 1,
-  "selected_at": "2026-08-23T06:19:44+00:00",
+  "selected_at": "2026-08-23T06:51:22+00:00",
   "selected_by": "Codex",
-  "task_id": "GOV-0009"
+  "task_id": "GOV-0010"
 }
