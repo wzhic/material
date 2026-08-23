@@ -112,7 +112,8 @@
   "created_at": "2026-08-23T09:23:34+00:00",
   "dependencies": [],
   "git": {
-    "committed_sha": "b2f8c9f8eb5ee2ea7cfd4927b805c4d2561a6b21"
+    "committed_sha": "b2f8c9f8eb5ee2ea7cfd4927b805c4d2561a6b21",
+    "merged_sha": "262056b855973844b1a238672f5ce1504172e5ef"
   },
   "history": [
     {
@@ -144,6 +145,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "提交窄化的栈式 PR CI 归属修复",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-23T09:43:48+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #10 三平台 CI 通过并已合并",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-23T09:43:48+00:00",
+      "from": "MERGED",
+      "reason": "栈式 PR CI 归属修复完成",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -170,10 +185,10 @@
   },
   "schema_version": 1,
   "scope_version": 1,
-  "status": "COMMITTED",
+  "status": "DONE",
   "summary": "修复已完成后继任务合并到 PR 栈当前层后，CI 将后继任务文件误判为当前任务越界的问题；只接受可由 DONE 任务、精确 merged_sha、直接基分支和允许路径共同证明的第一父链合并段。",
   "task_id": "GOV-0012",
-  "updated_at": "2026-08-23T09:33:30+00:00",
+  "updated_at": "2026-08-23T09:43:48+00:00",
   "validation": {
     "required": [
       {
