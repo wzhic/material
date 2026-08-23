@@ -310,6 +310,24 @@ def _minimal_environment(temporary_home: Path, phase: str) -> Dict[str, str]:
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONNOUSERSITE": "1",
     })
+    if os.name == "nt":
+        # PowerShell derives its module-analysis cache from LOCALAPPDATA.  If
+        # that variable is absent it can resolve the fallback relative to the
+        # validation cwd and dirty the repository.  Keep all Windows profile
+        # and temporary artifacts inside the runner-owned, short-lived home.
+        roaming = temporary_home / "AppData" / "Roaming"
+        local = temporary_home / "AppData" / "Local"
+        temporary = temporary_home / "Temp"
+        powershell_cache = temporary_home / "PowerShell" / "ModuleAnalysisCache"
+        for directory in (roaming, local, temporary, powershell_cache.parent):
+            directory.mkdir(parents=True, exist_ok=True)
+        environment.update({
+            "APPDATA": str(roaming.resolve()),
+            "LOCALAPPDATA": str(local.resolve()),
+            "TEMP": str(temporary.resolve()),
+            "TMP": str(temporary.resolve()),
+            "PSModuleAnalysisCachePath": str(powershell_cache.resolve()),
+        })
     environment["PATH"] = _working_git_directory() + os.pathsep + environment.get("PATH", "")
     return environment
 
