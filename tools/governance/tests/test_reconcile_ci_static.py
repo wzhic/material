@@ -33,6 +33,33 @@ import taskctl  # noqa: E402
 from validation_runner import RUNNER_VERSION, run_one  # noqa: E402
 
 
+# The governance suite constructs its own trusted GitHub event fixtures.  When
+# the suite is discovered inside Actions, inherited outer-run metadata would
+# otherwise be mistaken for fixture evidence by tests that intentionally omit
+# or replace individual fields.  Discovery imports every test module before
+# executing cases, so clearing the non-secret outer context here keeps the
+# complete suite deterministic without weakening production CI validation.
+AMBIENT_CI_CONTEXT_KEYS = (
+    "GITHUB_ACTIONS",
+    "GITHUB_BASE_REF",
+    "GITHUB_EVENT_NAME",
+    "GITHUB_EVENT_PATH",
+    "GITHUB_HEAD_REF",
+    "GITHUB_REF",
+    "GITHUB_REF_NAME",
+    "GITHUB_REPOSITORY",
+    "GITHUB_RUN_ATTEMPT",
+    "GITHUB_RUN_ID",
+    "GITHUB_SERVER_URL",
+    "GITHUB_SHA",
+    "GITHUB_WORKFLOW_REF",
+    "MATERIAL_RELEASE_UNIT",
+    "RUNNER_OS",
+)
+for _context_key in AMBIENT_CI_CONTEXT_KEYS:
+    os.environ.pop(_context_key, None)
+
+
 SECTION_TITLES = (
     "文档信息",
     "一句话摘要",
@@ -68,6 +95,14 @@ DOC_DIMENSIONS = (
     "decisions",
     "governance",
 )
+
+
+class AmbientCiIsolationTests(unittest.TestCase):
+    def test_discovered_governance_suite_does_not_inherit_outer_ci_context(self) -> None:
+        self.assertEqual(
+            [],
+            [key for key in AMBIENT_CI_CONTEXT_KEYS if key in os.environ],
+        )
 
 
 def git(root: Path, *arguments: str) -> str:
