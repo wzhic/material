@@ -190,7 +190,7 @@ class ControlledValidationRunnerTests(unittest.TestCase):
             environment = validation_runner._minimal_environment(Path(temporary), "local")
 
         self.assertEqual(
-            "/portable/bin",
+            str(Path("/portable/bin/git").resolve().parent),
             environment["PATH"].split(os.pathsep)[0],
         )
         self.assertEqual(
