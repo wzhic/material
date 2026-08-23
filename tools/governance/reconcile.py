@@ -354,14 +354,16 @@ def _active_task_check(root: Path, current_task: Mapping[str, Any]) -> Dict[str,
         status = str(task.get("status"))
         effective_index = _effective_status_index(task)
         task_id = str(task.get("task_id"))
-        # A non-current COMMITTED task is immutable and may wait for its
-        # independent GitHub run while the sole maintainer starts the next
-        # reviewed task. It is not a second writable workstream.
-        waiting_for_ci = status == "COMMITTED" and task_id != current_id
+        # Non-current COMMITTED tasks wait for CI, while non-current BLOCKED
+        # tasks are frozen until explicitly recovered. Neither is a second
+        # writable workstream for the sole maintainer.
+        frozen_noncurrent = (
+            status in ("COMMITTED", "BLOCKED") and task_id != current_id
+        )
         if (
             status not in ("DONE", "CANCELLED", "REJECTED")
             and effective_index >= status_index("READY")
-            and not waiting_for_ci
+            and not frozen_noncurrent
         ):
             active.append({"task_id": task_id, "status": status})
     if len(active) > 1:
