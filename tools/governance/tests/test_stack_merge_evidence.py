@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import tempfile
 import unittest
@@ -12,7 +13,7 @@ if str(GOVERNANCE_DIR) not in sys.path:
 
 from core import validation_gate_status
 from helpers import base_task, initialize_root, valid_local_pass, write_json
-from reconcile import _completed_successor_merge_coverage
+from reconcile import _ci_commit_protocol_check, _completed_successor_merge_coverage
 
 
 def git(root: Path, *arguments: str) -> str:
@@ -79,6 +80,52 @@ class StackMergeEvidenceTests(unittest.TestCase):
             )
             self.assertTrue(errors)
             self.assertIn("does not match Git's clean merge result", errors[0])
+
+    def test_pr_commit_protocol_accepts_clean_base_move_past_subject(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task, subject, head, trusted_base = self._base_sync_history(root)
+            project = json.loads(
+                (root / "project-control" / "project.json").read_text(encoding="utf-8")
+            )
+            check, context = _ci_commit_protocol_check(
+                root,
+                project,
+                task,
+                {
+                    "event": "pull_request",
+                    "base_sha": trusted_base,
+                    "head_sha": head,
+                    "head_branch": task["branch"],
+                    "diff_base_sha": trusted_base,
+                    "created": False,
+                },
+            )
+            self.assertEqual("passed", check["status"])
+            self.assertTrue(context["base_moved_past_content_subject"])
+
+    def test_pr_commit_protocol_rejects_rewritten_base_move(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task, _subject, head, trusted_base = self._base_sync_history(root, rewrite=True)
+            project = json.loads(
+                (root / "project-control" / "project.json").read_text(encoding="utf-8")
+            )
+            check, _context = _ci_commit_protocol_check(
+                root,
+                project,
+                task,
+                {
+                    "event": "pull_request",
+                    "base_sha": trusted_base,
+                    "head_sha": head,
+                    "head_branch": task["branch"],
+                    "diff_base_sha": trusted_base,
+                    "created": False,
+                },
+            )
+            self.assertEqual("failed", check["status"])
+            self.assertIn("does not match Git's clean merge result", check["message"])
 
     def test_committed_local_evidence_survives_descendant_stack_content(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

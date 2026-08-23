@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0013",
-  "reason": "继续已获用户授权的 PR 栈合并",
+  "previous_task_id": "APP-0003",
+  "reason": "切换到独立治理修复，APP-0003 保持 COMMITTED 等待",
   "schema_version": 1,
-  "selected_at": "2026-08-23T10:50:47+00:00",
+  "selected_at": "2026-08-23T10:57:05+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0003"
+  "task_id": "GOV-0014"
 }
