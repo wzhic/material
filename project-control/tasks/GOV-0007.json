@@ -113,7 +113,8 @@
   "created_at": "2026-08-23T05:29:12+00:00",
   "dependencies": [],
   "git": {
-    "committed_sha": "766d29a3d1440a7752ec49edcc2e3fd2f5b7616f"
+    "committed_sha": "766d29a3d1440a7752ec49edcc2e3fd2f5b7616f",
+    "merged_sha": "52f2345698697dbfe22110dfbe67587b751e4cd2"
   },
   "history": [
     {
@@ -145,6 +146,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "commit-clean-atomic-task-activation-fix-and-validation-records",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-23T10:10:39+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #4 三平台 CI 通过并已合并",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-23T10:10:39+00:00",
+      "from": "MERGED",
+      "reason": "原子任务激活治理修复已完成",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -171,10 +186,10 @@
   },
   "schema_version": 1,
   "scope_version": 1,
-  "status": "COMMITTED",
+  "status": "DONE",
   "summary": "在干净的产品库 PRD 基线上迁移并重新验证原子任务激活修复，替代基线记录错误且未合并的 GOV-0004 分支；不改变产品需求或业务代码。",
   "task_id": "GOV-0007",
-  "updated_at": "2026-08-23T05:31:11+00:00",
+  "updated_at": "2026-08-23T10:10:39+00:00",
   "validation": {
     "required": [
       {
