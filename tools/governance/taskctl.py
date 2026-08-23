@@ -2073,6 +2073,38 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "%s controlled validation may only run while task is %s"
                     % (phase, expected_state)
                 )
+            if (
+                args.command == "run-required"
+                and phase == "ci"
+                and args.release_unit
+                and args.release_unit not in task.get("release_units", [])
+            ):
+                if os.environ.get("GITHUB_ACTIONS") != "true":
+                    raise GovernanceError(
+                        "release unit %s is outside the reviewed task"
+                        % args.release_unit
+                    )
+                batch = {
+                    "runner_version": RUNNER_VERSION,
+                    "task_id": task["task_id"],
+                    "phase": phase,
+                    "release_unit": args.release_unit,
+                    "applicable": False,
+                    "status": "not_applicable",
+                    "results": [],
+                    "planned_check_count": 0,
+                    "executed_check_count": 0,
+                    "not_run": [],
+                }
+                _emit({
+                    "ok": True,
+                    "batch": batch,
+                    "message": (
+                        "trusted CI runner does not represent an affected release unit; "
+                        "task checks are not applicable on this matrix leg"
+                    ),
+                }, args.json)
+                return 0
             if args.command == "run-validation":
                 matching = [
                     check for check in task["validation"].get("required", [])
