@@ -118,7 +118,8 @@
   "created_at": "2026-08-23T11:19:53+00:00",
   "dependencies": [],
   "git": {
-    "committed_sha": "46ddec4bf91f2672f3b6b8ec3b7069c15a136522"
+    "committed_sha": "46ddec4bf91f2672f3b6b8ec3b7069c15a136522",
+    "merged_sha": "dd25f8ba7ace949d25f38e0d6a1d55a8c5ae7118"
   },
   "history": [
     {
@@ -150,6 +151,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "提交嵌套后继 base-sync 递归锚点修复与多层回归测试",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-23T11:29:44+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #13 Run 32636408462 三平台全绿并已合并到 GOV-0003",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-23T11:29:44+00:00",
+      "from": "MERGED",
+      "reason": "GOV-0015 嵌套栈修复已合并且 CI 通过",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -176,10 +191,10 @@
   },
   "schema_version": 1,
   "scope_version": 1,
-  "status": "COMMITTED",
+  "status": "DONE",
   "summary": "修复多层堆叠 PR 归因时，直接后继任务内部的可信 base-sync merge 丢失其合并时父分支锚点而被误拒的问题；递归仅使用直接后继合并提交的第一父提交作为该后继任务的可信基线。",
   "task_id": "GOV-0015",
-  "updated_at": "2026-08-23T11:22:47+00:00",
+  "updated_at": "2026-08-23T11:29:44+00:00",
   "validation": {
     "required": [
       {
