@@ -1,0 +1,224 @@
+{
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/taskctl.py begin GOV-0010",
+    "python3 tools/governance/taskctl.py run-required GOV-0010",
+    "python3 tools/governance/taskctl.py commit-task GOV-0010",
+    "python3 tools/governance/taskctl.py push-task GOV-0010",
+    "python3 tools/governance/taskctl.py open-pr GOV-0010"
+  ],
+  "allowed_paths": [
+    "project-control/**",
+    "tools/governance/validation_runner.py",
+    "tools/governance/tests/test_validation_runner.py"
+  ],
+  "allowed_tools": [
+    "apply_patch",
+    "ApplyPatch",
+    "Bash",
+    "Read",
+    "Glob",
+    "Grep"
+  ],
+  "assumptions": [
+    {
+      "id": "GOV-0010-ASM-001",
+      "source": "真实 Windows Actions 日志",
+      "statement": "Run 32623487500 已证明 job 级 PSModuleAnalysisCachePath 不会穿过受控 runner 的最小环境，而缺失 Windows 用户配置目录会让 PowerShell 生成仓库相对缓存。",
+      "status": "confirmed"
+    },
+    {
+      "id": "GOV-0010-ASM-002",
+      "source": "受控 runner tempfile 生命周期与 Windows 路径行为",
+      "statement": "Windows 子进程所需的 APPDATA、LOCALAPPDATA、TEMP、TMP 和 PowerShell 分析缓存位置可安全指向 runner 为单次验证创建的临时 HOME；该目录在仓库外且验证后回收。",
+      "status": "confirmed"
+    }
+  ],
+  "base_branch": "codex/req-0004-gov-0009-windows-portability-fix",
+  "blockers": [],
+  "branch": "codex/req-0004-gov-0010-windows-runner-temp-env-fix",
+  "ci_trust": {
+    "api_base": "https://api.github.com",
+    "api_version": "2026-03-10",
+    "ci_events": [
+      "pull_request",
+      "push"
+    ],
+    "post_merge_events": [
+      "push"
+    ],
+    "private": true,
+    "provider": "github_actions_rest_v1",
+    "repository": "wzhic/material",
+    "required_jobs": {
+      "pull_request": [
+        "Governance (ubuntu-latest)",
+        "Governance (macos-latest)",
+        "Governance (windows-latest)"
+      ],
+      "push": [
+        "Governance (ubuntu-latest)",
+        "Governance (macos-latest)",
+        "Governance (windows-latest)"
+      ]
+    },
+    "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "workflow_path": ".github/workflows/governance.yml"
+  },
+  "coordination": {
+    "compatibility_matrix_doc": "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md",
+    "coordinator_task": "GOV-0010",
+    "deployment_order": [
+      "backend",
+      "mac",
+      "win"
+    ],
+    "mode": "coordinated-multi",
+    "rollback_order": [
+      "win",
+      "mac",
+      "backend"
+    ],
+    "unit_rollback_checks": {
+      "backend": [
+        "governance_unit_tests"
+      ],
+      "mac": [
+        "hook_contract_tests"
+      ],
+      "win": [
+        "hook_contract_tests"
+      ]
+    },
+    "unit_tasks": {
+      "backend": "GOV-0010",
+      "mac": "GOV-0010",
+      "win": "GOV-0010"
+    },
+    "unit_validation_checks": {
+      "backend": [
+        "governance_unit_tests",
+        "hook_contract_tests",
+        "repository_reconcile"
+      ],
+      "mac": [
+        "governance_unit_tests",
+        "hook_contract_tests",
+        "repository_reconcile"
+      ],
+      "win": [
+        "governance_unit_tests",
+        "hook_contract_tests",
+        "repository_reconcile"
+      ]
+    }
+  },
+  "created_at": "2026-08-23T06:50:07+00:00",
+  "dependencies": [],
+  "history": [],
+  "open_questions": [],
+  "release_units": [
+    "mac",
+    "win",
+    "backend"
+  ],
+  "required_docs": [
+    "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md"
+  ],
+  "requirement": {
+    "id": "治理精简-REQ-0004",
+    "interaction_kind": "non_ui",
+    "name": "治理精简",
+    "version": "v1.0"
+  },
+  "review_authority": {
+    "identity": "material-project-owner",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E",
+    "namespace": "material-governance-review",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "scheme": "ssh-keygen-y-v1"
+  },
+  "schema_version": 1,
+  "scope_version": 1,
+  "status": "DRAFT",
+  "summary": "修复受控验证 runner 在 Windows 清空用户配置目录后导致 PowerShell 模块分析缓存落入仓库的问题；仅为子进程建立仓库外临时配置目录，不放宽凭据环境白名单、不改变验证语义、不修改业务代码。",
+  "task_id": "GOV-0010",
+  "updated_at": "2026-08-23T06:50:07+00:00",
+  "validation": {
+    "required": [
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tools/governance/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "governance_unit_tests",
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "timeout_seconds": 1200
+      },
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          ".codex/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "hook_contract_tests",
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "timeout_seconds": 600
+      },
+      {
+        "argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "static",
+          "--json"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "repository_reconcile",
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "timeout_seconds": 120
+      }
+    ],
+    "results": []
+  }
+}
