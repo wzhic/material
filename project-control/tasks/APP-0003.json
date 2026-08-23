@@ -159,7 +159,8 @@
   "created_at": "2026-08-21T11:30:14+00:00",
   "dependencies": [],
   "git": {
-    "committed_sha": "b67da4bd161bcbaffb2f42087927a884c4b48b4b"
+    "committed_sha": "b67da4bd161bcbaffb2f42087927a884c4b48b4b",
+    "merged_sha": "e813717e900833715270de027cd8a48e8e45eb56"
   },
   "history": [
     {
@@ -299,6 +300,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "commit-boundary-cleanup-and-refreshed-validation-records",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-23T11:15:40+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #3 Run 32635778169 三平台全绿并已合并到 GOV-0003",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-23T11:15:40+00:00",
+      "from": "MERGED",
+      "reason": "APP-0003 产品库需求文档任务已合并且 CI 通过",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -1463,7 +1478,7 @@
   ],
   "schema_version": 1,
   "scope_version": 1,
-  "status": "COMMITTED",
+  "status": "DONE",
   "subtasks": [
     {
       "finished_at": "2026-08-21T12:16:03+00:00",
@@ -1513,7 +1528,7 @@
   ],
   "summary": "在任何产品库业务实现开始前，将已确认方向整理为可实现、可验收的 V1 产品需求文档：覆盖服饰与游戏产品的用户主动创建、编辑、删除、查找、可选绑定、重复提醒、版本与渠道结构、报告快照关系，以及入口、取消、空/加载/成功/失败、离线/超时、恢复、权限和无障碍状态；提供不限制扩展性的表单样例与必填规则。本任务不实现客户端代码、SQLite schema、模型接入、素材分析、素材库或标签库。",
   "task_id": "APP-0003",
-  "updated_at": "2026-08-23T05:25:23+00:00",
+  "updated_at": "2026-08-23T11:15:40+00:00",
   "validation": {
     "required": [
       {
