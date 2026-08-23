@@ -27,6 +27,65 @@ def git(root: Path, *arguments: str) -> str:
 
 
 class StackMergeEvidenceTests(unittest.TestCase):
+    def _absorbed_parent_subject_history(self, root: Path, rewrite: bool = False):
+        parent = base_task(status="COMMITTED")
+        parent.update({
+            "task_id": "GOV-PARENT",
+            "branch": "parent",
+            "base_branch": "main",
+        })
+        parent["coordination"]["coordinator_task"] = "GOV-PARENT"
+        parent["coordination"]["unit_tasks"] = {
+            unit: "GOV-PARENT" for unit in parent["release_units"]
+        }
+        initialize_root(root, parent)
+        git(root, "init", "--quiet")
+        git(root, "config", "user.name", "Stack Test")
+        git(root, "config", "user.email", "stack@example.invalid")
+        governed = root / "tools" / "governance"
+        governed.mkdir(parents=True, exist_ok=True)
+        (governed / "root.py").write_text("root = True\n", encoding="utf-8")
+        git(root, "add", "--all")
+        git(root, "commit", "-m", "root")
+        git(root, "branch", "-M", "parent")
+        trusted_base = git(root, "rev-parse", "HEAD")
+
+        # The successor was cut from a local parent subject that the remote
+        # target branch did not yet contain, matching the PR #14 topology.
+        git(root, "switch", "-c", "successor")
+        (root / "docs" / "parent.md").write_text("parent\n", encoding="utf-8")
+        git(root, "add", "--all")
+        git(root, "commit", "-m", "parent content")
+        parent_subject = git(root, "rev-parse", "HEAD")
+        (governed / "successor.py").write_text("successor = True\n", encoding="utf-8")
+        git(root, "add", "--all")
+        git(root, "commit", "-m", "successor content")
+        successor_subject = git(root, "rev-parse", "HEAD")
+
+        git(root, "switch", "parent")
+        git(root, "merge", "--no-ff", "--no-commit", "successor")
+        if rewrite:
+            (root / "README.md").write_text("unreviewed merge rewrite\n", encoding="utf-8")
+            git(root, "add", "README.md")
+        git(root, "commit", "-m", "merge successor")
+        head = git(root, "rev-parse", "HEAD")
+
+        successor = base_task(status="DONE")
+        successor.update({
+            "task_id": "GOV-SUCCESSOR",
+            "branch": "successor",
+            "base_branch": "parent",
+            "git": {"committed_sha": successor_subject, "merged_sha": head},
+        })
+        successor["coordination"]["coordinator_task"] = "GOV-SUCCESSOR"
+        successor["coordination"]["unit_tasks"] = {
+            unit: "GOV-SUCCESSOR" for unit in successor["release_units"]
+        }
+        parent["git"] = {"committed_sha": parent_subject}
+        write_json(root / "project-control" / "tasks" / "GOV-PARENT.json", parent)
+        write_json(root / "project-control" / "tasks" / "GOV-SUCCESSOR.json", successor)
+        return parent, parent_subject, head, trusted_base
+
     def _base_sync_history(self, root: Path, rewrite: bool = False):
         task = base_task(status="COMMITTED")
         initialize_root(root, task)
@@ -126,6 +185,48 @@ class StackMergeEvidenceTests(unittest.TestCase):
             )
             self.assertEqual("failed", check["status"])
             self.assertIn("does not match Git's clean merge result", check["message"])
+
+    def test_parent_subject_absorbed_by_direct_successor_is_covered(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task, subject, head, trusted_base = self._absorbed_parent_subject_history(root)
+            covered, errors, details = _completed_successor_merge_coverage(
+                root, task, subject, head, trusted_base=trusted_base
+            )
+            self.assertEqual([], errors)
+            self.assertIn("docs/parent.md", covered)
+            self.assertIn("tools/governance/successor.py", covered)
+            self.assertEqual("absorbed_parent_subject", details[0]["kind"])
+
+            project = json.loads(
+                (root / "project-control" / "project.json").read_text(encoding="utf-8")
+            )
+            check, _context = _ci_commit_protocol_check(
+                root,
+                project,
+                task,
+                {
+                    "event": "pull_request",
+                    "base_sha": trusted_base,
+                    "head_sha": head,
+                    "head_branch": task["branch"],
+                    "diff_base_sha": trusted_base,
+                    "created": False,
+                },
+            )
+            self.assertEqual("passed", check["status"])
+
+    def test_parent_subject_absorption_rejects_merge_rewrite(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task, subject, head, trusted_base = self._absorbed_parent_subject_history(
+                root, rewrite=True
+            )
+            _covered, errors, details = _completed_successor_merge_coverage(
+                root, task, subject, head, trusted_base=trusted_base
+            )
+            self.assertTrue(errors)
+            self.assertFalse(any(item.get("kind") == "absorbed_parent_subject" for item in details))
 
     def test_completed_successor_recursion_uses_its_merge_first_parent(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
