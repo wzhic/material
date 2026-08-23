@@ -830,18 +830,26 @@ def _ci_release_runner_check(task: Mapping[str, Any]) -> Dict[str, Any]:
     unit = os.environ.get("MATERIAL_RELEASE_UNIT", "")
     runner = os.environ.get("RUNNER_OS", "")
     expected_runner = RELEASE_RUNNERS.get(unit)
+    applicable = unit in task.get("release_units", [])
     errors: List[str] = []
     if expected_runner is None:
         errors.append("MATERIAL_RELEASE_UNIT must be backend, mac or win")
     elif runner != expected_runner:
         errors.append("release unit %s requires RUNNER_OS=%s, found %s" % (unit, expected_runner, runner))
-    if unit not in task.get("release_units", []):
-        errors.append("release unit %s is outside the reviewed task" % (unit or "<missing>"))
     return _check(
         "ci_release_runner", not errors,
-        "CI release unit is bound to its trusted operating-system runner"
+        (
+            "CI release unit is bound to its trusted operating-system runner"
+            if applicable else
+            "CI runner is trusted; this release unit is not applicable to the reviewed task"
+        )
         if not errors else "; ".join(errors),
-        {"release_unit": unit or None, "runner_os": runner or None, "expected_runner": expected_runner},
+        {
+            "release_unit": unit or None,
+            "runner_os": runner or None,
+            "expected_runner": expected_runner,
+            "applicable": applicable,
+        },
     )
 
 

@@ -923,6 +923,29 @@ class TrustedCiContextTests(AuthenticatedReceiptTestCase):
             self.assertEqual("failed", runner["status"])
             self.assertIn("Windows", runner["message"])
 
+    def test_ci_accepts_trusted_runner_for_unaffected_release_unit(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task, base_sha, _content_sha, control_sha = self.prepare_two_layer_commits(root)
+            task["release_units"] = ["mac", "win"]
+            for check in task["validation"]["required"]:
+                check["release_units"] = ["mac", "win"]
+            task["coordination"]["deployment_order"] = ["mac", "win"]
+            task["coordination"]["rollback_order"] = ["win", "mac"]
+            for field in ("unit_tasks", "unit_validation_checks", "unit_rollback_checks"):
+                task["coordination"][field].pop("backend")
+            task["validation"]["results"] = []
+            renew_test_scope_review(root, task)
+            store_controlled_local_pass(root, task)
+            write_json(root / "project-control" / "tasks" / (task["task_id"] + ".json"), task)
+            environment = github_push_environment(root, base_sha, control_sha, task["branch"])
+            with mock.patch.dict(os.environ, environment, clear=False):
+                report = run_reconcile(root, "ci")
+            runner = next(item for item in report["checks"] if item["id"] == "ci_release_runner")
+            self.assertEqual("passed", runner["status"])
+            self.assertFalse(runner["details"]["applicable"])
+            self.assertIn("not applicable", runner["message"])
+
     def test_ci_rejects_pr_target_not_bound_as_base_branch(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
