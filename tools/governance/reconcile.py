@@ -354,14 +354,16 @@ def _active_task_check(root: Path, current_task: Mapping[str, Any]) -> Dict[str,
         status = str(task.get("status"))
         effective_index = _effective_status_index(task)
         task_id = str(task.get("task_id"))
-        # A non-current COMMITTED task is immutable and may wait for its
-        # independent GitHub run while the sole maintainer starts the next
-        # reviewed task. It is not a second writable workstream.
-        waiting_for_ci = status == "COMMITTED" and task_id != current_id
+        # Non-current COMMITTED tasks wait for CI, while non-current BLOCKED
+        # tasks are frozen until explicitly recovered. Neither is a second
+        # writable workstream for the sole maintainer.
+        frozen_noncurrent = (
+            status in ("COMMITTED", "BLOCKED") and task_id != current_id
+        )
         if (
             status not in ("DONE", "CANCELLED", "REJECTED")
             and effective_index >= status_index("READY")
-            and not waiting_for_ci
+            and not frozen_noncurrent
         ):
             active.append({"task_id": task_id, "status": status})
     if len(active) > 1:
@@ -1184,6 +1186,171 @@ def _protected_control_path(root: Path, path: str) -> bool:
     return path_is_allowed(root, path, PROTECTED_CONTROL_PATTERNS)
 
 
+def _completed_successor_merge_coverage(
+    root: Path,
+    task: Mapping[str, Any],
+    subject: str,
+    head: str,
+    trusted_base: Optional[str] = None,
+) -> Tuple[Set[str], List[str], List[Dict[str, Any]]]:
+    """Attribute first-parent merge deltas to completed direct successor tasks.
+
+    A stacked PR base moves when a reviewed successor PR is merged into the
+    current task branch.  Those successor files are not part of the current
+    task's scope, but they are still trustworthy when the first-parent merge
+    commit is the exact ``merged_sha`` of one DONE task whose reviewed base is
+    this task branch.  Every non-merge continuation must remain protected
+    control state, and every successor merge delta must remain inside that
+    successor's own reviewed paths.
+    """
+
+    covered: Set[str] = set()
+    errors: List[str] = []
+    details: List[Dict[str, Any]] = []
+    first_parent_history, history_error = run_git(
+        root, ("rev-list", "--first-parent", head)
+    )
+    if history_error:
+        return covered, ["cannot inspect first-parent history: %s" % history_error], details
+    if subject not in (first_parent_history or "").splitlines():
+        return covered, ["content subject is not on the control head first-parent chain"], details
+    commits_output, commits_error = run_git(
+        root, ("rev-list", "--first-parent", "--reverse", "%s..%s" % (subject, head))
+    )
+    if commits_error:
+        return covered, ["cannot inspect content-to-head first-parent range: %s" % commits_error], details
+
+    completed_by_merge: Dict[str, List[Dict[str, Any]]] = {}
+    tasks_directory = control_dir(root) / "tasks"
+    for task_file in sorted(tasks_directory.glob("*.json")):
+        try:
+            candidate = load_task(root, task_file.stem)
+        except GovernanceError as exc:
+            errors.append("cannot validate successor task %s: %s" % (task_file.name, exc))
+            continue
+        merged_sha = candidate.get("git", {}).get("merged_sha")
+        if candidate.get("status") == "DONE" and isinstance(merged_sha, str):
+            completed_by_merge.setdefault(merged_sha, []).append(candidate)
+
+    for commit in (commits_output or "").splitlines():
+        parents_output, parents_error = run_git(
+            root, ("rev-list", "--parents", "-n", "1", commit)
+        )
+        if parents_error:
+            errors.append("cannot inspect first-parent commit %s: %s" % (commit, parents_error))
+            continue
+        parts = (parents_output or "").split()
+        if len(parts) not in (2, 3):
+            errors.append("first-parent range contains unsupported root or octopus commit %s" % commit)
+            continue
+        first_parent = parts[1]
+        paths, paths_error = _git_diff_paths(root, first_parent, commit)
+        if paths_error:
+            errors.append("cannot inspect first-parent delta %s: %s" % (commit, paths_error))
+            continue
+        ordinary = sorted(path for path in paths if not _protected_control_path(root, path))
+        if len(parts) == 2:
+            if ordinary:
+                errors.append(
+                    "non-merge continuation %s changes ordinary project files: %s"
+                    % (commit, ", ".join(ordinary))
+                )
+            continue
+
+        second_parent = parts[2]
+        if isinstance(trusted_base, str) and _valid_oid(trusted_base):
+            _output, base_relation_error = run_git(
+                root, ("merge-base", "--is-ancestor", second_parent, trusted_base)
+            )
+            if base_relation_error is None:
+                merge_tree_output, merge_tree_error = run_git(
+                    root, ("merge-tree", "--write-tree", first_parent, second_parent)
+                )
+                commit_tree, commit_tree_error = run_git(
+                    root, ("rev-parse", "%s^{tree}" % commit)
+                )
+                clean_tree = (merge_tree_output or "").splitlines()[0:1]
+                if (
+                    merge_tree_error
+                    or commit_tree_error
+                    or len(clean_tree) != 1
+                    or clean_tree[0] != commit_tree
+                ):
+                    errors.append(
+                        "trusted base-sync merge %s does not match Git's clean merge result"
+                        % commit
+                    )
+                    continue
+                attributed = sorted(
+                    path for path in paths if not _protected_control_path(root, path)
+                )
+                covered.update(attributed)
+                details.append({
+                    "kind": "trusted_base_sync",
+                    "merged_sha": commit,
+                    "base_parent_sha": second_parent,
+                    "paths": attributed,
+                })
+                continue
+
+        candidates = completed_by_merge.get(commit, [])
+        direct = [
+            candidate for candidate in candidates
+            if candidate.get("task_id") != task.get("task_id")
+            and candidate.get("base_branch") == task.get("branch")
+        ]
+        if len(direct) != 1:
+            errors.append(
+                "merge commit %s must bind exactly one DONE direct successor task" % commit
+            )
+            continue
+        successor = direct[0]
+        successor_subject = successor.get("git", {}).get("committed_sha")
+        if not isinstance(successor_subject, str) or not _valid_oid(successor_subject):
+            errors.append("successor task %s has no valid committed_sha" % successor.get("task_id"))
+            continue
+        _output, subject_error = run_git(
+            root, ("merge-base", "--is-ancestor", successor_subject, second_parent)
+        )
+        if subject_error:
+            errors.append(
+                "successor task %s committed_sha is not covered by merge second parent"
+                % successor.get("task_id")
+            )
+            continue
+        nested_paths, nested_errors, nested_details = _completed_successor_merge_coverage(
+            root, successor, successor_subject, second_parent
+        )
+        if nested_errors:
+            errors.append(
+                "successor task %s contains untrusted nested continuations: %s"
+                % (successor.get("task_id"), "; ".join(nested_errors))
+            )
+            continue
+        outside = sorted(
+            path for path in paths
+            if not _protected_control_path(root, path)
+            and not path_is_allowed(root, path, successor.get("allowed_paths", []))
+            and path not in nested_paths
+        )
+        if outside:
+            errors.append(
+                "successor task %s merge changes paths outside its reviewed scope: %s"
+                % (successor.get("task_id"), ", ".join(outside))
+            )
+            continue
+        attributed = sorted(path for path in paths if not _protected_control_path(root, path))
+        covered.update(attributed)
+        details.append({
+            "task_id": successor.get("task_id"),
+            "merged_sha": commit,
+            "committed_sha": successor_subject,
+            "paths": attributed,
+            "successor_merges": nested_details,
+        })
+    return covered, errors, details
+
+
 def _ci_commit_protocol_check(
     root: Path,
     project: Mapping[str, Any],
@@ -1345,11 +1512,22 @@ def _ci_commit_protocol_check(
                 root, ("merge-base", "--is-ancestor", diff_base, subject)
             )
             if coverage_error:
-                return _check(
-                    "ci_commit_protocol", False,
-                    "content subject is outside the trusted event diff: %s" % coverage_error,
-                    result_context,
-                ), result_context
+                # A stacked PR may merge its advancing base after the task
+                # content commit.  In that topology the current PR merge-base
+                # is intentionally newer than, and therefore not an ancestor
+                # of, the original content subject.  Do not trust that fact by
+                # itself: the first-parent walk below must still find the
+                # subject and attribute every intervening merge to either a
+                # completed successor or an exact clean merge of the trusted
+                # event base.  Ordinary continuations and rewritten merges
+                # remain fail-closed.
+                if event_name != "pull_request":
+                    return _check(
+                        "ci_commit_protocol", False,
+                        "content subject is outside the trusted event diff: %s" % coverage_error,
+                        result_context,
+                    ), result_context
+                result_context["base_moved_past_content_subject"] = True
             result_context["content_diff_base_sha"] = diff_base
     if subject == head:
         result_context["mode"] = "content_head"
@@ -1373,7 +1551,30 @@ def _ci_commit_protocol_check(
             "cannot inspect content-to-control range: %s" % diff_error,
             result_context,
         ), result_context
-    ordinary = sorted(path for path in control_paths if not _protected_control_path(root, path))
+    successor_paths: Set[str] = set()
+    successor_errors: List[str] = []
+    successor_details: List[Dict[str, Any]] = []
+    if event_name == "pull_request":
+        successor_paths, successor_errors, successor_details = (
+            _completed_successor_merge_coverage(
+                root, task, subject, head, trusted_base=base
+            )
+        )
+    if successor_errors:
+        return _check(
+            "ci_commit_protocol", False,
+            "content-to-control range has untrusted stacked continuations: %s"
+            % "; ".join(successor_errors),
+            {
+                **result_context,
+                "control_paths": sorted(control_paths),
+                "successor_merges": successor_details,
+            },
+        ), result_context
+    ordinary = sorted(
+        path for path in control_paths
+        if not _protected_control_path(root, path) and path not in successor_paths
+    )
     if ordinary:
         return _check(
             "ci_commit_protocol", False,
@@ -1393,7 +1594,11 @@ def _ci_commit_protocol_check(
             "content subject is an ancestor and control head changes only protected machine state; "
             "CI result is not yet recorded"
         ),
-        {**result_context, "control_paths": sorted(control_paths)},
+        {
+            **result_context,
+            "control_paths": sorted(control_paths),
+            "successor_merges": successor_details,
+        },
     ), result_context
 
 
@@ -1645,14 +1850,44 @@ def run_reconcile(
         elif command:
             checks.append(_check("command", False, "--command is only valid for an approved shell tool"))
     else:
+        successor_paths: Set[str] = set()
+        successor_errors: List[str] = []
+        successor_details: List[Dict[str, Any]] = []
         if profile == "ci":
             changed, changes_error = ci_changed, None if ci_event_ok else "trusted committed diff is unavailable"
+            git_evidence = task.get("git", {}) if isinstance(task.get("git"), dict) else {}
+            task_index = _effective_status_index(task)
+            subject_field = "merged_sha" if task_index >= status_index("MERGED") else "committed_sha"
+            subject = git_evidence.get(subject_field)
+            head = ci_context.get("head_sha")
+            if (
+                changes_error is None
+                and ci_context.get("event") == "pull_request"
+                and isinstance(subject, str)
+                and _valid_oid(subject)
+                and isinstance(head, str)
+                and _valid_oid(head)
+            ):
+                successor_paths, successor_errors, successor_details = (
+                    _completed_successor_merge_coverage(
+                        root,
+                        task,
+                        subject,
+                        head,
+                        trusted_base=ci_context.get("base_sha"),
+                    )
+                )
+                if successor_errors:
+                    changes_error = (
+                        "untrusted stacked continuation: %s" % "; ".join(successor_errors)
+                    )
         else:
             changed, changes_error = (set(git_changes), None) if git_changes is not None else changed_paths(root)
         outside = sorted(
             path for path in changed
             if not path_is_allowed(root, path, task.get("allowed_paths", []))
             and not (profile == "ci" and _protected_control_path(root, path))
+            and not (profile == "ci" and path in successor_paths)
         )
         changes_ok = changes_error is None and not outside
         changes_message = "all changed paths are inside task scope"
@@ -1662,7 +1897,11 @@ def run_reconcile(
             changes_message = "changed paths outside task scope: %s" % ", ".join(outside)
         checks.append(_check(
             "changed_paths", changes_ok, changes_message,
-            {"changed": sorted(changed), "outside_scope": outside},
+            {
+                "changed": sorted(changed),
+                "outside_scope": outside,
+                "successor_merges": successor_details,
+            },
         ))
 
         missing_docs, matched_docs = _required_docs(root, task)

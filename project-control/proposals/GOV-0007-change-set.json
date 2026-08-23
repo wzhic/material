@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0007",
+  "base_head": "42120faeb41b484ee89122394a41799b77d85a7e",
+  "paths": [
+    "project-control/proposals/GOV-0007-task.json",
+    "tools/governance/reconcile.py",
+    "tools/governance/taskctl.py",
+    "tools/governance/tests/test_cli.py",
+    "tools/governance/tests/test_reconcile_ci_static.py"
+  ]
+}

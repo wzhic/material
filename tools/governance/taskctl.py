@@ -1233,7 +1233,38 @@ def _transition(
     if not allowed_transition(current, target, blocked_from):
         raise GovernanceError("transition is not allowed: %s -> %s" % (current, target))
 
-    if target in _CURRENT_TASK_TARGETS:
+    selected_task = load_current_task(root)
+    non_current_committed_restore = (
+        current == "BLOCKED"
+        and target == blocked_from == "COMMITTED"
+        and selected_task.get("task_id") != task.get("task_id")
+    )
+    if non_current_committed_restore:
+        repair_base_matches = selected_task.get("base_branch") == task.get("branch")
+        if not repair_base_matches:
+            repair_base, repair_base_error = run_git(
+                root,
+                ("rev-parse", "--verify", "refs/heads/" + str(selected_task.get("base_branch", ""))),
+            )
+            blocked_branch, blocked_branch_error = run_git(
+                root,
+                ("rev-parse", "--verify", "refs/heads/" + str(task.get("branch", ""))),
+            )
+            repair_base_matches = (
+                repair_base_error is None
+                and blocked_branch_error is None
+                and normalize_commit(repair_base, "repair base branch")
+                == normalize_commit(blocked_branch, "blocked task branch")
+            )
+        if (
+            selected_task.get("status") != "IN_PROGRESS"
+            or not repair_base_matches
+        ):
+            raise GovernanceError(
+                "a non-current committed restore is limited to the in-progress repair task "
+                "based on the blocked task branch"
+            )
+    elif target in _CURRENT_TASK_TARGETS:
         _require_current_task(root, task)
     legacy_g0_resume = (
         current == "BLOCKED"
@@ -1242,7 +1273,7 @@ def _transition(
     )
     if target in NORMAL_STATES[3:] and not legacy_g0_resume:
         _require_complete_validation_plan(task)
-    if target in _WORK_BRANCH_TARGETS:
+    if target in _WORK_BRANCH_TARGETS and not non_current_committed_restore:
         _require_work_branch(root, task)
     if target == "READY":
         _require_done_dependencies(root, task)
@@ -1257,6 +1288,15 @@ def _transition(
         if not commit:
             raise GovernanceError("transition to %s requires --commit" % target)
         normalized_commit = normalize_commit(commit)
+        if non_current_committed_restore:
+            existing_commit = normalize_commit(
+                task.get("git", {}).get("committed_sha"),
+                "task.git.committed_sha",
+            )
+            if normalized_commit != existing_commit:
+                raise GovernanceError(
+                    "a non-current committed restore must preserve task.git.committed_sha"
+                )
     elif commit:
         raise GovernanceError("--commit is only valid when entering COMMITTED or MERGED")
 
@@ -1279,13 +1319,14 @@ def _transition(
         required_gates.append("CI_VERIFIED")
     if target == "POST_MERGE_VERIFIED":
         required_gates.append("POST_MERGE_VERIFIED")
-    for gate_name in required_gates:
-        gate = validation_gate_status(root, task, gate_name)
-        if gate["missing"]:
-            raise GovernanceError("required %s validations are not satisfied: %s" % (
-                gate_name,
-                ", ".join("%s (%s)" % (item["check_id"], item["reason"]) for item in gate["missing"]),
-            ))
+    if not non_current_committed_restore:
+        for gate_name in required_gates:
+            gate = validation_gate_status(root, task, gate_name)
+            if gate["missing"]:
+                raise GovernanceError("required %s validations are not satisfied: %s" % (
+                    gate_name,
+                    ", ".join("%s (%s)" % (item["check_id"], item["reason"]) for item in gate["missing"]),
+                ))
 
     if target == "MERGED":
         final_receipt, final_reason = find_effective_final_action_review(root, task, "merge")
@@ -2146,9 +2187,18 @@ def main(argv: Optional[List[str]] = None) -> int:
                 if not result.get("integrity", {}).get("unchanged")
             ]
             if integrity_failures:
+                integrity_details = []
+                for failed_result in integrity_failures:
+                    issues = failed_result.get("integrity", {}).get("issues", [])
+                    integrity_details.append(
+                        "%s (%s)" % (
+                            failed_result.get("check_id", "unknown-check"),
+                            ", ".join(str(item) for item in issues) or "integrity mismatch",
+                        )
+                    )
                 raise GovernanceError(
                     "controlled validation changed managed content or protected governance state; "
-                    "no result was recorded"
+                    "no result was recorded: %s" % "; ".join(integrity_details)
                 )
             # CI process reports remain ephemeral: the Actions job result is
             # authoritative and ordinary work does not copy Run metadata into
@@ -2624,6 +2674,49 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "cannot switch away from unfinished current task %s (%s)"
                         % (active["task_id"], active["status"])
                     )
+
+            expected_branch = str(task.get("branch", ""))
+            actual_branch, branch_error = current_branch(root)
+            if branch_error:
+                raise GovernanceError("cannot inspect current branch: %s" % branch_error)
+            branch_switched = False
+            if actual_branch != expected_branch:
+                _existing, target_error = run_git(
+                    root,
+                    ("show-ref", "--verify", "--quiet", "refs/heads/" + expected_branch),
+                )
+                if target_error is None:
+                    changed_paths = _changed_worktree_paths(root)
+                    if changed_paths:
+                        raise GovernanceError(
+                            "cannot switch task branches with uncommitted paths: %s"
+                            % ", ".join(changed_paths)
+                        )
+                    _git(
+                        root,
+                        ("switch", expected_branch),
+                        "cannot switch to target task branch",
+                    )
+                    branch_switched = True
+                    try:
+                        task = load_task(root, args.task_id)
+                        if task.get("branch") != expected_branch:
+                            raise GovernanceError(
+                                "target branch task record does not match expected branch"
+                            )
+                    except (GovernanceError, OSError) as exc:
+                        _restored, restore_error = run_git(root, ("switch", str(actual_branch)))
+                        if restore_error:
+                            raise GovernanceError(
+                                "%s; failed to restore previous branch: %s"
+                                % (exc, restore_error)
+                            ) from exc
+                        raise
+                elif task.get("status") != "DRAFT":
+                    raise GovernanceError(
+                        "target task branch does not exist for status %s: %s"
+                        % (task.get("status"), expected_branch)
+                    )
             current = {
                 "schema_version": 1,
                 "task_id": task["task_id"],
@@ -2632,7 +2725,17 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "reason": args.reason,
                 "previous_task_id": previous,
             }
-            write_json_atomic(control_dir(root) / "current-task.json", current)
+            try:
+                write_json_atomic(control_dir(root) / "current-task.json", current)
+            except OSError as exc:
+                if branch_switched:
+                    _restored, restore_error = run_git(root, ("switch", str(actual_branch)))
+                    if restore_error:
+                        raise GovernanceError(
+                            "cannot update current task record: %s; failed to restore previous branch: %s"
+                            % (exc, restore_error)
+                        ) from exc
+                raise GovernanceError("cannot update current task record: %s" % exc) from exc
             _emit({"ok": True, "task": task, "message": "current task selected"}, args.json)
             return 0
     except GovernanceError as exc:
