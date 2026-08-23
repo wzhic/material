@@ -1512,11 +1512,22 @@ def _ci_commit_protocol_check(
                 root, ("merge-base", "--is-ancestor", diff_base, subject)
             )
             if coverage_error:
-                return _check(
-                    "ci_commit_protocol", False,
-                    "content subject is outside the trusted event diff: %s" % coverage_error,
-                    result_context,
-                ), result_context
+                # A stacked PR may merge its advancing base after the task
+                # content commit.  In that topology the current PR merge-base
+                # is intentionally newer than, and therefore not an ancestor
+                # of, the original content subject.  Do not trust that fact by
+                # itself: the first-parent walk below must still find the
+                # subject and attribute every intervening merge to either a
+                # completed successor or an exact clean merge of the trusted
+                # event base.  Ordinary continuations and rewritten merges
+                # remain fail-closed.
+                if event_name != "pull_request":
+                    return _check(
+                        "ci_commit_protocol", False,
+                        "content subject is outside the trusted event diff: %s" % coverage_error,
+                        result_context,
+                    ), result_context
+                result_context["base_moved_past_content_subject"] = True
             result_context["content_diff_base_sha"] = diff_base
     if subject == head:
         result_context["mode"] = "content_head"
