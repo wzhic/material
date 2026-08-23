@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0014",
-  "reason": "GOV-0014 已合并，恢复 APP-0003 PR 栈合并",
+  "previous_task_id": "APP-0003",
+  "reason": "APP-0003 已完成，继续治理父任务 PR 栈合并",
   "schema_version": 1,
-  "selected_at": "2026-08-23T11:09:58+00:00",
+  "selected_at": "2026-08-23T11:15:52+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0003"
+  "task_id": "GOV-0003"
 }
