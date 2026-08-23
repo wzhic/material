@@ -474,9 +474,11 @@ class StaticProfileTests(AuthenticatedReceiptTestCase):
             workflow,
         )
         self.assertNotIn("continue-on-error: true", workflow)
-        self.assertIn(
-            "PSModuleAnalysisCachePath: ${{ runner.temp }}/PowerShell-ModuleAnalysisCache",
-            workflow,
+        self.assertEqual(
+            2,
+            workflow.count(
+                "PSModuleAnalysisCachePath: ${{ runner.temp }}/PowerShell-ModuleAnalysisCache"
+            ),
         )
 
     def test_workflow_contract_rejects_duplicate_direct_validation(self) -> None:
