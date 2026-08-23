@@ -2706,6 +2706,40 @@ def expected_validation_subject(
     if phase is None:
         raise GovernanceError("unknown validation gate: %s" % gate)
     if phase == "local":
+        # Once a task has entered COMMITTED, its local evidence belongs to the
+        # immutable task content that commit-task already bound and froze.  A
+        # later task in a stacked PR may legitimately add files that also match
+        # an older task's broad allowed_paths.  Re-hashing the descendant
+        # worktree here would retroactively invalidate the older task and make
+        # the reviewed stack impossible to merge, even though CI reruns every
+        # required check on the combined head.
+        #
+        # Freeze only a single subject derived from the latest controlled local
+        # result for each required check/release unit.  Provenance validation
+        # below still verifies runner identity, argv, timeout, scope, integrity,
+        # output digests and exit status.  Before COMMITTED, live workspace
+        # changes continue to invalidate the gate exactly as before.
+        frozen_states = NORMAL_STATES[NORMAL_STATES.index("COMMITTED"):]
+        if task.get("status") in frozen_states and task.get("git", {}).get("committed_sha"):
+            subjects = set()
+            for check in task.get("validation", {}).get("required", []):
+                if gate not in check.get("gates", []):
+                    continue
+                check_id = str(check.get("id"))
+                for unit in check.get("release_units", []) or [None]:
+                    result = _latest_validation_result_for_unit(task, check_id, phase, unit)
+                    if result is None or result.get("status") not in ("passed", "skipped"):
+                        continue
+                    subject = result.get("subject")
+                    if not isinstance(subject, str) or not re.fullmatch(
+                        r"workspace:sha256:[0-9a-f]{64}", subject
+                    ):
+                        return None, "frozen local validation subject is invalid"
+                    subjects.add(subject)
+            if len(subjects) == 1:
+                return next(iter(subjects)), None
+            if len(subjects) > 1:
+                return None, "frozen local validation results disagree on content subject"
         return managed_content_subject(root, task), None
     git_evidence = task.get("git", {})
     field = "committed_sha" if phase == "ci" else "merged_sha"

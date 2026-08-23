@@ -118,7 +118,8 @@
   "created_at": "2026-08-23T06:50:07+00:00",
   "dependencies": [],
   "git": {
-    "committed_sha": "5ace6c706fa0e2f1228466f0d353c5cd5e95fae7"
+    "committed_sha": "5ace6c706fa0e2f1228466f0d353c5cd5e95fae7",
+    "merged_sha": "c5865fe6c51cf3b5c848889f75813676f879d16b"
   },
   "history": [
     {
@@ -150,6 +151,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "commit-Windows-runner-temp-environment-isolation",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-23T08:47:08+00:00",
+      "from": "COMMITTED",
+      "reason": "PR 7 已按用户批准合并到任务基线分支",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-23T08:47:12+00:00",
+      "from": "MERGED",
+      "reason": "PR 7 合并完成并交接给下一层任务",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -176,10 +191,10 @@
   },
   "schema_version": 1,
   "scope_version": 1,
-  "status": "COMMITTED",
+  "status": "DONE",
   "summary": "修复受控验证 runner 在 Windows 清空用户配置目录后导致 PowerShell 模块分析缓存落入仓库的问题；仅为子进程建立仓库外临时配置目录，不放宽凭据环境白名单、不改变验证语义、不修改业务代码。",
   "task_id": "GOV-0010",
-  "updated_at": "2026-08-23T06:53:56+00:00",
+  "updated_at": "2026-08-23T08:47:12+00:00",
   "validation": {
     "required": [
       {
