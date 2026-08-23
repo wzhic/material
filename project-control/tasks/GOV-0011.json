@@ -110,7 +110,8 @@
   "created_at": "2026-08-23T08:51:49+00:00",
   "dependencies": [],
   "git": {
-    "committed_sha": "96a12401f4ecc2a2306088dc47e900070b48c538"
+    "committed_sha": "96a12401f4ecc2a2306088dc47e900070b48c538",
+    "merged_sha": "4d74f4b30983bf38b1d3dc47ffac69c63f05bcc7"
   },
   "history": [
     {
@@ -157,6 +158,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "提交经验证的 PR 栈合并证据修复",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-23T09:16:09+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #8 三平台 CI 通过并已合并到 GOV-0009",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-23T09:16:09+00:00",
+      "from": "MERGED",
+      "reason": "GOV-0011 合并证据修复已完成并回收",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -420,10 +435,10 @@
   ],
   "schema_version": 1,
   "scope_version": 1,
-  "status": "COMMITTED",
+  "status": "DONE",
   "summary": "修复 PR 栈上层合并后，下层已提交任务的本地验证证据被合并后工作树错误失效的问题；只保留已提交内容的受控验证证据，并继续由当前 PR CI 重新执行全部检查。",
   "task_id": "GOV-0011",
-  "updated_at": "2026-08-23T08:56:01+00:00",
+  "updated_at": "2026-08-23T09:16:09+00:00",
   "validation": {
     "required": [
       {
