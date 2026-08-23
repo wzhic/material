@@ -1319,7 +1319,16 @@ def _completed_successor_merge_coverage(
             )
             continue
         nested_paths, nested_errors, nested_details = _completed_successor_merge_coverage(
-            root, successor, successor_subject, second_parent
+            root,
+            successor,
+            successor_subject,
+            second_parent,
+            # The first parent is the exact target-branch state against which
+            # this direct successor was merged.  It is therefore the only
+            # valid trust anchor for clean base-sync merges nested inside that
+            # successor; the outer PR event base belongs to a different stack
+            # level and must not be reused here.
+            trusted_base=first_parent,
         )
         if nested_errors:
             errors.append(

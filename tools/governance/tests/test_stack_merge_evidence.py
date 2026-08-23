@@ -127,6 +127,90 @@ class StackMergeEvidenceTests(unittest.TestCase):
             self.assertEqual("failed", check["status"])
             self.assertIn("does not match Git's clean merge result", check["message"])
 
+    def test_completed_successor_recursion_uses_its_merge_first_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            parent = base_task(status="COMMITTED")
+            parent["task_id"] = "GOV-PARENT"
+            parent["branch"] = "parent"
+            parent["base_branch"] = "main"
+            parent["coordination"]["coordinator_task"] = "GOV-PARENT"
+            parent["coordination"]["unit_tasks"] = {
+                unit: "GOV-PARENT" for unit in parent["release_units"]
+            }
+            initialize_root(root, parent)
+            git(root, "init", "--quiet")
+            git(root, "config", "user.name", "Stack Test")
+            git(root, "config", "user.email", "stack@example.invalid")
+            governed = root / "tools" / "governance"
+            governed.mkdir(parents=True, exist_ok=True)
+            (governed / "root.py").write_text("root = True\n", encoding="utf-8")
+            git(root, "add", "--all")
+            git(root, "commit", "-m", "root")
+            git(root, "branch", "-M", "parent")
+            (governed / "parent.py").write_text("parent = True\n", encoding="utf-8")
+            git(root, "add", "--all")
+            git(root, "commit", "-m", "parent content")
+            parent_subject = git(root, "rev-parse", "HEAD")
+
+            git(root, "switch", "-c", "child")
+            (governed / "child.py").write_text("child = True\n", encoding="utf-8")
+            git(root, "add", "--all")
+            git(root, "commit", "-m", "child content")
+            child_subject = git(root, "rev-parse", "HEAD")
+
+            git(root, "switch", "-c", "base-fix", "parent")
+            (governed / "base-fix.py").write_text("fix = True\n", encoding="utf-8")
+            git(root, "add", "--all")
+            git(root, "commit", "-m", "base fix content")
+            base_fix_subject = git(root, "rev-parse", "HEAD")
+            git(root, "switch", "parent")
+            git(root, "merge", "--no-ff", "base-fix", "-m", "merge base fix")
+            base_fix_merge = git(root, "rev-parse", "HEAD")
+
+            git(root, "switch", "child")
+            git(root, "merge", "--no-ff", "parent", "-m", "sync parent")
+            child_head = git(root, "rev-parse", "HEAD")
+            git(root, "switch", "parent")
+            git(root, "merge", "--no-ff", "child", "-m", "merge child")
+            outer_head = git(root, "rev-parse", "HEAD")
+
+            base_fix = base_task(status="DONE")
+            base_fix.update({
+                "task_id": "GOV-BASE-FIX",
+                "branch": "base-fix",
+                "base_branch": "parent",
+                "git": {"committed_sha": base_fix_subject, "merged_sha": base_fix_merge},
+            })
+            base_fix["coordination"]["coordinator_task"] = "GOV-BASE-FIX"
+            base_fix["coordination"]["unit_tasks"] = {
+                unit: "GOV-BASE-FIX" for unit in base_fix["release_units"]
+            }
+            child = base_task(status="DONE")
+            child.update({
+                "task_id": "GOV-CHILD",
+                "branch": "child",
+                "base_branch": "parent",
+                "git": {"committed_sha": child_subject, "merged_sha": outer_head},
+            })
+            child["coordination"]["coordinator_task"] = "GOV-CHILD"
+            child["coordination"]["unit_tasks"] = {
+                unit: "GOV-CHILD" for unit in child["release_units"]
+            }
+            parent["git"] = {"committed_sha": parent_subject}
+            write_json(root / "project-control" / "tasks" / "GOV-PARENT.json", parent)
+            write_json(root / "project-control" / "tasks" / "GOV-BASE-FIX.json", base_fix)
+            write_json(root / "project-control" / "tasks" / "GOV-CHILD.json", child)
+
+            covered, errors, details = _completed_successor_merge_coverage(
+                root, parent, parent_subject, outer_head
+            )
+            self.assertEqual([], errors)
+            self.assertIn("tools/governance/base-fix.py", covered)
+            self.assertIn("tools/governance/child.py", covered)
+            child_details = next(item for item in details if item.get("task_id") == "GOV-CHILD")
+            self.assertEqual("trusted_base_sync", child_details["successor_merges"][0]["kind"])
+
     def test_committed_local_evidence_survives_descendant_stack_content(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
