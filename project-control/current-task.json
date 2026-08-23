@@ -1,8 +1,8 @@
 {
   "previous_task_id": "APP-0003",
-  "reason": "repair-self-created-task-switch-deadlock-without-user-intervention",
+  "reason": "replace-invalid-GOV-0004-base-with-clean-task-branch",
   "schema_version": 1,
-  "selected_at": "2026-08-21T12:36:58+00:00",
+  "selected_at": "2026-08-23T05:29:16+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0003"
+  "task_id": "GOV-0007"
 }
