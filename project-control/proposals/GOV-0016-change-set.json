@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0016",
+  "base_head": "f2dd22897de3ef654ea0adf55f888604dbd222cd",
+  "paths": [
+    "tools/governance/reconcile.py",
+    "tools/governance/tests/test_stack_merge_evidence.py"
+  ]
+}

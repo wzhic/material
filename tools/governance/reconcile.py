@@ -1207,19 +1207,6 @@ def _completed_successor_merge_coverage(
     covered: Set[str] = set()
     errors: List[str] = []
     details: List[Dict[str, Any]] = []
-    first_parent_history, history_error = run_git(
-        root, ("rev-list", "--first-parent", head)
-    )
-    if history_error:
-        return covered, ["cannot inspect first-parent history: %s" % history_error], details
-    if subject not in (first_parent_history or "").splitlines():
-        return covered, ["content subject is not on the control head first-parent chain"], details
-    commits_output, commits_error = run_git(
-        root, ("rev-list", "--first-parent", "--reverse", "%s..%s" % (subject, head))
-    )
-    if commits_error:
-        return covered, ["cannot inspect content-to-head first-parent range: %s" % commits_error], details
-
     completed_by_merge: Dict[str, List[Dict[str, Any]]] = {}
     tasks_directory = control_dir(root) / "tasks"
     for task_file in sorted(tasks_directory.glob("*.json")):
@@ -1231,6 +1218,135 @@ def _completed_successor_merge_coverage(
         merged_sha = candidate.get("git", {}).get("merged_sha")
         if candidate.get("status") == "DONE" and isinstance(merged_sha, str):
             completed_by_merge.setdefault(merged_sha, []).append(candidate)
+
+    first_parent_history, history_error = run_git(
+        root, ("rev-list", "--first-parent", head)
+    )
+    if history_error:
+        return covered, ["cannot inspect first-parent history: %s" % history_error], details
+    history = (first_parent_history or "").splitlines()
+    range_subject = subject
+    if subject not in history:
+        # A stacked successor may have been opened from a local parent content
+        # commit before that parent commit reached the remote base branch.  In
+        # that case GitHub merges the successor into the older remote parent,
+        # so the parent's reviewed subject is carried by the merge's second
+        # parent rather than by the target's first-parent chain.  Accept only
+        # the unique direct DONE successor whose linear history contains both
+        # reviewed subjects and whose merge tree is Git's exact clean result.
+        absorbed: List[Tuple[str, Dict[str, Any], Set[str], List[Dict[str, Any]]]] = []
+        for commit in history:
+            parents_output, parents_error = run_git(
+                root, ("rev-list", "--parents", "-n", "1", commit)
+            )
+            if parents_error:
+                continue
+            parts = (parents_output or "").split()
+            if len(parts) != 3:
+                continue
+            first_parent, second_parent = parts[1], parts[2]
+            direct = [
+                candidate for candidate in completed_by_merge.get(commit, [])
+                if candidate.get("task_id") != task.get("task_id")
+                and candidate.get("base_branch") == task.get("branch")
+            ]
+            if len(direct) != 1:
+                continue
+            successor = direct[0]
+            successor_subject = successor.get("git", {}).get("committed_sha")
+            if not isinstance(successor_subject, str) or not _valid_oid(successor_subject):
+                continue
+            relations = (
+                ("merge-base", "--is-ancestor", first_parent, subject),
+                ("merge-base", "--is-ancestor", subject, successor_subject),
+                ("merge-base", "--is-ancestor", successor_subject, second_parent),
+            )
+            if any(run_git(root, relation)[1] is not None for relation in relations):
+                continue
+            successor_history, successor_history_error = run_git(
+                root, ("rev-list", "--first-parent", successor_subject)
+            )
+            if (
+                successor_history_error
+                or subject not in (successor_history or "").splitlines()
+            ):
+                continue
+            merge_tree_output, merge_tree_error = run_git(
+                root, ("merge-tree", "--write-tree", first_parent, second_parent)
+            )
+            commit_tree, commit_tree_error = run_git(
+                root, ("rev-parse", "%s^{tree}" % commit)
+            )
+            clean_tree = (merge_tree_output or "").splitlines()[0:1]
+            if (
+                merge_tree_error
+                or commit_tree_error
+                or len(clean_tree) != 1
+                or clean_tree[0] != commit_tree
+            ):
+                continue
+            parent_paths, parent_paths_error = _git_diff_paths(root, first_parent, subject)
+            successor_paths, successor_paths_error = _git_diff_paths(
+                root, subject, successor_subject
+            )
+            merge_paths, merge_paths_error = _git_diff_paths(root, first_parent, commit)
+            if parent_paths_error or successor_paths_error or merge_paths_error:
+                continue
+            parent_outside = sorted(
+                path for path in parent_paths
+                if not _protected_control_path(root, path)
+                and not path_is_allowed(root, path, task.get("allowed_paths", []))
+            )
+            successor_outside = sorted(
+                path for path in successor_paths
+                if not _protected_control_path(root, path)
+                and not path_is_allowed(root, path, successor.get("allowed_paths", []))
+            )
+            if parent_outside or successor_outside:
+                continue
+            nested_paths, nested_errors, nested_details = _completed_successor_merge_coverage(
+                root,
+                successor,
+                successor_subject,
+                second_parent,
+                trusted_base=first_parent,
+            )
+            if nested_errors:
+                continue
+            outside_merge = sorted(
+                path for path in merge_paths
+                if not _protected_control_path(root, path)
+                and not path_is_allowed(root, path, task.get("allowed_paths", []))
+                and not path_is_allowed(root, path, successor.get("allowed_paths", []))
+                and path not in nested_paths
+            )
+            if outside_merge:
+                continue
+            attributed = {
+                path for path in merge_paths if not _protected_control_path(root, path)
+            }
+            absorbed.append((commit, successor, attributed, nested_details))
+        if len(absorbed) != 1:
+            return covered, [
+                "content subject is not on the control head first-parent chain"
+            ], details
+        range_subject, successor, attributed, nested_details = absorbed[0]
+        covered.update(attributed)
+        details.append({
+            "kind": "absorbed_parent_subject",
+            "task_id": successor.get("task_id"),
+            "merged_sha": range_subject,
+            "committed_sha": successor.get("git", {}).get("committed_sha"),
+            "paths": sorted(attributed),
+            "successor_merges": nested_details,
+        })
+
+    commits_output, commits_error = run_git(
+        root,
+        ("rev-list", "--first-parent", "--reverse", "%s..%s" % (range_subject, head)),
+    )
+    if commits_error:
+        return covered, ["cannot inspect content-to-head first-parent range: %s" % commits_error], details
 
     for commit in (commits_output or "").splitlines():
         parents_output, parents_error = run_git(
