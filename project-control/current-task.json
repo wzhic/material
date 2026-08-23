@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0009",
-  "reason": "GOV-0009 已完成，继续合并 GOV-0008 PR",
+  "previous_task_id": "GOV-0008",
+  "reason": "GOV-0008 已完成，继续合并 GOV-0007 PR",
   "schema_version": 1,
-  "selected_at": "2026-08-23T09:53:44+00:00",
+  "selected_at": "2026-08-23T10:02:23+00:00",
   "selected_by": "Codex",
-  "task_id": "GOV-0008"
+  "task_id": "GOV-0007"
 }
