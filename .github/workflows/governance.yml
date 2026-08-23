@@ -31,6 +31,7 @@ jobs:
             release_unit: win
     env:
       MATERIAL_RELEASE_UNIT: ${{ matrix.release_unit }}
+      PSModuleAnalysisCachePath: ${{ github.workspace }}/../PowerShell-ModuleAnalysisCache
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUTF8: "1"
 

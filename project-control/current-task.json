@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0007",
-  "reason": "start-clean-Windows-CI-loader-task",
+  "previous_task_id": "GOV-0012",
+  "reason": "GOV-0012 已完成，恢复并继续合并 GOV-0009 PR",
   "schema_version": 1,
-  "selected_at": "2026-08-23T05:32:31+00:00",
+  "selected_at": "2026-08-23T09:44:18+00:00",
   "selected_by": "Codex",
-  "task_id": "GOV-0008"
+  "task_id": "GOV-0009"
 }
