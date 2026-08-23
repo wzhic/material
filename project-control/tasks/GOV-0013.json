@@ -118,7 +118,8 @@
   "created_at": "2026-08-23T10:35:15+00:00",
   "dependencies": [],
   "git": {
-    "committed_sha": "84745bf4eae59b45a79f9923f76cff3e139beca6"
+    "committed_sha": "84745bf4eae59b45a79f9923f76cff3e139beca6",
+    "merged_sha": "4f62329e30b733153743dedb2e7840f5a260403f"
   },
   "history": [
     {
@@ -150,6 +151,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "记录可信 base-sync merge 修复的内容提交",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-23T10:48:51+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #11 三平台 CI 全绿后已合并到 APP-0003",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-23T10:48:55+00:00",
+      "from": "MERGED",
+      "reason": "GOV-0013 修复已合并且 PR #11 三平台 CI 通过",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -176,10 +191,10 @@
   },
   "schema_version": 1,
   "scope_version": 1,
-  "status": "COMMITTED",
+  "status": "DONE",
   "summary": "修复堆叠 PR 在以普通 merge commit 同步可信基分支后被误判为未绑定后继任务；只接受第二父提交属于可信事件基线祖先且合入路径与该第二父提交完全一致的 base-sync merge，不放宽普通提交、冲突改写或后继任务归因。",
   "task_id": "GOV-0013",
-  "updated_at": "2026-08-23T10:39:39+00:00",
+  "updated_at": "2026-08-23T10:48:55+00:00",
   "validation": {
     "required": [
       {
