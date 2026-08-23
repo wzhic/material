@@ -451,8 +451,8 @@ class StaticProfileTests(AuthenticatedReceiptTestCase):
             workflow = root / ".github" / "workflows" / "governance.yml"
             workflow.write_text(
                 workflow.read_text(encoding="utf-8").replace(
-                    ", '--json']))",
-                    "]))",
+                    "'--json'",
+                    "'--diagnostics-disabled'",
                 ),
                 encoding="utf-8",
             )
@@ -460,6 +460,20 @@ class StaticProfileTests(AuthenticatedReceiptTestCase):
             self.assertFalse(report["ok"])
             contract = next(item for item in report["checks"] if item["id"] == "workflow_contract")
             self.assertIn("controlled required validation", contract["message"])
+
+    def test_workflow_failure_diagnostics_preserve_controlled_result(self) -> None:
+        workflow = (
+            REPOSITORY_ROOT / ".github" / "workflows" / "governance.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("controlled_code = subprocess.call(", workflow)
+        self.assertIn("controlled_code == 0 or", workflow)
+        self.assertIn("raise SystemExit(controlled_code)", workflow)
+        self.assertIn("[sys.executable, '-m', 'unittest', 'discover'", workflow)
+        self.assertIn(
+            "[sys.executable, 'tools/governance/reconcile.py', 'static', '--json']",
+            workflow,
+        )
+        self.assertNotIn("continue-on-error: true", workflow)
 
     def test_workflow_contract_rejects_duplicate_direct_validation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
