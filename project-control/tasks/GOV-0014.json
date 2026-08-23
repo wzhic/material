@@ -118,7 +118,8 @@
   "created_at": "2026-08-23T10:56:14+00:00",
   "dependencies": [],
   "git": {
-    "committed_sha": "85506e65ced18c6a0982e05bb19698cbced81dfa"
+    "committed_sha": "85506e65ced18c6a0982e05bb19698cbced81dfa",
+    "merged_sha": "5a7ea4f5360ea57aba6b2546fa114ca0eae34833"
   },
   "history": [
     {
@@ -150,6 +151,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "提交父分支前移内容覆盖协议修复及负向测试",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-23T11:09:39+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #12 三平台 CI 全绿并已合并到 APP-0003",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-23T11:09:39+00:00",
+      "from": "MERGED",
+      "reason": "GOV-0014 已合并，Run 32635412925 三平台通过",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -176,10 +191,10 @@
   },
   "schema_version": 1,
   "scope_version": 1,
-  "status": "COMMITTED",
+  "status": "DONE",
   "summary": "修复堆叠 PR 的父分支在任务内容提交后前移时，内容提交不再位于当前 PR merge-base 之后而被误拒的问题；只接受内容提交仍位于 HEAD 第一父链、父分支前移通过已验证的干净 base-sync merge 引入且最终 PR 差异仍完整包含任务范围的情况。",
   "task_id": "GOV-0014",
-  "updated_at": "2026-08-23T11:01:00+00:00",
+  "updated_at": "2026-08-23T11:09:39+00:00",
   "validation": {
     "required": [
       {
