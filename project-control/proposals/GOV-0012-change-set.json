@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0012",
+  "base_head": "b459ab6fdebbaebcca1872831fd59a37f12c2511",
+  "paths": [
+    "tools/governance/reconcile.py",
+    "tools/governance/tests/test_reconcile_ci_static.py"
+  ]
+}

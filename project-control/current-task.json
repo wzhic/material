@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0011",
-  "reason": "GOV-0011 已完成，继续处理 PR 栈下一层 GOV-0009",
+  "previous_task_id": "GOV-0009",
+  "reason": "GOV-0009 已提交并等待 CI，切换到独立 GOV-0012 修复栈归属门禁",
   "schema_version": 1,
-  "selected_at": "2026-08-23T09:16:52+00:00",
+  "selected_at": "2026-08-23T09:23:44+00:00",
   "selected_by": "Codex",
-  "task_id": "GOV-0009"
+  "task_id": "GOV-0012"
 }
