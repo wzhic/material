@@ -1,8 +1,8 @@
 {
   "previous_task_id": "GOV-0004",
-  "reason": "align the current governance repair branch with its reviewed task branch",
+  "reason": "close-Windows-CI-loader-failure",
   "schema_version": 1,
-  "selected_at": "2026-08-21T12:49:58+00:00",
+  "selected_at": "2026-08-23T05:13:50+00:00",
   "selected_by": "Codex",
-  "task_id": "GOV-0004"
+  "task_id": "GOV-0006"
 }
