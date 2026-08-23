@@ -149,6 +149,11 @@
   },
   "created_at": "2026-08-21T10:52:12+00:00",
   "dependencies": [],
+  "exception": {
+    "previous_status": "COMMITTED",
+    "reason": "PR #3 CI 暴露统一三平台矩阵把未涉及 backend 的 APP-0003 误判为失败",
+    "recorded_at": "2026-08-23T10:18:28+00:00"
+  },
   "git": {
     "committed_sha": "f869df94708da57f838d8fb7dfadf986460d13df"
   },
@@ -295,6 +300,13 @@
       "from": "LOCAL_VERIFIED",
       "reason": "commit only the validated APP-0003 Product Library PRD handoff proposal",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-23T10:18:28+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #3 CI 暴露统一三平台矩阵把未涉及 backend 的 APP-0003 误判为失败",
+      "to": "BLOCKED"
     }
   ],
   "open_questions": [],
@@ -1179,7 +1191,7 @@
     }
   ],
   "scope_version": 3,
-  "status": "COMMITTED",
+  "status": "BLOCKED",
   "subtasks": [
     {
       "finished_at": "2026-08-21T11:18:03+00:00",
@@ -1292,7 +1304,7 @@
   ],
   "summary": "将治理收缩为范围、受保护记录、不安全 Git、真实验证和最终发布五类关键边界；普通可逆编辑、联网、依赖、分支 push、PR 准备和子 Agent 协作不再逐项审批。子 Agent 与子任务只记录名称、目的、状态和结果，不保存提示词或内部推理。",
   "task_id": "GOV-0003",
-  "updated_at": "2026-08-21T11:29:50+00:00",
+  "updated_at": "2026-08-23T10:18:28+00:00",
   "validation": {
     "required": [
       {
