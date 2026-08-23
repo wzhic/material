@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0008",
+  "base_head": "cb72f2f1406ccb1cd7e5238827a29b2438bc351b",
+  "paths": [
+    ".github/workflows/governance.yml",
+    "tools/governance/tests/test_reconcile_ci_static.py"
+  ]
+}
