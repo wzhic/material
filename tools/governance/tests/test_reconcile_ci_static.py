@@ -33,6 +33,33 @@ import taskctl  # noqa: E402
 from validation_runner import RUNNER_VERSION, run_one  # noqa: E402
 
 
+# The governance suite constructs its own trusted GitHub event fixtures.  When
+# the suite is discovered inside Actions, inherited outer-run metadata would
+# otherwise be mistaken for fixture evidence by tests that intentionally omit
+# or replace individual fields.  Discovery imports every test module before
+# executing cases, so clearing the non-secret outer context here keeps the
+# complete suite deterministic without weakening production CI validation.
+AMBIENT_CI_CONTEXT_KEYS = (
+    "GITHUB_ACTIONS",
+    "GITHUB_BASE_REF",
+    "GITHUB_EVENT_NAME",
+    "GITHUB_EVENT_PATH",
+    "GITHUB_HEAD_REF",
+    "GITHUB_REF",
+    "GITHUB_REF_NAME",
+    "GITHUB_REPOSITORY",
+    "GITHUB_RUN_ATTEMPT",
+    "GITHUB_RUN_ID",
+    "GITHUB_SERVER_URL",
+    "GITHUB_SHA",
+    "GITHUB_WORKFLOW_REF",
+    "MATERIAL_RELEASE_UNIT",
+    "RUNNER_OS",
+)
+for _context_key in AMBIENT_CI_CONTEXT_KEYS:
+    os.environ.pop(_context_key, None)
+
+
 SECTION_TITLES = (
     "文档信息",
     "一句话摘要",
@@ -68,6 +95,14 @@ DOC_DIMENSIONS = (
     "decisions",
     "governance",
 )
+
+
+class AmbientCiIsolationTests(unittest.TestCase):
+    def test_discovered_governance_suite_does_not_inherit_outer_ci_context(self) -> None:
+        self.assertEqual(
+            [],
+            [key for key in AMBIENT_CI_CONTEXT_KEYS if key in os.environ],
+        )
 
 
 def git(root: Path, *arguments: str) -> str:
@@ -367,6 +402,34 @@ class StaticProfileTests(AuthenticatedReceiptTestCase):
             contract = next(item for item in report["checks"] if item["id"] == "workflow_contract")
             self.assertIn("fetch-depth", contract["message"])
 
+    def test_workflow_contract_requires_nonempty_test_suite_guards(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = prepare_static_root(root)
+            workflow = root / ".github" / "workflows" / "governance.yml"
+            workflow.write_text(
+                workflow.read_text(encoding="utf-8").replace(
+                    "discover('tools/governance/tests', pattern='test_*.py').countTestCases()",
+                    "discover('tools/governance/tests', pattern='test_*.py').disabledCount()",
+                ),
+                encoding="utf-8",
+            )
+            report = run_reconcile(
+                root, "workflow", git_branch=task["branch"], git_changes=[]
+            )
+            self.assertFalse(report["ok"])
+            contract = next(
+                item for item in report["checks"] if item["id"] == "workflow_contract"
+            )
+            self.assertIn("governance tests reject an empty suite", contract["message"])
+
+    def test_workflow_uses_independent_test_loaders_for_each_suite(self) -> None:
+        workflow = (
+            REPOSITORY_ROOT / ".github" / "workflows" / "governance.yml"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("unittest.defaultTestLoader", workflow)
+        self.assertEqual(2, workflow.count("unittest.TestLoader().discover("))
+
     def test_workflow_contract_requires_controlled_three_unit_matrix(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -388,8 +451,8 @@ class StaticProfileTests(AuthenticatedReceiptTestCase):
             workflow = root / ".github" / "workflows" / "governance.yml"
             workflow.write_text(
                 workflow.read_text(encoding="utf-8").replace(
-                    ", '--bootstrap-first-push', '--json'",
-                    ", '--bootstrap-first-push'",
+                    "'--json'",
+                    "'--diagnostics-disabled'",
                 ),
                 encoding="utf-8",
             )
@@ -397,6 +460,27 @@ class StaticProfileTests(AuthenticatedReceiptTestCase):
             self.assertFalse(report["ok"])
             contract = next(item for item in report["checks"] if item["id"] == "workflow_contract")
             self.assertIn("controlled required validation", contract["message"])
+
+    def test_workflow_failure_diagnostics_preserve_controlled_result(self) -> None:
+        workflow = (
+            REPOSITORY_ROOT / ".github" / "workflows" / "governance.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("controlled_code = subprocess.call(", workflow)
+        self.assertIn("controlled_code == 0 or", workflow)
+        self.assertIn("raise SystemExit(controlled_code)", workflow)
+        self.assertIn("[sys.executable, '-m', 'unittest', 'discover'", workflow)
+        self.assertIn(
+            "[sys.executable, 'tools/governance/reconcile.py', 'static', '--json']",
+            workflow,
+        )
+        self.assertNotIn("continue-on-error: true", workflow)
+        self.assertEqual(
+            1,
+            workflow.count(
+                "PSModuleAnalysisCachePath: ${{ github.workspace }}/../PowerShell-ModuleAnalysisCache"
+            ),
+        )
+        self.assertNotIn("PSModuleAnalysisCachePath: ${{ runner.temp }}", workflow)
 
     def test_workflow_contract_rejects_duplicate_direct_validation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -412,6 +496,36 @@ class StaticProfileTests(AuthenticatedReceiptTestCase):
             self.assertFalse(report["ok"])
             contract = next(item for item in report["checks"] if item["id"] == "workflow_contract")
             self.assertIn("no duplicate governance test execution", contract["message"])
+
+    def test_workflow_contract_rejects_github_run_metadata_writeback(self) -> None:
+        forbidden_markers = (
+            "sync-github-run",
+            "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+            "secrets.GITHUB_TOKEN",
+            "github.token",
+            "GITHUB_RUN_ID",
+            "github.run_id",
+            "--run-id",
+            "--run-url",
+            "/actions/runs/",
+        )
+        for marker in forbidden_markers:
+            with self.subTest(marker=marker), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                task = prepare_static_root(root)
+                workflow = root / ".github" / "workflows" / "governance.yml"
+                workflow.write_text(
+                    workflow.read_text(encoding="utf-8") + "\n# " + marker + "\n",
+                    encoding="utf-8",
+                )
+                report = run_reconcile(
+                    root, "workflow", git_branch=task["branch"], git_changes=[]
+                )
+                self.assertFalse(report["ok"])
+                contract = next(
+                    item for item in report["checks"] if item["id"] == "workflow_contract"
+                )
+                self.assertIn("no GitHub run metadata writeback", contract["message"])
 
     def test_static_rejects_fixed_project_repository_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -529,6 +643,85 @@ class TrustedCiContextTests(AuthenticatedReceiptTestCase):
             self.assertEqual(content_sha, report["context"]["ci"]["content_subject_sha"])
             self.assertEqual(control_sha, report["context"]["ci"]["control_head_sha"])
             self.assertEqual("control_head", report["context"]["ci"]["mode"])
+
+    def test_ci_attributes_only_exact_done_successor_merges_in_stack(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task, base_sha, _content_sha, _control_sha = self.prepare_two_layer_commits(root)
+            git(root, "branch", "-M", task["branch"])
+
+            successor = copy.deepcopy(task)
+            successor_id = "GOV-SUCCESSOR"
+            successor["task_id"] = successor_id
+            successor["status"] = "DRAFT"
+            successor["branch"] = "codex/req-0009-gov-successor-owned-change"
+            successor["base_branch"] = task["branch"]
+            successor["allowed_paths"] = ["successor/**", "project-control/**"]
+            successor["validation"]["results"] = []
+            successor.pop("git", None)
+            successor["coordination"]["coordinator_task"] = successor_id
+            successor["coordination"]["unit_tasks"] = {
+                "mac": successor_id, "win": successor_id, "backend": successor_id,
+            }
+            successor_file = (
+                root / "project-control" / "tasks" / (successor_id + ".json")
+            )
+            write_json(successor_file, successor)
+            commit_all(root, "register successor task")
+
+            git(root, "switch", "-c", successor["branch"])
+            owned = root / "successor" / "owned.py"
+            owned.parent.mkdir(parents=True, exist_ok=True)
+            owned.write_text("VALUE = 'reviewed successor'\n", encoding="utf-8")
+            successor_subject = commit_all(root, "successor content subject")
+            successor["status"] = "COMMITTED"
+            successor["git"] = {"committed_sha": successor_subject}
+            write_json(successor_file, successor)
+            commit_all(root, "successor control metadata")
+
+            git(root, "switch", task["branch"])
+            git(root, "merge", "--no-ff", successor["branch"], "-m", "merge successor")
+            successor_merge = git(root, "rev-parse", "HEAD")
+            successor["status"] = "DONE"
+            successor["git"]["merged_sha"] = successor_merge
+            write_json(successor_file, successor)
+            head = commit_all(root, "close successor task")
+            git(root, "checkout", "--detach", head)
+
+            environment = github_pull_request_environment(
+                root, base_sha, head, "main", task["branch"]
+            )
+            with mock.patch.dict(os.environ, environment, clear=False):
+                report = run_reconcile(root, "ci")
+            self.assertTrue(report["ok"], report)
+            changed = next(item for item in report["checks"] if item["id"] == "changed_paths")
+            protocol = next(
+                item for item in report["checks"] if item["id"] == "ci_commit_protocol"
+            )
+            self.assertEqual(
+                [successor_id],
+                [item["task_id"] for item in changed["details"]["successor_merges"]],
+            )
+            self.assertEqual(
+                [successor_id],
+                [item["task_id"] for item in protocol["details"]["successor_merges"]],
+            )
+
+            git(root, "switch", task["branch"])
+            successor["status"] = "COMMITTED"
+            write_json(successor_file, successor)
+            untrusted_head = commit_all(root, "make successor incomplete")
+            git(root, "checkout", "--detach", untrusted_head)
+            untrusted_environment = github_pull_request_environment(
+                root, base_sha, untrusted_head, "main", task["branch"]
+            )
+            with mock.patch.dict(os.environ, untrusted_environment, clear=False):
+                rejected = run_reconcile(root, "ci")
+            self.assertFalse(rejected["ok"])
+            rejected_protocol = next(
+                item for item in rejected["checks"] if item["id"] == "ci_commit_protocol"
+            )
+            self.assertIn("DONE direct successor", rejected_protocol["message"])
 
     def test_ci_accepts_exact_g0_root_subject_plus_protected_control_head(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -649,6 +842,50 @@ class TrustedCiContextTests(AuthenticatedReceiptTestCase):
             static_branch = next(item for item in static_report["checks"] if item["id"] == "branch")
             self.assertEqual("trusted_github_event", static_branch["details"]["source"])
 
+    def test_taskctl_ci_branch_gate_accepts_only_a_reconciled_detached_pr_head(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task, base_sha, _content_sha, control_sha = self.prepare_two_layer_commits(root)
+            git(root, "checkout", "--detach", control_sha)
+            environment = github_pull_request_environment(
+                root, base_sha, control_sha, "main", task["branch"]
+            )
+            with mock.patch.dict(os.environ, environment, clear=False):
+                taskctl._require_validation_branch(root, task, "ci")
+
+            untrusted = dict(environment)
+            untrusted["GITHUB_REPOSITORY"] = "attacker/material"
+            with mock.patch.dict(os.environ, untrusted, clear=False):
+                with self.assertRaisesRegex(Exception, "trusted GitHub CI context is invalid"):
+                    taskctl._require_validation_branch(root, task, "ci")
+
+    def test_main_push_detached_head_runs_the_single_controlled_ci_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task, base_sha, _content_sha, control_sha = self.prepare_two_layer_commits(root)
+            git(root, "branch", "main", base_sha)
+            git(root, "switch", "main")
+            git(root, "merge", "--no-ff", control_sha, "-m", "merge governed task")
+            merge_sha = git(root, "rev-parse", "HEAD")
+            git(root, "checkout", "--detach", merge_sha)
+            environment = github_push_environment(root, base_sha, merge_sha, "main")
+            with mock.patch.dict(os.environ, environment, clear=False):
+                report = run_reconcile(root, "ci")
+                with mock.patch("sys.stdout"):
+                    code = taskctl.main([
+                        "run-required", task["task_id"],
+                        "--phase", "ci",
+                        "--release-unit", "backend",
+                        "--environment", "github-actions:push:backend",
+                        "--root", str(root),
+                        "--json",
+                    ])
+            self.assertTrue(report["ok"], report)
+            self.assertEqual(0, code)
+            branch = next(item for item in report["checks"] if item["id"] == "branch")
+            self.assertEqual("main", branch["details"]["actual"])
+            self.assertEqual("trusted_github_event", branch["details"]["source"])
+
     def test_ci_rejects_event_head_that_is_not_checked_out(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -685,6 +922,29 @@ class TrustedCiContextTests(AuthenticatedReceiptTestCase):
             runner = next(item for item in report["checks"] if item["id"] == "ci_release_runner")
             self.assertEqual("failed", runner["status"])
             self.assertIn("Windows", runner["message"])
+
+    def test_ci_accepts_trusted_runner_for_unaffected_release_unit(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task, base_sha, _content_sha, control_sha = self.prepare_two_layer_commits(root)
+            task["release_units"] = ["mac", "win"]
+            for check in task["validation"]["required"]:
+                check["release_units"] = ["mac", "win"]
+            task["coordination"]["deployment_order"] = ["mac", "win"]
+            task["coordination"]["rollback_order"] = ["win", "mac"]
+            for field in ("unit_tasks", "unit_validation_checks", "unit_rollback_checks"):
+                task["coordination"][field].pop("backend")
+            task["validation"]["results"] = []
+            renew_test_scope_review(root, task)
+            store_controlled_local_pass(root, task)
+            write_json(root / "project-control" / "tasks" / (task["task_id"] + ".json"), task)
+            environment = github_push_environment(root, base_sha, control_sha, task["branch"])
+            with mock.patch.dict(os.environ, environment, clear=False):
+                report = run_reconcile(root, "ci")
+            runner = next(item for item in report["checks"] if item["id"] == "ci_release_runner")
+            self.assertEqual("passed", runner["status"])
+            self.assertFalse(runner["details"]["applicable"])
+            self.assertIn("not applicable", runner["message"])
 
     def test_ci_rejects_pr_target_not_bound_as_base_branch(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -893,6 +1153,32 @@ class GovernanceConsistencyTests(unittest.TestCase):
             }
             waiting["git"] = {"committed_sha": "a" * 40}
             write_json(root / "project-control" / "tasks" / "GOV-WAITING.json", waiting)
+
+            report = run_reconcile(root, "session", git_branch=task["branch"], git_changes=[])
+            active = next(item for item in report["checks"] if item["id"] == "active_task")
+            self.assertEqual("passed", active["status"], active)
+            self.assertEqual(
+                [{"task_id": task["task_id"], "status": task["status"]}],
+                active["details"]["active"],
+            )
+
+    def test_noncurrent_blocked_task_is_frozen_not_active_work(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = prepare_static_root(root)
+            blocked = base_task(status="BLOCKED")
+            blocked["task_id"] = "GOV-BLOCKED"
+            blocked["branch"] = "codex/req-blocked-gov-blocked-waiting"
+            blocked["coordination"]["coordinator_task"] = "GOV-BLOCKED"
+            blocked["coordination"]["unit_tasks"] = {
+                "mac": "GOV-BLOCKED", "win": "GOV-BLOCKED", "backend": "GOV-BLOCKED",
+            }
+            blocked["exception"] = {
+                "previous_status": "IN_PROGRESS",
+                "reason": "frozen while another task resolves the blocker",
+                "recorded_at": "2026-08-21T00:00:00+00:00",
+            }
+            write_json(root / "project-control" / "tasks" / "GOV-BLOCKED.json", blocked)
 
             report = run_reconcile(root, "session", git_branch=task["branch"], git_changes=[])
             active = next(item for item in report["checks"] if item["id"] == "active_task")

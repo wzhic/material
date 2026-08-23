@@ -1,0 +1,23 @@
+{
+  "action": "merge",
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "conversation:2026-08-23:merge-all-pr-stack",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "合并全部 PR 栈",
+  "decided_at": "2026-08-23T11:01:24+00:00",
+  "decision": "approved",
+  "expires_at": "2026-08-24T23:59:59+08:00",
+  "kind": "final_action",
+  "project_id": "material",
+  "reason": "用户已明确授权合并全部 PR 栈",
+  "recorded_by": "Codex",
+  "review_id": "GOV-0014-R001",
+  "schema_version": 3,
+  "scope_hash": "sha256:463bcaa6fe5043e92c5d1a923740c55767d5e0a821f6823d20bafbcb99dfd48d",
+  "scope_version": 1,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "subject": "commit:85506e65ced18c6a0982e05bb19698cbced81dfa",
+  "supersedes": null,
+  "task_id": "GOV-0014"
+}

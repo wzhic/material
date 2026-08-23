@@ -296,7 +296,7 @@ class HookPolicyTests(unittest.TestCase):
         self.assertEqual(output["permissionDecision"], "deny")
         self.assertIn(text, output["permissionDecisionReason"])
 
-    def test_without_review_denies_write(self) -> None:
+    def test_in_progress_without_review_allows_in_scope_write(self) -> None:
         payload = self.fixture.payload(
             "apply_patch",
             {
@@ -308,12 +308,111 @@ class HookPolicyTests(unittest.TestCase):
                 )
             },
         )
-        result = pre_tool_use.evaluate(payload)
-        self.assert_denied(result, "no effective user review")
+        self.assertIsNone(pre_tool_use.evaluate(payload))
 
     def test_without_review_allows_strict_readonly_bash(self) -> None:
         payload = self.fixture.payload("Bash", {"command": "git status --short"})
         self.assertIsNone(pre_tool_use.evaluate(payload))
+
+    def test_common_read_commands_do_not_need_task_command_entries(self) -> None:
+        commands = (
+            "sed -n '1,12p' .codex/hooks/pre_tool_use.py",
+            "rg -n SessionStart .codex/hooks/session_start.py",
+            "git diff -- .codex/hooks/pre_tool_use.py",
+            "git status --short --branch",
+        )
+        for tool_name in ("Bash", "bash", "BASH"):
+            for command in commands:
+                with self.subTest(tool_name=tool_name, command=command):
+                    self.assertIsNone(
+                        pre_tool_use.evaluate(
+                            self.fixture.payload(tool_name, {"command": command})
+                        )
+                    )
+
+    def test_sed_read_parser_rejects_write_or_unbounded_shapes(self) -> None:
+        rejected = (
+            "sed -i 's/a/b/' .codex/hooks/pre_tool_use.py",
+            "sed -n '1,12w output.txt' .codex/hooks/pre_tool_use.py",
+            "sed -n '1,12p' ../outside.py",
+        )
+        for command in rejected:
+            with self.subTest(command=command):
+                self.assertIsNotNone(
+                    pre_tool_use.evaluate(
+                        self.fixture.payload("Bash", {"command": command})
+                    )
+                )
+
+    def test_collaboration_spawn_requires_matching_open_subtask(self) -> None:
+        started_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+        self.fixture.task["subtasks"] = [
+            {
+                "id": "hook_policy",
+                "name": "/root/hook_policy",
+                "purpose": "implement the Hook boundary",
+                "status": "in_progress",
+                "started_at": started_at.isoformat(),
+                "finished_at": None,
+                "result": None,
+            }
+        ]
+        self.fixture.write_current_task()
+        allowed = self.fixture.payload(
+            "collaboration.spawn_agent",
+            {"task_name": "hook_policy", "message": "bounded work"},
+        )
+        self.assertIsNone(pre_tool_use.evaluate(allowed))
+
+        missing = self.fixture.payload(
+            "collaborationspawn_agent",
+            {"task_name": "unrecorded", "message": "bounded work"},
+        )
+        self.assert_denied(
+            pre_tool_use.evaluate(missing),
+            "taskctl subtask-start",
+        )
+
+    def test_collaboration_coordination_is_not_reapproved_per_message(self) -> None:
+        active_payloads = (
+            self.fixture.payload(
+                "collaboration.send_message",
+                {"target": "/root/hook_policy", "message": "status"},
+            ),
+            self.fixture.payload(
+                "collaboration.followup_task",
+                {"target": "/root/hook_policy", "message": "continue"},
+            ),
+            self.fixture.payload(
+                "collaboration.interrupt_agent",
+                {"target": "/root/hook_policy"},
+            ),
+        )
+        for payload in active_payloads:
+            with self.subTest(tool=payload["tool_name"]):
+                self.assertIsNone(pre_tool_use.evaluate(payload))
+
+        for status in ("LOCAL_VERIFIED", "COMMITTED", "DONE"):
+            self.fixture.set_status(status)
+            for tool_name in (
+                "collaboration.list_agents",
+                "collaboration.wait_agent",
+            ):
+                with self.subTest(status=status, tool=tool_name):
+                    self.assertIsNone(
+                        pre_tool_use.evaluate(
+                            self.fixture.payload(tool_name, {"timeout_ms": 10000})
+                        )
+                    )
+
+        active_after_freeze = self.fixture.payload(
+            "collaboration.send_message",
+            {"target": "/root/hook_policy", "message": "late mutation"},
+        )
+        self.assert_denied(
+            pre_tool_use.evaluate(active_after_freeze),
+            "requires task status IN_PROGRESS",
+        )
 
     def test_pre_review_states_allow_only_local_preparation_files(self) -> None:
         for status in ("DRAFT", "REVIEW_PENDING"):
@@ -331,8 +430,10 @@ class HookPolicyTests(unittest.TestCase):
                 self.assertEqual(context["governance"], "READY")
                 self.assertEqual(context["write_mode"], "PREPARATION_WRITES_ALLOWED")
                 self.assertEqual(context["task"]["status"], status)
-                self.assertFalse(context["review"]["effective"])
-                self.assertTrue(context["review"]["reason"])
+                self.assertNotIn("review", context)
+                if status == "DRAFT":
+                    self.assertEqual(context["next_state"], "IN_PROGRESS")
+                    self.assertIn("taskctl begin", context["next_step"])
 
                 proposal = self.fixture.payload(
                     "apply_patch",
@@ -392,7 +493,7 @@ class HookPolicyTests(unittest.TestCase):
             },
         )
         result = pre_tool_use.evaluate(payload)
-        self.assert_denied(result, "outside reviewed scope")
+        self.assert_denied(result, "outside task allowed scope")
 
     def test_in_progress_with_blockers_denies_ordinary_write(self) -> None:
         self.fixture.task["blockers"] = ["Waiting for a recorded user decision"]
@@ -475,7 +576,7 @@ class HookPolicyTests(unittest.TestCase):
                 context = json.loads(encoded)
                 self.assertEqual(context["governance"], "READY")
                 self.assertEqual(context["task"]["status"], status)
-                self.assertTrue(context["review"]["effective"])
+                self.assertNotIn("review", context)
                 self.assertTrue(context["next_step"])
                 expected_mode = (
                     "IN_SCOPE_WRITES_ALLOWED"
@@ -832,7 +933,8 @@ class HookPolicyTests(unittest.TestCase):
                 _, encoded = output["hookSpecificOutput"]["additionalContext"].split("\n", 1)
                 context = json.loads(encoded)
                 self.assertEqual(context["governance"], "READY")
-                self.assertIsNone(context["requirement"]["interaction_kind"])
+                self.assertNotIn("requirement", context)
+                self.assertEqual(context["allowed_paths"], [".codex/**"])
 
         for status in ("READY", "IN_PROGRESS", "LOCAL_VERIFIED", "DONE"):
             with self.subTest(status=status):
@@ -1082,8 +1184,7 @@ class HookPolicyTests(unittest.TestCase):
         result = pre_tool_use.evaluate(payload)
         self.assert_denied(result, "trust root must be exactly GOV-0001")
 
-    def test_scope_change_invalidates_existing_receipt(self) -> None:
-        self.fixture.approve()
+    def test_scope_change_uses_current_allowed_paths_without_review_gate(self) -> None:
         self.fixture.task["allowed_paths"].append("src/**")
         self.fixture.write_current_task()
         payload = self.fixture.payload(
@@ -1097,16 +1198,136 @@ class HookPolicyTests(unittest.TestCase):
                 )
             },
         )
-        result = pre_tool_use.evaluate(payload)
-        self.assert_denied(result, "canonical scope")
+        self.assertIsNone(pre_tool_use.evaluate(payload))
 
-    def test_g0_blocks_commit_even_if_command_is_listed(self) -> None:
-        self.fixture.task["allowed_commands"].append("git commit -m test")
+    def test_common_development_test_does_not_need_a_task_command_entry(self) -> None:
+        self.fixture.approve()
+        command = "python3 -m unittest discover -s .codex/tests -p 'test_*.py' -v"
+        self.assertNotIn(command, self.fixture.task["allowed_commands"])
+        payload = self.fixture.payload("Bash", {"command": command})
+        self.assertIsNone(pre_tool_use.evaluate(payload))
+
+    def test_package_manager_write_location_must_be_inside_task_scope(self) -> None:
+        self.fixture.approve()
+        allowed = (
+            "npm --prefix .codex/work run build",
+            "npm --prefix=.codex/work run test",
+            "pnpm --dir .codex/work install example-package",
+            "pnpm --dir=.codex/work run package",
+            "make -C .codex/work build",
+        )
+        for command in allowed:
+            with self.subTest(allowed=command):
+                self.assertIsNone(
+                    pre_tool_use.evaluate(
+                        self.fixture.payload("Bash", {"command": command})
+                    )
+                )
+
+        rejected = (
+            ("npm install example-package", "cwd is outside task.allowed_paths"),
+            ("npm --prefix apps/desktop install example-package", "outside task.allowed_paths"),
+            ("npm --prefix=apps/desktop run build", "outside task.allowed_paths"),
+            ("pnpm --dir=project-control/tasks install example-package", "protected governance"),
+            ("npm --prefix=project-control/reviews run build", "protected governance"),
+        )
+        for command, reason in rejected:
+            with self.subTest(rejected=command):
+                self.assert_denied(
+                    pre_tool_use.evaluate(
+                        self.fixture.payload("Bash", {"command": command})
+                    ),
+                    reason,
+                )
+
+        reviewed_but_outside = "npm --prefix=apps/desktop run build"
+        self.fixture.task["allowed_commands"].append(reviewed_but_outside)
         self.fixture.write_current_task()
         self.fixture.approve()
-        payload = self.fixture.payload("Bash", {"command": "git commit -m test"})
-        result = pre_tool_use.evaluate(payload)
-        self.assert_denied(result, "not authorized during G0")
+        self.assert_denied(
+            pre_tool_use.evaluate(
+                self.fixture.payload("Bash", {"command": reviewed_but_outside})
+            ),
+            "outside task.allowed_paths",
+        )
+
+    def test_uv_and_read_only_network_work_inside_task_scope(self) -> None:
+        self.fixture.approve()
+        allowed = (
+            ("uv add pydantic", self.fixture.root / ".codex"),
+            ("curl -fsSL https://example.com", self.fixture.root),
+            (
+                "curl --output=.codex/result.json https://example.com",
+                self.fixture.root,
+            ),
+            ("wget -O - https://example.com", self.fixture.root),
+        )
+        for command, cwd in allowed:
+            with self.subTest(command=command):
+                payload = self.fixture.payload("Bash", {"command": command})
+                payload["cwd"] = str(cwd)
+                self.assertIsNone(pre_tool_use.evaluate(payload))
+
+    def test_network_uploads_and_out_of_scope_downloads_are_denied(self) -> None:
+        denied = (
+            "curl --json={} https://example.com",
+            "curl -T.codex/payload https://example.com",
+            "curl --output=docs/outside.json https://example.com",
+            "curl --output=../outside.json https://example.com",
+            "wget --post-file=.codex/payload https://example.com",
+            "wget https://example.com/file",
+        )
+        for command in denied:
+            with self.subTest(command=command):
+                self.assertIsNotNone(
+                    pre_tool_use.evaluate(
+                        self.fixture.payload("Bash", {"command": command})
+                    )
+                )
+
+    def test_final_actions_require_a_separate_decision(self) -> None:
+        blocked = (
+            "make deploy",
+            "make release-prod",
+            "npm run deploy",
+            "npm --prefix .codex/work run release:prod",
+            "pnpm --dir=.codex/work run publish-site",
+            "pnpm --dir=.codex/work deploy",
+            "yarn run merge",
+            "gh pr merge 17",
+            "gh release create v1.0.0",
+            "npx vercel deploy",
+            "uv run vercel deploy",
+            "kubectl apply -f .codex/deployment.yml",
+            "terraform apply",
+            "docker push example/material:latest",
+            "vercel deploy",
+            "npm --prefix .codex/work run build -- --deploy",
+        )
+        for command in blocked:
+            with self.subTest(command=command):
+                self.assert_denied(
+                    pre_tool_use.evaluate(
+                        self.fixture.payload("Bash", {"command": command})
+                    ),
+                    "final_action",
+                )
+
+        self.fixture.approve()
+        ordinary = (
+            "make -C .codex/work build",
+            "npm --prefix .codex/work run build",
+            "npm --prefix=.codex/work run test",
+            "pnpm --dir=.codex/work run package",
+            "cargo build --release --manifest-path=.codex/work/Cargo.toml",
+        )
+        for command in ordinary:
+            with self.subTest(ordinary=command):
+                self.assertIsNone(
+                    pre_tool_use.evaluate(
+                        self.fixture.payload("Bash", {"command": command})
+                    )
+                )
 
     def test_draft_can_transition_to_review_pending_without_scope_review(self) -> None:
         self.fixture.task["status"] = "DRAFT"
@@ -1178,6 +1399,44 @@ class HookPolicyTests(unittest.TestCase):
             with self.subTest(command=command):
                 payload = self.fixture.payload("Bash", {"command": command})
                 self.assertIsNone(pre_tool_use.evaluate(payload))
+
+    def test_begin_and_subtask_cli_shapes_are_narrowly_reachable(self) -> None:
+        allowed = (
+            "python3 tools/governance/taskctl.py begin GOV-0001 "
+            "--actor Codex --reason 'start scoped work' --json",
+            "python3 tools/governance/taskctl.py subtask-start GOV-0001 "
+            "--id hook_policy --name hook_policy --purpose 'Hook work' "
+            "--actor Codex --json",
+            "python3 tools/governance/taskctl.py subtask-finish GOV-0001 "
+            "--id hook_policy --status completed --result 'Hook tests passed' "
+            "--actor Codex --json",
+            "python3 tools/governance/taskctl.py subtask-list GOV-0001 --json",
+        )
+        for command in allowed:
+            with self.subTest(command=command):
+                self.assertIsNone(
+                    pre_tool_use.evaluate(
+                        self.fixture.payload("Bash", {"command": command})
+                    )
+                )
+
+        rejected = (
+            "python3 tools/governance/taskctl.py begin GOV-0001 "
+            "--actor user --reason start --json",
+            "python3 tools/governance/taskctl.py subtask-start GOV-0001 "
+            "--id '../escape' --name hook --purpose work --actor Codex --json",
+            "python3 tools/governance/taskctl.py subtask-finish GOV-0001 "
+            "--id hook_policy --status in_progress --result pending --actor Codex --json",
+            "python3 tools/governance/taskctl.py subtask-list GOV-0001 "
+            "--actor Codex --json",
+        )
+        for command in rejected:
+            with self.subTest(command=command):
+                self.assertIsNotNone(
+                    pre_tool_use.evaluate(
+                        self.fixture.payload("Bash", {"command": command})
+                    )
+                )
 
     def test_review_queries_remain_reachable_without_approval(self) -> None:
         commands = (
@@ -1405,13 +1664,24 @@ class HookPolicyTests(unittest.TestCase):
                     "arguments are invalid",
                 )
 
-        for command in ("git commit -m test", "git push origin main"):
+        dangerous = (
+            ("git push origin main", "protected main branch"),
+            ("git reset --hard", "dangerous or final-action Git command"),
+            ("git push --force origin feature", "force, delete, or mirror"),
+            ("git commit -m direct", "dangerous or final-action Git command"),
+            ("git -C . reset --hard", "dangerous or final-action Git command"),
+            ("git checkout -f feature", "may discard task files"),
+            ("git restore .codex/hooks/pre_tool_use.py", "may discard task files"),
+            ("git push origin HEAD:main", "protected main branch"),
+            ("git push origin :feature", "deleting refspec"),
+        )
+        for command, reason in dangerous:
             with self.subTest(direct=command):
                 self.assert_denied(
                     pre_tool_use.evaluate(
                         self.fixture.payload("Bash", {"command": command})
                     ),
-                    "not authorized during G0",
+                    reason,
                 )
 
     def test_codex_cannot_impersonate_user_in_task_history(self) -> None:
@@ -1588,6 +1858,15 @@ class HookPolicyTests(unittest.TestCase):
         payload = self.fixture.payload("update_plan", {"plan": []})
         self.assertIsNone(pre_tool_use.evaluate(payload))
 
+    def test_read_only_web_lookup_does_not_need_a_tool_allowlist(self) -> None:
+        self.fixture.task.pop("allowed_tools")
+        self.fixture.write_current_task()
+        payload = self.fixture.payload(
+            "web__run",
+            {"search_query": [{"q": "public documentation"}]},
+        )
+        self.assertIsNone(pre_tool_use.evaluate(payload))
+
     def test_reviewed_python_command_accepts_equivalent_runtime_path(self) -> None:
         self.fixture.approve()
         command = (
@@ -1646,8 +1925,29 @@ class HookPolicyTests(unittest.TestCase):
             "project-control/proposals",
         )
 
-    def test_session_start_injects_task_and_review_context(self) -> None:
-        self.fixture.approve()
+    def test_session_start_injects_concise_task_context(self) -> None:
+        started_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+        self.fixture.task["subtasks"] = [
+            {
+                "id": "hook_policy",
+                "name": "hook_policy",
+                "purpose": "verify concise Hook context",
+                "status": "in_progress",
+                "started_at": started_at.isoformat(),
+                "finished_at": None,
+                "result": None,
+            },
+            {
+                "id": "finished_check",
+                "name": "finished_check",
+                "purpose": "historical result",
+                "status": "completed",
+                "started_at": started_at.isoformat(),
+                "finished_at": (started_at + dt.timedelta(seconds=1)).isoformat(),
+                "result": "done",
+            },
+        ]
+        self.fixture.write_current_task()
         payload = {
             "session_id": "test-session",
             "cwd": str(self.fixture.root / "nested"),
@@ -1662,26 +1962,36 @@ class HookPolicyTests(unittest.TestCase):
         context = json.loads(encoded)
         self.assertEqual(context["governance"], "READY")
         self.assertEqual(context["task"]["id"], "GOV-0001")
-        self.assertEqual(context["requirement"]["interaction_kind"], "non_ui")
-        self.assertEqual(context["requirement"]["version"], "1.0")
+        self.assertEqual(context["task"]["status"], "IN_PROGRESS")
         self.assertEqual(context["branch"]["base"], "main")
         self.assertEqual(context["branch"]["actual"], "codex/gov-0001-hooks")
-        self.assertFalse(context["task"]["legacy_g0_v1_migration"])
+        self.assertEqual(context["allowed_paths"], [".codex/**"])
         self.assertEqual(
-            context["scope"]["release_units"], ["mac", "win", "backend"]
+            context["open_subtasks"],
+            [
+                {
+                    "id": "hook_policy",
+                    "name": "hook_policy",
+                    "purpose": "verify concise Hook context",
+                }
+            ],
         )
-        self.assertEqual(context["review_authority"], self.fixture.task["review_authority"])
-        self.assertEqual(context["ci_trust"], self.fixture.task["ci_trust"])
-        self.assertEqual(context["coordination"], self.fixture.task["coordination"])
-        self.assertTrue(context["review"]["effective"])
-        self.assertEqual("historical-signed", context["review"]["approval_mode"])
-        self.assertFalse(context["review"]["cryptographic_identity_proof"])
-        self.assertEqual(context["assumptions"], ["Only Codex uses the repository"])
-        self.assertEqual(context["open_questions"], ["Application framework is not selected"])
+        self.assertNotIn("review", context)
         self.assertEqual(context["write_mode"], "IN_SCOPE_WRITES_ALLOWED")
         self.assertEqual(context["next_state"], "LOCAL_VERIFIED")
         self.assertIn("run-required", context["next_step"])
         self.assertIn("LOCAL_VERIFIED", context["next_step"])
+        for noisy_key in (
+            "assumptions",
+            "ci_trust",
+            "coordination",
+            "dependencies",
+            "open_questions",
+            "requirement",
+            "review_authority",
+            "scope",
+        ):
+            self.assertNotIn(noisy_key, context)
         prohibited = {item["pattern"] for item in context["prohibited_paths"]}
         self.assertIn(".git/**", prohibited)
         self.assertIn("project-control/reviews/**", prohibited)
@@ -1802,12 +2112,10 @@ class HookConfigurationTests(unittest.TestCase):
                     output = json.loads(completed.stdout)
                     decision = output["hookSpecificOutput"]
                     self.assertEqual(decision["permissionDecision"], "deny")
-                    # This subprocess intentionally has no externally signed
-                    # receipt.  Reaching the authenticity denial proves the
-                    # configured command found the repository and executed the
-                    # real PreToolUse gate; unit tests above cover path policy
-                    # with a test-process-only authenticity mock.
-                    self.assertIn("signature", decision["permissionDecisionReason"])
+                    self.assertIn(
+                        "outside task allowed scope",
+                        decision["permissionDecisionReason"],
+                    )
 
     def _posix_launcher_prefers_explicit_valid_runtime(self) -> None:
         launcher = Path(__file__).resolve().parents[1] / "hooks" / "run_python.sh"
@@ -1956,7 +2264,10 @@ class HookConfigurationTests(unittest.TestCase):
                     output = json.loads(completed.stdout.lstrip("\ufeff"))
                     decision = output["hookSpecificOutput"]
                     self.assertEqual(decision["permissionDecision"], "deny")
-                    self.assertIn("signature", decision["permissionDecisionReason"])
+                    self.assertIn(
+                        "outside task allowed scope",
+                        decision["permissionDecisionReason"],
+                    )
 
     if os.name == "posix":
         test_real_session_command_finds_root_without_git = (

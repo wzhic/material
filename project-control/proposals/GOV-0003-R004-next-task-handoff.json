@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0003",
+  "base_head": "1ed94372cdcca2e84b3cdb10eb030020f1ae90c6",
+  "paths": [
+    "project-control/proposals/APP-0003-task.json"
+  ]
+}

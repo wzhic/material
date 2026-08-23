@@ -10,7 +10,7 @@
             "command": "/bin/sh -c 'root=$PWD; while :; do runner=$root/.codex/hooks/run_python.sh; if [ -e \"$root/.git\" ] && [ -f \"$runner\" ]; then exec /bin/sh \"$runner\" session_start.py; fi; [ \"$root\" = / ] && break; parent=${root%/*}; [ -n \"$parent\" ] || parent=/; [ \"$parent\" = \"$root\" ] && break; root=$parent; done; echo \"repository governance root not found\" >&2; exit 69'",
             "commandWindows": "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"$root = (Get-Location).Path; while ($true) { $runner = Join-Path $root '.codex/hooks/run_python.ps1'; $gitMarker = Join-Path $root '.git'; if ((Test-Path -LiteralPath $gitMarker) -and (Test-Path -LiteralPath $runner -PathType Leaf)) { & $runner session_start.py; exit $LASTEXITCODE }; $parent = Split-Path -Parent $root; if (-not $parent -or $parent -eq $root) { Write-Error 'repository governance root not found'; exit 69 }; $root = $parent }\"",
             "timeout": 10,
-            "statusMessage": "Loading the reviewed project task",
+            "statusMessage": "Loading the current project task",
             "additionalContextLimit": 5000
           }
         ]
@@ -25,7 +25,7 @@
             "command": "/bin/sh -c 'root=$PWD; while :; do runner=$root/.codex/hooks/run_python.sh; if [ -e \"$root/.git\" ] && [ -f \"$runner\" ]; then exec /bin/sh \"$runner\" pre_tool_use.py; fi; [ \"$root\" = / ] && break; parent=${root%/*}; [ -n \"$parent\" ] || parent=/; [ \"$parent\" = \"$root\" ] && break; root=$parent; done; echo \"repository governance root not found\" >&2; exit 69'",
             "commandWindows": "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"$root = (Get-Location).Path; while ($true) { $runner = Join-Path $root '.codex/hooks/run_python.ps1'; $gitMarker = Join-Path $root '.git'; if ((Test-Path -LiteralPath $gitMarker) -and (Test-Path -LiteralPath $runner -PathType Leaf)) { & $runner pre_tool_use.py; exit $LASTEXITCODE }; $parent = Split-Path -Parent $root; if (-not $parent -or $parent -eq $root) { Write-Error 'repository governance root not found'; exit 69 }; $root = $parent }\"",
             "timeout": 10,
-            "statusMessage": "Checking task scope and user review"
+            "statusMessage": "Checking task scope and safety"
           }
         ]
       }

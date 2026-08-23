@@ -1,0 +1,11 @@
+{
+  "task_id": "GOV-0003",
+  "required_docs": [
+    "AGENTS.md",
+    "README.md",
+    "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md",
+    "docs/governance/治理精简-GOV-0004-v1.0.md",
+    "docs/development/子任务协作-DEV-0002-v1.0.md",
+    ".github/workflows/governance.yml"
+  ]
+}

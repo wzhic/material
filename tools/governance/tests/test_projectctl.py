@@ -60,7 +60,10 @@ class ProjectCtlTests(unittest.TestCase):
             mock.patch.object(projectctl, "_git_candidates", return_value=["/broken/git", "/portable/git"]),
             mock.patch.object(projectctl.subprocess, "run", side_effect=responses),
         ):
-            self.assertEqual(Path("/portable"), projectctl._working_git_directory())
+            self.assertEqual(
+                Path("/portable/git").resolve().parent,
+                projectctl._working_git_directory(),
+            )
 
     def test_partial_targets_are_never_overwritten(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
