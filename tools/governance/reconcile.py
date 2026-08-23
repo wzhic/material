@@ -1191,6 +1191,7 @@ def _completed_successor_merge_coverage(
     task: Mapping[str, Any],
     subject: str,
     head: str,
+    trusted_base: Optional[str] = None,
 ) -> Tuple[Set[str], List[str], List[Dict[str, Any]]]:
     """Attribute first-parent merge deltas to completed direct successor tasks.
 
@@ -1256,6 +1257,42 @@ def _completed_successor_merge_coverage(
                 )
             continue
 
+        second_parent = parts[2]
+        if isinstance(trusted_base, str) and _valid_oid(trusted_base):
+            _output, base_relation_error = run_git(
+                root, ("merge-base", "--is-ancestor", second_parent, trusted_base)
+            )
+            if base_relation_error is None:
+                merge_tree_output, merge_tree_error = run_git(
+                    root, ("merge-tree", "--write-tree", first_parent, second_parent)
+                )
+                commit_tree, commit_tree_error = run_git(
+                    root, ("rev-parse", "%s^{tree}" % commit)
+                )
+                clean_tree = (merge_tree_output or "").splitlines()[0:1]
+                if (
+                    merge_tree_error
+                    or commit_tree_error
+                    or len(clean_tree) != 1
+                    or clean_tree[0] != commit_tree
+                ):
+                    errors.append(
+                        "trusted base-sync merge %s does not match Git's clean merge result"
+                        % commit
+                    )
+                    continue
+                attributed = sorted(
+                    path for path in paths if not _protected_control_path(root, path)
+                )
+                covered.update(attributed)
+                details.append({
+                    "kind": "trusted_base_sync",
+                    "merged_sha": commit,
+                    "base_parent_sha": second_parent,
+                    "paths": attributed,
+                })
+                continue
+
         candidates = completed_by_merge.get(commit, [])
         direct = [
             candidate for candidate in candidates
@@ -1269,7 +1306,6 @@ def _completed_successor_merge_coverage(
             continue
         successor = direct[0]
         successor_subject = successor.get("git", {}).get("committed_sha")
-        second_parent = parts[2]
         if not isinstance(successor_subject, str) or not _valid_oid(successor_subject):
             errors.append("successor task %s has no valid committed_sha" % successor.get("task_id"))
             continue
@@ -1509,7 +1545,9 @@ def _ci_commit_protocol_check(
     successor_details: List[Dict[str, Any]] = []
     if event_name == "pull_request":
         successor_paths, successor_errors, successor_details = (
-            _completed_successor_merge_coverage(root, task, subject, head)
+            _completed_successor_merge_coverage(
+                root, task, subject, head, trusted_base=base
+            )
         )
     if successor_errors:
         return _check(
@@ -1820,7 +1858,13 @@ def run_reconcile(
                 and _valid_oid(head)
             ):
                 successor_paths, successor_errors, successor_details = (
-                    _completed_successor_merge_coverage(root, task, subject, head)
+                    _completed_successor_merge_coverage(
+                        root,
+                        task,
+                        subject,
+                        head,
+                        trusted_base=ci_context.get("base_sha"),
+                    )
                 )
                 if successor_errors:
                     changes_error = (
