@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0007",
-  "reason": "start-clean-Windows-CI-loader-task",
+  "previous_task_id": "GOV-0008",
+  "reason": "activate-separate-Windows-portability-fix",
   "schema_version": 1,
-  "selected_at": "2026-08-23T05:32:31+00:00",
+  "selected_at": "2026-08-23T06:19:44+00:00",
   "selected_by": "Codex",
-  "task_id": "GOV-0008"
+  "task_id": "GOV-0009"
 }
