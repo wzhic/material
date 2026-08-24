@@ -977,6 +977,81 @@ class TrustedCiContextTests(AuthenticatedReceiptTestCase):
             self.assertEqual("main", branch["details"]["actual"])
             self.assertEqual("trusted_github_event", branch["details"]["source"])
 
+    def test_main_push_attributes_clean_closeout_stack_to_done_successors(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task, base_sha, content_sha, _control_sha = self.prepare_two_layer_commits(root)
+            task_file = root / "project-control" / "tasks" / (task["task_id"] + ".json")
+            git(root, "branch", "-M", task["branch"])
+
+            git(root, "switch", "-c", "main", base_sha)
+            git(root, "merge", "--no-ff", task["branch"], "-m", "merge governed task")
+            merged_base = git(root, "rev-parse", "HEAD")
+
+            git(root, "switch", task["branch"])
+            task["status"] = "DONE"
+            task["git"] = {"committed_sha": content_sha, "merged_sha": merged_base}
+            write_json(task_file, task)
+            commit_all(root, "close governed task")
+
+            successor = copy.deepcopy(task)
+            successor_id = "GOV-SUCCESSOR"
+            successor["task_id"] = successor_id
+            successor["status"] = "DRAFT"
+            successor["branch"] = "codex/req-0009-gov-successor-owned-change"
+            successor["base_branch"] = task["branch"]
+            successor["allowed_paths"] = ["successor/**", "project-control/**"]
+            successor["validation"]["results"] = []
+            successor.pop("git", None)
+            successor["coordination"]["coordinator_task"] = successor_id
+            successor["coordination"]["unit_tasks"] = {
+                "mac": successor_id, "win": successor_id, "backend": successor_id,
+            }
+            successor_file = (
+                root / "project-control" / "tasks" / (successor_id + ".json")
+            )
+            write_json(successor_file, successor)
+            commit_all(root, "register successor")
+
+            git(root, "switch", "-c", successor["branch"])
+            owned = root / "successor" / "owned.py"
+            owned.parent.mkdir(parents=True, exist_ok=True)
+            owned.write_text("VALUE = 'reviewed successor'\n", encoding="utf-8")
+            successor_subject = commit_all(root, "successor content")
+            successor["status"] = "COMMITTED"
+            successor["git"] = {"committed_sha": successor_subject}
+            write_json(successor_file, successor)
+            commit_all(root, "successor control")
+
+            git(root, "switch", task["branch"])
+            git(root, "merge", "--no-ff", successor["branch"], "-m", "merge successor")
+            successor_merge = git(root, "rev-parse", "HEAD")
+            successor["status"] = "DONE"
+            successor["git"]["merged_sha"] = successor_merge
+            write_json(successor_file, successor)
+            side_head = commit_all(root, "close successor")
+
+            git(root, "switch", "main")
+            git(root, "merge", "--no-ff", task["branch"], "-m", "merge closeout stack")
+            main_head = git(root, "rev-parse", "HEAD")
+            git(root, "checkout", "--detach", main_head)
+            environment = github_push_environment(root, merged_base, main_head, "main")
+            with mock.patch.dict(os.environ, environment, clear=False):
+                report = run_reconcile(root, "ci")
+
+            self.assertTrue(report["ok"], report)
+            changed = next(item for item in report["checks"] if item["id"] == "changed_paths")
+            self.assertEqual([], changed["details"]["outside_scope"])
+            self.assertEqual(
+                ["successor/owned.py"],
+                changed["details"]["successor_merges"][0]["successor_merges"][0]["paths"],
+            )
+            protocol = next(
+                item for item in report["checks"] if item["id"] == "ci_commit_protocol"
+            )
+            self.assertEqual("passed", protocol["status"])
+            self.assertEqual(side_head, git(root, "rev-parse", "%s^2" % main_head))
+
     def test_ci_rejects_event_head_that_is_not_checked_out(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
