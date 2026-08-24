@@ -149,7 +149,8 @@
   "created_at": "2026-08-20T01:37:09+00:00",
   "dependencies": [],
   "git": {
-    "committed_sha": "580a78e84ef75f60b5a65d43b45b9d66d0782068"
+    "committed_sha": "580a78e84ef75f60b5a65d43b45b9d66d0782068",
+    "merged_sha": "0f02d8eb7872614a0ec4f7c02a1ddf410d2609f1"
   },
   "history": [
     {
@@ -416,6 +417,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "commit the verified governance handoff, minimal control-commit fix, and queued task control records",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T06:00:42+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #14 merged after exact-head macOS Windows and Ubuntu CI passed",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T06:00:42+00:00",
+      "from": "MERGED",
+      "reason": "official application scaffolds and dependencies are merged into the governance parent branch",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -6043,10 +6058,10 @@
     }
   ],
   "scope_version": 5,
-  "status": "COMMITTED",
+  "status": "DONE",
   "summary": "使用一个受控命令调用 Electron Forge 与 uv 官方生成器，建立共享 macOS/Windows 桌面客户端和统一 FastAPI 后端，安装依赖并验证生成结果；不实现广告素材业务功能、登录、数据 schema、部署或发布。",
   "task_id": "APP-0001",
-  "updated_at": "2026-08-21T10:52:07+00:00",
+  "updated_at": "2026-08-24T06:00:42+00:00",
   "validation": {
     "required": [
       {
