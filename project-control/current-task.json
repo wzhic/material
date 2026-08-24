@@ -1,8 +1,8 @@
 {
   "previous_task_id": "APP-0003",
-  "reason": "repair-self-created-task-switch-deadlock-without-user-intervention",
+  "reason": "修复新分支创建后恢复旧选择的机器状态漂移，当前工作继续归属单素材分析 PRD",
   "schema_version": 1,
-  "selected_at": "2026-08-21T12:36:58+00:00",
+  "selected_at": "2026-08-23T05:18:34+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0003"
+  "task_id": "APP-0004"
 }
