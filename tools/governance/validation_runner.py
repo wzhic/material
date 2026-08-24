@@ -12,6 +12,7 @@ import hashlib
 import math
 import os
 import platform
+import shutil
 import stat
 import subprocess
 import sys
@@ -31,6 +32,7 @@ from core import (
     read_json,
     task_path,
     utc_now,
+    _git_candidates,
 )
 
 
@@ -70,6 +72,7 @@ _CI_CONTEXT_ENV_ALLOWLIST = frozenset((
     "MATERIAL_RELEASE_UNIT",
     "RUNNER_OS",
 ))
+_WORKING_GIT_DIRECTORY: Optional[str] = None
 
 
 def _sha256_bytes(value: bytes) -> str:
@@ -197,7 +200,11 @@ def _validate_check(
     argv = _validate_argv(check.get("argv"))
     timeout = _validate_timeout(check.get("timeout_seconds"))
     gates = check.get("gates")
-    if not isinstance(gates, list) or PHASE_GATES[phase] not in gates:
+    phase_gate = PHASE_GATES[phase]
+    repeats_local_plan = phase in ("ci", "post_merge") and (
+        isinstance(gates, list) and "LOCAL_VERIFIED" in gates
+    )
+    if not isinstance(gates, list) or (phase_gate not in gates and not repeats_local_plan):
         raise GovernanceError("validation check %s is not required for phase %s" % (check_id, phase))
     release_units = check.get("release_units")
     task_units_value = task.get("release_units", []) if isinstance(task, Mapping) else []
@@ -230,7 +237,11 @@ def required_checks(
     phase: str,
     release_unit: Optional[str] = None,
 ) -> List[Mapping[str, Any]]:
-    """Return all reviewed checks for a phase, rejecting an empty phase plan."""
+    """Return controlled checks for a phase, rejecting an empty plan.
+
+    CI and post-merge runs repeat the local plan even when a new minimal task
+    does not declare separate evidence gates for those environments.
+    """
 
     if phase not in VALIDATION_PHASES:
         raise GovernanceError("unknown validation phase: %s" % phase)
@@ -242,7 +253,11 @@ def required_checks(
     gate = PHASE_GATES[phase]
     selected = [
         check for check in _declared_checks(task)
-        if isinstance(check.get("gates"), list) and gate in check.get("gates", [])
+        if isinstance(check.get("gates"), list)
+        and (
+            gate in check.get("gates", [])
+            or (phase in ("ci", "post_merge") and "LOCAL_VERIFIED" in check.get("gates", []))
+        )
         and (release_unit is None or release_unit in check.get("release_units", []))
     ]
     if not selected:
@@ -296,13 +311,65 @@ def _minimal_environment(temporary_home: Path, phase: str) -> Dict[str, str]:
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONNOUSERSITE": "1",
     })
+    if os.name == "nt":
+        # PowerShell derives its module-analysis cache from LOCALAPPDATA.  If
+        # that variable is absent it can resolve the fallback relative to the
+        # validation cwd and dirty the repository.  Keep all Windows profile
+        # and temporary artifacts inside the runner-owned, short-lived home.
+        roaming = temporary_home / "AppData" / "Roaming"
+        local = temporary_home / "AppData" / "Local"
+        temporary = temporary_home / "Temp"
+        powershell_cache = temporary_home / "PowerShell" / "ModuleAnalysisCache"
+        for directory in (roaming, local, temporary, powershell_cache.parent):
+            directory.mkdir(parents=True, exist_ok=True)
+        environment.update({
+            "APPDATA": str(roaming.resolve()),
+            "LOCALAPPDATA": str(local.resolve()),
+            "TEMP": str(temporary.resolve()),
+            "TMP": str(temporary.resolve()),
+            "PSModuleAnalysisCachePath": str(powershell_cache.resolve()),
+        })
+    environment["PATH"] = _working_git_directory() + os.pathsep + environment.get("PATH", "")
     return environment
+
+
+def _working_git_directory() -> str:
+    """Return the first Git installation that can initialize a repository."""
+
+    global _WORKING_GIT_DIRECTORY
+    if _WORKING_GIT_DIRECTORY is not None:
+        return _WORKING_GIT_DIRECTORY
+    errors: List[str] = []
+    for candidate in _git_candidates():
+        try:
+            with tempfile.TemporaryDirectory(prefix="material-validation-git-probe-") as temporary:
+                completed = subprocess.run(
+                    [candidate, "init", "--quiet", temporary],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            errors.append("%s: %s" % (candidate, type(exc).__name__))
+            continue
+        if completed.returncode == 0:
+            _WORKING_GIT_DIRECTORY = str(Path(candidate).resolve().parent)
+            return _WORKING_GIT_DIRECTORY
+        errors.append(completed.stderr.strip() or "%s exited %s" % (candidate, completed.returncode))
+    raise GovernanceError("controlled validation requires a working Git executable: %s" % "; ".join(errors))
 
 
 def _resolve_argv(argv: Sequence[str]) -> List[str]:
     resolved = list(argv)
     if resolved[0] == "python3":
         resolved[0] = str(Path(sys.executable).resolve())
+    elif os.name == "nt":
+        executable = shutil.which(resolved[0])
+        if executable:
+            resolved[0] = executable
     return resolved
 
 

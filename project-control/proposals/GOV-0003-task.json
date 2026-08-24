@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0003",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "requirement": {
+    "id": "治理精简-REQ-0004",
+    "name": "治理精简",
+    "version": "v1.0",
+    "interaction_kind": "non_ui"
+  },
+  "summary": "将治理收缩为范围、受保护记录、不安全 Git、真实验证和最终发布五类关键边界；普通可逆编辑、联网、依赖、分支 push、PR 准备和子 Agent 协作不再逐项审批。子 Agent 与子任务只记录名称、目的、状态和结果，不保存提示词或内部推理。",
+  "release_units": ["mac", "win", "backend"],
+  "branch": "codex/req-0004-gov-0003-minimal-governance",
+  "base_branch": "codex/req-0002-app-0001-project-bootstrap",
+  "allowed_paths": [
+    ".codex/**",
+    ".github/workflows/governance.yml",
+    "AGENTS.md",
+    "README.md",
+    "docs/**",
+    "project-control/**",
+    "tools/governance/**"
+  ],
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reviewctl.py verify --json",
+    "python3 tools/governance/reviewctl.py record-conversation GOV-0003",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py docs --json",
+    "python3 tools/governance/reconcile.py workflow --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/reconcile.py precommit --json",
+    "python3 tools/governance/taskctl.py start-branch GOV-0003",
+    "python3 tools/governance/taskctl.py run-validation GOV-0003",
+    "python3 tools/governance/taskctl.py run-required GOV-0003",
+    "python3 tools/governance/taskctl.py commit-task GOV-0003",
+    "python3 tools/governance/taskctl.py push-task GOV-0003",
+    "python3 tools/governance/taskctl.py open-pr GOV-0003",
+    "python3 tools/governance/taskctl.py subtask-start GOV-0003",
+    "python3 tools/governance/taskctl.py subtask-finish GOV-0003"
+  ],
+  "allowed_tools": [
+    "apply_patch", "ApplyPatch", "Bash", "Read", "Glob", "Grep", "view_image",
+    "codex_app__read_thread_terminal", "spawn_agent", "send_message", "followup_task",
+    "wait_agent", "interrupt_agent", "list_agents"
+  ],
+  "dependencies": [],
+  "required_docs": [
+    "AGENTS.md",
+    "README.md",
+    "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md",
+    "docs/governance/治理精简-GOV-0003-v1.0.md",
+    "docs/development/子任务协作-DEV-0002-v1.0.md",
+    ".github/workflows/governance.yml"
+  ],
+  "validation": {
+    "required": [
+      {
+        "id": "governance_unit_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", "tools/governance/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      },
+      {
+        "id": "hook_contract_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", ".codex/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 600,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      },
+      {
+        "id": "repository_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "static", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      }
+    ],
+    "results": []
+  },
+  "assumptions": [
+    {
+      "id": "GOV-0003-ASM-001",
+      "statement": "用户的清晰需求即普通可逆工作的范围决定，不再要求单独的 scope 或 code 审批回执。",
+      "status": "confirmed",
+      "source": "用户要求放宽审批条件并进一步精简治理"
+    },
+    {
+      "id": "GOV-0003-ASM-002",
+      "statement": "子 Agent 和子任务可由当前任务直接创建；记录仅包含名称、目的、状态和结果，不包含提示词、内部推理或秘密。",
+      "status": "confirmed",
+      "source": "用户明确允许子 Agent 和子任务并要求留有记录"
+    },
+    {
+      "id": "GOV-0003-ASM-003",
+      "statement": "验证豁免、破坏性或不可逆操作、敏感数据和实质成本、最终合并部署发布仍由用户决定。",
+      "status": "confirmed",
+      "source": "仓库最小工作流与用户最新放宽要求"
+    }
+  ],
+  "open_questions": [],
+  "blockers": [],
+  "review_authority": {
+    "scheme": "ssh-keygen-y-v1",
+    "identity": "material-project-owner",
+    "namespace": "material-governance-review",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E"
+  },
+  "ci_trust": {
+    "provider": "github_actions_rest_v1",
+    "repository": "wzhic/material",
+    "workflow_path": ".github/workflows/governance.yml",
+    "api_base": "https://api.github.com",
+    "api_version": "2026-03-10",
+    "private": true,
+    "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "ci_events": ["pull_request", "push"],
+    "post_merge_events": ["push"],
+    "required_jobs": {
+      "pull_request": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"],
+      "push": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"]
+    }
+  },
+  "coordination": {
+    "mode": "coordinated-multi",
+    "coordinator_task": "GOV-0003",
+    "unit_tasks": {"mac": "GOV-0003", "win": "GOV-0003", "backend": "GOV-0003"},
+    "compatibility_matrix_doc": "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md",
+    "deployment_order": ["backend", "mac", "win"],
+    "rollback_order": ["win", "mac", "backend"],
+    "unit_validation_checks": {
+      "mac": ["governance_unit_tests", "hook_contract_tests", "repository_reconcile"],
+      "win": ["governance_unit_tests", "hook_contract_tests", "repository_reconcile"],
+      "backend": ["governance_unit_tests", "hook_contract_tests", "repository_reconcile"]
+    },
+    "unit_rollback_checks": {
+      "mac": ["hook_contract_tests"],
+      "win": ["hook_contract_tests"],
+      "backend": ["governance_unit_tests"]
+    }
+  }
+}

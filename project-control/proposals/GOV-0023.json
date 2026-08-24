@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0023",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "summary": "修复 Windows 受控验证无法启动 npm.cmd：仅在 Windows 通过 PATH 解析受审命令 shim，继续使用精确 argv 与 shell=false。",
+  "requirement": {
+    "id": "治理精简-REQ-0004",
+    "name": "治理精简",
+    "version": "v1.0",
+    "interaction_kind": "non_ui"
+  },
+  "release_units": ["mac", "win", "backend"],
+  "branch": "codex/req-0004-gov-0023-windows-command-shim-resolution",
+  "base_branch": "codex/req-0002-app-0001-project-bootstrap",
+  "allowed_paths": [
+    "project-control/**",
+    "tools/governance/validation_runner.py",
+    "tools/governance/tests/test_validation_runner.py"
+  ],
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/taskctl.py begin GOV-0023",
+    "python3 tools/governance/taskctl.py run-required GOV-0023",
+    "python3 tools/governance/taskctl.py commit-task GOV-0023",
+    "python3 tools/governance/taskctl.py push-task GOV-0023",
+    "python3 tools/governance/taskctl.py open-pr GOV-0023"
+  ],
+  "allowed_tools": ["apply_patch", "ApplyPatch", "Bash", "Read", "Glob", "Grep", "web__run"],
+  "dependencies": ["GOV-0022"],
+  "blockers": [],
+  "open_questions": [],
+  "required_docs": ["docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md"],
+  "assumptions": [
+    {
+      "id": "GOV-0023-ASM-001",
+      "statement": "PR #14 Windows 的 desktop_lint 与 desktop_package 均在进程启动前以 FileNotFoundError 阻断；npm 依赖安装步骤已通过。",
+      "status": "confirmed",
+      "source": "GitHub Actions run 32693381647 Windows job 97330962084"
+    },
+    {
+      "id": "GOV-0023-ASM-002",
+      "statement": "Windows 通过 shutil.which 将 npm 解析为 npm.cmd 不改变受审参数，不启用 shell，也不扩大命令范围。",
+      "status": "confirmed",
+      "source": "Python Windows subprocess 与 PATHEXT 命令 shim 语义"
+    }
+  ],
+  "validation": {
+    "required": [
+      {
+        "id": "governance_unit_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", "tools/governance/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      },
+      {
+        "id": "hook_contract_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", ".codex/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 600,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      },
+      {
+        "id": "repository_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "static", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      }
+    ]
+  }
+}

@@ -94,6 +94,40 @@ TASK_ID_PATTERN = re.compile(r"^[A-Z][A-Z0-9]*(?:-[A-Z0-9][A-Z0-9]*)+$")
 REVIEW_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,191}$")
 COMMIT_PATTERN = re.compile(r"^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$")
 TARGET_DIGEST_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*:[A-Fa-f0-9]{32,128}$")
+_SUBTASK_SENSITIVE_TEXT_PATTERNS: Tuple[Tuple[str, re.Pattern[str]], ...] = (
+    (
+        "private key material",
+        re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", re.IGNORECASE),
+    ),
+    (
+        "provider credential",
+        re.compile(
+            r"(?:\bAKIA[0-9A-Z]{16}\b|\bgithub_pat_[A-Za-z0-9_]{20,}\b|"
+            r"\bgh[pousr]_[A-Za-z0-9]{20,}\b|\bsk-[A-Za-z0-9_-]{20,}\b)"
+        ),
+    ),
+    (
+        "assigned secret",
+        re.compile(
+            r"\b(?:api[ _-]?key|access[ _-]?token|client[ _-]?secret|password|passwd)"
+            r"\s*[:=：]\s*[\"']?[^\s\"']{8,}",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "authorization credential",
+        re.compile(r"\bauthorization\s*[:=]\s*bearer\s+\S+", re.IGNORECASE),
+    ),
+    (
+        "prompt or internal reasoning",
+        re.compile(
+            r"(?:\b(?:system|developer)\s+prompt\s*[:=]|"
+            r"(?:系统|开发者|完整|原始)?提示词\s*[:：=]|"
+            r"(?:内部推理|思维链|chain[ -]of[ -]thought)\s*[:：=])",
+            re.IGNORECASE,
+        ),
+    ),
+)
 
 LEGACY_RECORD_DISABLED = (
     "LEGACY_RECORD_DISABLED: use reviewctl record-conversation with an explicit user "
@@ -154,6 +188,7 @@ _CONVERSATION_KIND_FIELDS = {
     )),
     "irreversible_operation": frozenset(("operation_id", "target_digest")),
     "rework": frozenset(("subject", "from_status")),
+    "final_action": frozenset(("action", "subject")),
 }
 
 _SUBJECT_EXCLUDED_EXACT = frozenset((
@@ -351,6 +386,17 @@ def write_json_exclusive_atomic(path: Path, value: Mapping[str, Any]) -> None:
 
 def canonical_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def subtask_sensitive_text_reason(value: str) -> Optional[str]:
+    """Return a bounded reason when a subtask summary resembles forbidden data."""
+
+    if not isinstance(value, str):
+        return None
+    for label, pattern in _SUBTASK_SENSITIVE_TEXT_PATTERNS:
+        if pattern.search(value):
+            return label
+    return None
 
 
 def conversation_approval_policy_issues(project: Mapping[str, Any]) -> List[str]:
@@ -765,12 +811,24 @@ def _git_candidates() -> List[str]:
     return candidates
 
 
-def run_git(root: Path, arguments: Sequence[str]) -> Tuple[Optional[str], Optional[str]]:
+_WORKING_GIT_BY_CANDIDATES: Dict[Tuple[str, ...], str] = {}
+
+
+def run_git(
+    root: Path,
+    arguments: Sequence[str],
+    *,
+    input_text: Optional[str] = None,
+) -> Tuple[Optional[str], Optional[str]]:
     """Run Git with portable fallbacks; every candidate may fail independently."""
 
     candidates = _git_candidates()
     if not candidates:
         return None, "git executable was not found"
+    candidate_key = tuple(candidates)
+    preferred = _WORKING_GIT_BY_CANDIDATES.get(candidate_key)
+    if preferred in candidates:
+        candidates = [preferred] + [candidate for candidate in candidates if candidate != preferred]
     errors: List[str] = []
     for executable in candidates:
         try:
@@ -782,13 +840,19 @@ def run_git(root: Path, arguments: Sequence[str]) -> Tuple[Optional[str], Option
                 text=True,
                 encoding="utf-8",
                 errors="strict",
+                input=input_text,
                 check=False,
             )
         except OSError as exc:
             errors.append("%s: %s" % (executable, exc))
+            if executable == preferred:
+                _WORKING_GIT_BY_CANDIDATES.pop(candidate_key, None)
             continue
         if completed.returncode == 0:
+            _WORKING_GIT_BY_CANDIDATES[candidate_key] = executable
             return completed.stdout.strip(), None
+        if executable == preferred:
+            _WORKING_GIT_BY_CANDIDATES.pop(candidate_key, None)
         errors.append(completed.stderr.strip() or "%s exited %s" % (executable, completed.returncode))
     return None, "; ".join(errors)
 
@@ -978,6 +1042,37 @@ def _subject_path_is_excluded(relative: str) -> bool:
     return filename.endswith((".pyc", ".pyo")) or filename in (".DS_Store", "coverage.xml")
 
 
+def _untracked_ignored_git_paths(root: Path) -> Tuple[FrozenSet[str], FrozenSet[str]]:
+    """Return ignored untracked files and directories without hiding tracked content."""
+
+    output, error = run_git(
+        root,
+        ("ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"),
+    )
+    if error:
+        raise GovernanceError("cannot inspect Git-ignored generated content: %s" % error)
+    files = set()
+    directories = set()
+    for record in (output or "").split("\0"):
+        if not record:
+            continue
+        if record.endswith("/"):
+            directories.add(record[:-1])
+        else:
+            files.add(record)
+    return frozenset(files), frozenset(directories)
+
+
+def _path_is_untracked_ignored(
+    relative: str,
+    ignored_files: FrozenSet[str],
+    ignored_directories: FrozenSet[str],
+) -> bool:
+    if relative in ignored_files or relative in ignored_directories:
+        return True
+    return any(relative.startswith(directory + "/") for directory in ignored_directories)
+
+
 def _git_index_path(root: Path) -> Optional[Path]:
     """Return the real Git index path, including linked-worktree layouts."""
 
@@ -1087,6 +1182,33 @@ def _git_blob_oid(root: Path, relative: str) -> str:
     return object_id
 
 
+def _git_blob_oids(root: Path, relatives: Sequence[str]) -> Dict[str, str]:
+    """Hash reviewed paths through Git filters in one bounded subprocess."""
+
+    paths = list(relatives)
+    if not paths:
+        return {}
+    if any("\n" in path or "\r" in path for path in paths):
+        raise GovernanceError("cannot calculate Git blob identity for a path containing a newline")
+    output, error = run_git(
+        root,
+        ("hash-object", "--stdin-paths"),
+        input_text="".join(path + "\n" for path in paths),
+    )
+    if error:
+        raise GovernanceError("cannot calculate Git blob identities: %s" % error)
+    object_ids = (output or "").splitlines()
+    if len(object_ids) != len(paths):
+        raise GovernanceError("Git returned an unexpected blob identity count")
+    result: Dict[str, str] = {}
+    for relative, object_id in zip(paths, object_ids):
+        normalized = object_id.strip().lower()
+        if not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", normalized):
+            raise GovernanceError("cannot parse Git blob identity for %s" % relative)
+        result[relative] = normalized
+    return result
+
+
 def _unfiltered_git_blob_oid(content: bytes) -> str:
     """Return the standard SHA-1 Git blob id used before a worktree exists."""
 
@@ -1106,8 +1228,9 @@ def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
     real worktree exists, unfiltered bytes use the standard SHA-1 Git blob
     identity so first-commit validation remains stable.  Task/review/current-task
     records are excluded so appending the validation result does not invalidate
-    itself.  Git metadata and generated caches are excluded as non-project
-    content.
+    itself.  Git metadata, ignored untracked build output and generated caches
+    are excluded as non-project content.  A tracked file remains governed even
+    if a later ignore rule also matches it.
     """
 
     root = root.resolve()
@@ -1115,7 +1238,17 @@ def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
     git_worktree = _git_worktree_available(root)
     tracked_entries = _tracked_git_entries(root)
     modified_paths = _git_modified_paths(root) if tracked_entries else frozenset()
-    entries: List[Tuple[str, str, int, bytes]] = []
+    ignored_files: FrozenSet[str] = frozenset()
+    ignored_directories: FrozenSet[str] = frozenset()
+    if git_worktree:
+        ignored_files, ignored_directories = _untracked_ignored_git_paths(root)
+    tracked_directories = {
+        "/".join(relative.split("/")[:index])
+        for relative in tracked_entries
+        for index in range(1, len(relative.split("/")))
+    }
+    entries: List[Tuple[str, str, int, Optional[bytes]]] = []
+    filtered_paths: List[str] = []
     try:
         for directory, directory_names, file_names in os.walk(str(root), topdown=True, followlinks=False):
             directory_path = Path(directory)
@@ -1124,6 +1257,12 @@ def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
                 candidate = directory_path / name
                 relative = candidate.relative_to(root).as_posix()
                 if _subject_path_is_excluded(relative):
+                    continue
+                if (
+                    _path_is_untracked_ignored(relative, ignored_files, ignored_directories)
+                    and relative not in tracked_directories
+                    and relative not in tracked_entries
+                ):
                     continue
                 if candidate.is_symlink():
                     if path_is_allowed(root, relative, patterns):
@@ -1141,6 +1280,11 @@ def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
                 relative = candidate.relative_to(root).as_posix()
                 if _subject_path_is_excluded(relative) or not path_is_allowed(root, relative, patterns):
                     continue
+                tracked_entry = tracked_entries.get(relative)
+                if tracked_entry is None and _path_is_untracked_ignored(
+                    relative, ignored_files, ignored_directories
+                ):
+                    continue
                 mode = os.lstat(str(candidate)).st_mode
                 if stat.S_ISLNK(mode):
                     kind = "symlink"
@@ -1148,7 +1292,6 @@ def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
                     content = os.readlink(str(candidate)).encode("utf-8")
                 elif stat.S_ISREG(mode):
                     kind = "file"
-                    tracked_entry = tracked_entries.get(relative)
                     tracked_mode = tracked_entry[0] if tracked_entry is not None else None
                     if tracked_mode == "100755":
                         executable_bits = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
@@ -1159,7 +1302,8 @@ def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
                     if tracked_entry is not None and relative not in modified_paths:
                         content = ("git-blob:" + tracked_entry[1]).encode("ascii")
                     elif git_worktree:
-                        content = ("git-blob:" + _git_blob_oid(root, relative)).encode("ascii")
+                        content = None
+                        filtered_paths.append(relative)
                     else:
                         content = (
                             "git-blob:" + _unfiltered_git_blob_oid(candidate.read_bytes())
@@ -1170,8 +1314,11 @@ def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
     except OSError as exc:
         raise GovernanceError("cannot calculate local validation subject: %s" % exc) from exc
 
+    filtered_blob_ids = _git_blob_oids(root, filtered_paths)
     digest = hashlib.sha256()
     for relative, kind, executable_bits, content in sorted(entries, key=lambda item: item[0]):
+        if content is None:
+            content = ("git-blob:" + filtered_blob_ids[relative]).encode("ascii")
         path_bytes = relative.encode("utf-8")
         kind_bytes = kind.encode("ascii")
         digest.update(len(path_bytes).to_bytes(8, "big"))
@@ -1185,19 +1332,25 @@ def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
 
 
 def validation_plan_issues(task: Mapping[str, Any]) -> List[str]:
-    """Return completeness problems for a plan that is ready to execute."""
+    """Return problems for the one validation gate required before commit.
+
+    CI may repeat the declared checks without importing GitHub run metadata back
+    into the task record. Historical tasks can still declare CI and post-merge
+    gates, but new tasks only need a non-empty, controlled local plan.
+    """
 
     validation = task.get("validation", {})
     required = validation.get("required", []) if isinstance(validation, dict) else []
     if not isinstance(required, list) or not required:
         return ["validation.required must contain at least one check"]
-    covered = set()
-    for check in required:
-        gates = check.get("gates", []) if isinstance(check, dict) else []
-        if isinstance(gates, list):
-            covered.update(str(gate) for gate in gates)
-    missing = [gate for gate in GATE_PHASES if gate not in covered]
-    return ["validation plan does not cover gates: %s" % ", ".join(missing)] if missing else []
+    local_checks = [
+        check for check in required
+        if isinstance(check, Mapping)
+        and "LOCAL_VERIFIED" in check.get("gates", [])
+    ]
+    if not local_checks:
+        return ["validation plan must include at least one LOCAL_VERIFIED check"]
+    return []
 
 
 def review_authority_issues(task: Mapping[str, Any]) -> List[str]:
@@ -1354,8 +1507,6 @@ def validate_task(task: Mapping[str, Any]) -> None:
         "release_units",
         "branch",
         "allowed_paths",
-        "allowed_commands",
-        "allowed_tools",
         "dependencies",
         "required_docs",
         "validation",
@@ -1393,12 +1544,18 @@ def validate_task(task: Mapping[str, Any]) -> None:
     ):
         raise GovernanceError("base_branch must be a non-empty string when present")
 
-    for field in ("release_units", "allowed_paths", "allowed_commands", "allowed_tools", "required_docs"):
+    for field in ("release_units", "allowed_paths", "required_docs"):
         values = task[field]
         if not isinstance(values, list) or any(
             not isinstance(value, str) or not value.strip() for value in values
         ):
             raise GovernanceError("%s must be a list of non-empty strings" % field)
+    for field in ("allowed_commands", "allowed_tools"):
+        values = task.get(field, [])
+        if not isinstance(values, list) or any(
+            not isinstance(value, str) or not value.strip() for value in values
+        ):
+            raise GovernanceError("%s must be a list of non-empty strings when present" % field)
     if not task["release_units"]:
         raise GovernanceError("release_units must contain at least one release unit")
     if len(set(task["release_units"])) != len(task["release_units"]):
@@ -1505,18 +1662,83 @@ def validate_task(task: Mapping[str, Any]) -> None:
     effective_schema_status = str(task.get("status", ""))
     if effective_schema_status in EXCEPTION_STATES:
         effective_schema_status = str(task.get("exception", {}).get("previous_status", ""))
-    requires_reviewed_contract = (
+    validates_optional_contracts = (
         status_index(effective_schema_status) >= status_index("REVIEW_PENDING")
         and not legacy_g0_v1_migration(task)
     )
-    if requires_reviewed_contract:
-        contract_issues = (
-            review_authority_issues(task)
-            + ci_trust_issues(task)
-            + coordination_issues(task)
-        )
+    if validates_optional_contracts:
+        contract_issues: List[str] = []
+        if "review_authority" in task:
+            contract_issues.extend(review_authority_issues(task))
+        if "ci_trust" in task:
+            contract_issues.extend(ci_trust_issues(task))
+        if "coordination" in task:
+            contract_issues.extend(coordination_issues(task))
         if contract_issues:
             raise GovernanceError("; ".join(contract_issues))
+
+    subtasks = task.get("subtasks", [])
+    if not isinstance(subtasks, list):
+        raise GovernanceError("subtasks must be a list when present")
+    subtask_fields = {
+        "id", "name", "purpose", "status", "started_at", "finished_at", "result",
+    }
+    subtask_ids: List[str] = []
+    for subtask in subtasks:
+        if not isinstance(subtask, Mapping) or set(subtask) != subtask_fields:
+            raise GovernanceError(
+                "subtask entries must contain only id, name, purpose, status, "
+                "started_at, finished_at and result"
+            )
+        for field in ("id", "name", "purpose"):
+            value = subtask.get(field)
+            if (
+                not isinstance(value, str)
+                or not value.strip()
+                or len(value) > 512
+                or "\x00" in value
+            ):
+                raise GovernanceError("subtask.%s must be a non-empty bounded string" % field)
+            if field == "purpose":
+                sensitive_reason = subtask_sensitive_text_reason(value)
+                if sensitive_reason is not None:
+                    raise GovernanceError(
+                        "subtask.purpose resembles %s; record only a redacted summary"
+                        % sensitive_reason
+                    )
+        identifier = str(subtask["id"])
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", identifier):
+            raise GovernanceError("subtask.id contains unsupported characters")
+        subtask_ids.append(identifier)
+        status = subtask.get("status")
+        if status not in ("in_progress", "completed", "failed", "cancelled"):
+            raise GovernanceError("subtask.status is unknown")
+        started_at = parse_timestamp(subtask.get("started_at"))
+        if started_at is None:
+            raise GovernanceError("subtask.started_at is required")
+        if status == "in_progress":
+            if subtask.get("finished_at") is not None or subtask.get("result") is not None:
+                raise GovernanceError("in-progress subtask must not have finished_at or result")
+        else:
+            finished_at = parse_timestamp(subtask.get("finished_at"))
+            result = subtask.get("result")
+            if finished_at is None or finished_at < started_at:
+                raise GovernanceError("finished subtask requires finished_at after started_at")
+            if (
+                not isinstance(result, str)
+                or not result.strip()
+                or len(result) > 4096
+                or "\x00" in result
+            ):
+                raise GovernanceError("finished subtask requires a non-empty bounded result")
+            sensitive_reason = subtask_sensitive_text_reason(result)
+            if sensitive_reason is not None:
+                raise GovernanceError(
+                    "subtask.result resembles %s; record only a redacted summary"
+                    % sensitive_reason
+                )
+    if len(subtask_ids) != len(set(subtask_ids)):
+        raise GovernanceError("subtask ids must be unique")
     recovery = task.get("bootstrap_recovery")
     if recovery is not None:
         base_recovery_fields = frozenset((
@@ -1638,18 +1860,16 @@ def validate_task(task: Mapping[str, Any]) -> None:
     normal_index = status_index(str(task["status"]))
     if normal_index >= status_index("COMMITTED") and not git_evidence.get("committed_sha"):
         raise GovernanceError("COMMITTED or later task state requires git.committed_sha")
-    if normal_index >= status_index("CI_VERIFIED"):
+    if task.get("status") in ("CI_VERIFIED", "CODE_REVIEWED"):
         if not git_evidence.get("ci_verified_sha"):
-            raise GovernanceError("CI_VERIFIED or later task state requires git.ci_verified_sha")
+            raise GovernanceError("CI_VERIFIED and CODE_REVIEWED require git.ci_verified_sha")
         if git_evidence.get("ci_verified_sha") != git_evidence.get("committed_sha"):
             raise GovernanceError("git.ci_verified_sha must equal git.committed_sha")
     if normal_index >= status_index("MERGED") and not git_evidence.get("merged_sha"):
         raise GovernanceError("MERGED or later task state requires git.merged_sha")
-    if normal_index >= status_index("POST_MERGE_VERIFIED"):
+    if task.get("status") == "POST_MERGE_VERIFIED":
         if not git_evidence.get("post_merge_verified_sha"):
-            raise GovernanceError(
-                "POST_MERGE_VERIFIED or later task state requires git.post_merge_verified_sha"
-            )
+            raise GovernanceError("POST_MERGE_VERIFIED requires git.post_merge_verified_sha")
         if git_evidence.get("post_merge_verified_sha") != git_evidence.get("merged_sha"):
             raise GovernanceError("git.post_merge_verified_sha must equal git.merged_sha")
 
@@ -1658,6 +1878,10 @@ def allowed_transition(current: str, target: str, blocked_from: Optional[str] = 
     if current not in TASK_STATES or target not in TASK_STATES or current == target:
         return False
     if target == _NORMAL_NEXT.get(current):
+        return True
+    if current == "COMMITTED" and target == "MERGED":
+        return True
+    if current == "MERGED" and target == "DONE":
         return True
     if target == "BLOCKED" and current not in ("DONE", "CANCELLED", "BLOCKED"):
         return True
@@ -1836,6 +2060,14 @@ def _conversation_receipt_shape_issues(receipt: Mapping[str, Any]) -> List[str]:
                 issues.append("conversation rework receipt must bind from_status LOCAL_VERIFIED")
             if expires is None:
                 issues.append("conversation rework approval requires expires_at")
+        elif kind == "final_action":
+            if receipt.get("action") not in ("merge", "deploy", "release"):
+                issues.append("conversation final action is unknown")
+            subject = receipt.get("subject")
+            if not isinstance(subject, str) or re.fullmatch(r"commit:[0-9a-f]{40,64}", subject) is None:
+                issues.append("conversation final action must bind a commit subject")
+            if expires is None:
+                issues.append("conversation final-action approval requires expires_at")
     except GovernanceError as exc:
         issues.append(str(exc))
     return issues
@@ -1876,6 +2108,7 @@ def build_conversation_receipt(
     environment: Optional[str] = None,
     operation_id: Optional[str] = None,
     target_digest: Optional[str] = None,
+    action: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Derive one exact conversation receipt from current governed state."""
 
@@ -1903,6 +2136,7 @@ def build_conversation_receipt(
         "environment": environment,
         "operation_id": operation_id,
         "target_digest": target_digest,
+        "action": action,
     }
     applicable = {
         "scope": frozenset(),
@@ -1910,6 +2144,7 @@ def build_conversation_receipt(
         "validation_waiver": frozenset(("check_id", "phase", "environment")),
         "irreversible_operation": frozenset(("operation_id", "target_digest")),
         "rework": frozenset(),
+        "final_action": frozenset(("action",)),
     }
     irrelevant = sorted(
         field for field, value in specialized.items()
@@ -1996,6 +2231,19 @@ def build_conversation_receipt(
         receipt.update({
             "subject": managed_content_subject(root, task),
             "from_status": "LOCAL_VERIFIED",
+        })
+    elif kind == "final_action":
+        if action not in ("merge", "deploy", "release"):
+            raise GovernanceError("final action must be merge, deploy or release")
+        git_evidence = task.get("git", {})
+        selected = (
+            git_evidence.get("committed_sha")
+            if action == "merge"
+            else git_evidence.get("merged_sha") or git_evidence.get("committed_sha")
+        )
+        receipt.update({
+            "action": action,
+            "subject": "commit:" + normalize_commit(selected, "final action subject"),
         })
     issues = _conversation_receipt_shape_issues(receipt)
     if issues:
@@ -2182,6 +2430,42 @@ def find_effective_code_review(
     commit: Optional[str] = None,
 ) -> Tuple[Optional[Dict[str, Any]], str]:
     return find_effective_review(root, task, "code", commit)
+
+
+def find_effective_final_action_review(
+    root: Path,
+    task: Mapping[str, Any],
+    action: str,
+) -> Tuple[Optional[Dict[str, Any]], str]:
+    if action not in ("merge", "deploy", "release"):
+        raise GovernanceError("final action must be merge, deploy or release")
+    git_evidence = task.get("git", {})
+    selected = (
+        git_evidence.get("committed_sha")
+        if action == "merge"
+        else git_evidence.get("merged_sha") or git_evidence.get("committed_sha")
+    )
+    try:
+        subject = "commit:" + normalize_commit(selected, "final action subject")
+    except GovernanceError as exc:
+        return None, str(exc)
+    candidates = [
+        receipt
+        for receipt in list_reviews(root, str(task.get("task_id")))
+        if receipt.get("kind") == "final_action"
+        and receipt.get("action") == action
+        and receipt.get("subject") == subject
+        and receipt.get("scope_hash") == canonical_scope_hash(task)
+    ]
+    if not candidates:
+        return None, "no final-action receipt matches the current scope, action and commit"
+    receipt = _latest_receipt(candidates)
+    valid, reason = review_validity(receipt, task, root=root)
+    if not valid:
+        return None, reason
+    if not receipt.get("expires_at"):
+        return None, "final-action approval must have an expiry"
+    return receipt, "final action approved by user"
 
 
 def find_effective_irreversible_operation_review(
@@ -2473,6 +2757,40 @@ def expected_validation_subject(
     if phase is None:
         raise GovernanceError("unknown validation gate: %s" % gate)
     if phase == "local":
+        # Once a task has entered COMMITTED, its local evidence belongs to the
+        # immutable task content that commit-task already bound and froze.  A
+        # later task in a stacked PR may legitimately add files that also match
+        # an older task's broad allowed_paths.  Re-hashing the descendant
+        # worktree here would retroactively invalidate the older task and make
+        # the reviewed stack impossible to merge, even though CI reruns every
+        # required check on the combined head.
+        #
+        # Freeze only a single subject derived from the latest controlled local
+        # result for each required check/release unit.  Provenance validation
+        # below still verifies runner identity, argv, timeout, scope, integrity,
+        # output digests and exit status.  Before COMMITTED, live workspace
+        # changes continue to invalidate the gate exactly as before.
+        frozen_states = NORMAL_STATES[NORMAL_STATES.index("COMMITTED"):]
+        if task.get("status") in frozen_states and task.get("git", {}).get("committed_sha"):
+            subjects = set()
+            for check in task.get("validation", {}).get("required", []):
+                if gate not in check.get("gates", []):
+                    continue
+                check_id = str(check.get("id"))
+                for unit in check.get("release_units", []) or [None]:
+                    result = _latest_validation_result_for_unit(task, check_id, phase, unit)
+                    if result is None or result.get("status") not in ("passed", "skipped"):
+                        continue
+                    subject = result.get("subject")
+                    if not isinstance(subject, str) or not re.fullmatch(
+                        r"workspace:sha256:[0-9a-f]{64}", subject
+                    ):
+                        return None, "frozen local validation subject is invalid"
+                    subjects.add(subject)
+            if len(subjects) == 1:
+                return next(iter(subjects)), None
+            if len(subjects) > 1:
+                return None, "frozen local validation results disagree on content subject"
         return managed_content_subject(root, task), None
     git_evidence = task.get("git", {})
     field = "committed_sha" if phase == "ci" else "merged_sha"

@@ -1,0 +1,506 @@
+{
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/taskctl.py begin GOV-0021",
+    "python3 tools/governance/taskctl.py run-required GOV-0021",
+    "python3 tools/governance/taskctl.py commit-task GOV-0021",
+    "python3 tools/governance/taskctl.py push-task GOV-0021",
+    "python3 tools/governance/taskctl.py open-pr GOV-0021"
+  ],
+  "allowed_paths": [
+    ".github/workflows/governance.yml",
+    "project-control/**",
+    "tools/governance/reconcile.py",
+    "tools/governance/tests/test_reconcile_ci_static.py"
+  ],
+  "allowed_tools": [
+    "apply_patch",
+    "ApplyPatch",
+    "Bash",
+    "Read",
+    "Glob",
+    "Grep",
+    "web__run"
+  ],
+  "assumptions": [
+    {
+      "id": "GOV-0021-ASM-001",
+      "source": "GitHub Actions run 32690080276 macOS job 97322070755",
+      "statement": "macOS 的桌面 lint 与 package 均因 CI 未安装锁定 npm 依赖而以 exit 127 失败。",
+      "status": "confirmed"
+    },
+    {
+      "id": "GOV-0021-ASM-002",
+      "source": "现有 apps/desktop/package-lock.json",
+      "statement": "使用 actions/setup-node 与 npm ci 是可逆的官方锁文件安装路径，不改变应用依赖声明。",
+      "status": "confirmed"
+    },
+    {
+      "id": "GOV-0021-ASM-003",
+      "source": "本地 taskctl push-task 失败关闭记录",
+      "statement": "GOV-0020 仅因本地提交编排顺序错误取消，未推送远端，也未创建 PR。",
+      "status": "confirmed"
+    }
+  ],
+  "base_branch": "codex/req-0002-app-0001-project-bootstrap",
+  "blockers": [],
+  "branch": "codex/req-0004-gov-0021-ci-desktop-dependency-install",
+  "ci_trust": {
+    "api_base": "https://api.github.com",
+    "api_version": "2026-03-10",
+    "ci_events": [
+      "pull_request",
+      "push"
+    ],
+    "post_merge_events": [
+      "push"
+    ],
+    "private": true,
+    "provider": "github_actions_rest_v1",
+    "repository": "wzhic/material",
+    "required_jobs": {
+      "pull_request": [
+        "Governance (ubuntu-latest)",
+        "Governance (macos-latest)",
+        "Governance (windows-latest)"
+      ],
+      "push": [
+        "Governance (ubuntu-latest)",
+        "Governance (macos-latest)",
+        "Governance (windows-latest)"
+      ]
+    },
+    "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "workflow_path": ".github/workflows/governance.yml"
+  },
+  "coordination": {
+    "compatibility_matrix_doc": "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md",
+    "coordinator_task": "GOV-0021",
+    "deployment_order": [
+      "backend",
+      "mac",
+      "win"
+    ],
+    "mode": "coordinated-multi",
+    "rollback_order": [
+      "win",
+      "mac",
+      "backend"
+    ],
+    "unit_rollback_checks": {
+      "backend": [
+        "governance_unit_tests"
+      ],
+      "mac": [
+        "hook_contract_tests"
+      ],
+      "win": [
+        "hook_contract_tests"
+      ]
+    },
+    "unit_tasks": {
+      "backend": "GOV-0021",
+      "mac": "GOV-0021",
+      "win": "GOV-0021"
+    },
+    "unit_validation_checks": {
+      "backend": [
+        "governance_unit_tests",
+        "hook_contract_tests",
+        "repository_reconcile"
+      ],
+      "mac": [
+        "governance_unit_tests",
+        "hook_contract_tests",
+        "repository_reconcile"
+      ],
+      "win": [
+        "governance_unit_tests",
+        "hook_contract_tests",
+        "repository_reconcile"
+      ]
+    }
+  },
+  "created_at": "2026-08-24T04:36:55+00:00",
+  "dependencies": [],
+  "git": {
+    "committed_sha": "e40b888d234ff25f6b6d492501fdb2320bf4059f",
+    "merged_sha": "c09f47a21fa6d4a84dbf610d41f8fc325696e4e2"
+  },
+  "history": [
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T04:37:07+00:00",
+      "base_branch": "codex/req-0002-app-0001-project-bootstrap",
+      "branch": "codex/req-0004-gov-0021-ci-desktop-dependency-install",
+      "event": "local_branch_started",
+      "reason": "repair PR #14 desktop CI dependency bootstrap from run 32690080276"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T04:37:07+00:00",
+      "event": "task_started",
+      "from": "DRAFT",
+      "reason": "repair PR #14 desktop CI dependency bootstrap from run 32690080276",
+      "to": "IN_PROGRESS"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T04:39:37+00:00",
+      "from": "IN_PROGRESS",
+      "reason": "controlled governance, Hook and static checks passed on the final locked desktop dependency bootstrap subject",
+      "to": "LOCAL_VERIFIED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T04:39:47+00:00",
+      "from": "LOCAL_VERIFIED",
+      "reason": "commit locked desktop dependency installation before controlled CI checks",
+      "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T04:51:34+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #18 merged after all three required GitHub Actions checks passed",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T04:51:40+00:00",
+      "from": "MERGED",
+      "reason": "PR #18 is merged and its required three-platform CI attempt is green with no skipped validation",
+      "to": "DONE"
+    }
+  ],
+  "open_questions": [],
+  "release_units": [
+    "mac",
+    "win",
+    "backend"
+  ],
+  "required_docs": [
+    "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md"
+  ],
+  "requirement": {
+    "id": "治理精简-REQ-0004",
+    "interaction_kind": "non_ui",
+    "name": "治理精简",
+    "version": "v1.0"
+  },
+  "review_authority": {
+    "identity": "material-project-owner",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E",
+    "namespace": "material-governance-review",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "scheme": "ssh-keygen-y-v1"
+  },
+  "schema_version": 1,
+  "scope_version": 1,
+  "status": "DONE",
+  "summary": "修复应用初始化 PR 的桌面 CI 依赖缺失：在 macOS 与 Windows 受控检查前按 package-lock.json 安装 npm 依赖，并以静态合同回归防止再次遗漏。",
+  "task_id": "GOV-0021",
+  "updated_at": "2026-08-24T04:51:40+00:00",
+  "validation": {
+    "required": [
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tools/governance/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "governance_unit_tests",
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "timeout_seconds": 1200
+      },
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          ".codex/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "hook_contract_tests",
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "timeout_seconds": 600
+      },
+      {
+        "argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "static",
+          "--json"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "repository_reconcile",
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "timeout_seconds": 120
+      }
+    ],
+    "results": [
+      {
+        "actor": "controlled-validation-runner",
+        "argv_sha256": "sha256:172ff3eebf492131e51dd423cf1ebcc69cfde1f90cf059130087556fbca2dd1c",
+        "check_id": "governance_unit_tests",
+        "declared_argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tools/governance/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "duration_ms": 24212,
+        "environment": "controlled-local-final",
+        "evidence": "controlled-validation-runner-v1 derived status from process execution",
+        "executed_argv": [
+          "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tools/governance/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "exit_code": 0,
+        "finished_at": "2026-08-24T04:38:17+00:00",
+        "integrity": {
+          "issues": [],
+          "managed_content_subject_after": "workspace:sha256:8616a96e2b34ced69a6b625862eb7e714f58c32f96d5c92c921b5509ea5526ba",
+          "managed_content_subject_before": "workspace:sha256:8616a96e2b34ced69a6b625862eb7e714f58c32f96d5c92c921b5509ea5526ba",
+          "protected_state_digest_after": "protected-state:sha256:a9287230647ca4434027b33933f8fc6b9d26e4ee0d1b9c4faf12ab7aab85ec3a",
+          "protected_state_digest_before": "protected-state:sha256:a9287230647ca4434027b33933f8fc6b9d26e4ee0d1b9c4faf12ab7aab85ec3a",
+          "scope_hash_after": "sha256:144d406514cc25c26717b4fb45a7301dc48b1f96f8f643f22fefa4f2ba68dd44",
+          "scope_hash_before": "sha256:144d406514cc25c26717b4fb45a7301dc48b1f96f8f643f22fefa4f2ba68dd44",
+          "unchanged": true
+        },
+        "launch_error": null,
+        "phase": "local",
+        "plan_sha256": "sha256:ac07614184d390df858c7d29db679504cb84b0beeb35b0ad3cb01c2129eeeea0",
+        "platform": {
+          "machine": "arm64",
+          "release": "25.5.0",
+          "system": "Darwin"
+        },
+        "python": {
+          "executable": "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9",
+          "implementation": "CPython",
+          "version": "3.9.6"
+        },
+        "recorded_at": "2026-08-24T04:38:17+00:00",
+        "release_unit": null,
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "runner_version": "controlled-validation-runner-v1",
+        "scope_hash": "sha256:144d406514cc25c26717b4fb45a7301dc48b1f96f8f643f22fefa4f2ba68dd44",
+        "source": "controlled-validation-runner-v1",
+        "started_at": "2026-08-24T04:37:53+00:00",
+        "status": "passed",
+        "stderr": {
+          "byte_count": 22948,
+          "sha256": "cb97dbfd792ca78c58de6cfb6a5ad35ae6007e15b7e1124b83704e334b19e9de"
+        },
+        "stdout": {
+          "byte_count": 139521,
+          "sha256": "7e4f2651bcb299d6ade3fbb1fb6dab01a8fe5534fa545d935e06cf6db35e76ec"
+        },
+        "subject": "workspace:sha256:8616a96e2b34ced69a6b625862eb7e714f58c32f96d5c92c921b5509ea5526ba",
+        "timed_out": false,
+        "timeout_seconds": 1200.0
+      },
+      {
+        "actor": "controlled-validation-runner",
+        "argv_sha256": "sha256:7719b97ada74195e7b4d5aa7aa09200c6a2ab70d1d4969be668ffc26d7f8a146",
+        "check_id": "hook_contract_tests",
+        "declared_argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          ".codex/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "duration_ms": 2640,
+        "environment": "controlled-local-final",
+        "evidence": "controlled-validation-runner-v1 derived status from process execution",
+        "executed_argv": [
+          "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          ".codex/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "exit_code": 0,
+        "finished_at": "2026-08-24T04:38:19+00:00",
+        "integrity": {
+          "issues": [],
+          "managed_content_subject_after": "workspace:sha256:8616a96e2b34ced69a6b625862eb7e714f58c32f96d5c92c921b5509ea5526ba",
+          "managed_content_subject_before": "workspace:sha256:8616a96e2b34ced69a6b625862eb7e714f58c32f96d5c92c921b5509ea5526ba",
+          "protected_state_digest_after": "protected-state:sha256:a9287230647ca4434027b33933f8fc6b9d26e4ee0d1b9c4faf12ab7aab85ec3a",
+          "protected_state_digest_before": "protected-state:sha256:a9287230647ca4434027b33933f8fc6b9d26e4ee0d1b9c4faf12ab7aab85ec3a",
+          "scope_hash_after": "sha256:144d406514cc25c26717b4fb45a7301dc48b1f96f8f643f22fefa4f2ba68dd44",
+          "scope_hash_before": "sha256:144d406514cc25c26717b4fb45a7301dc48b1f96f8f643f22fefa4f2ba68dd44",
+          "unchanged": true
+        },
+        "launch_error": null,
+        "phase": "local",
+        "plan_sha256": "sha256:ea8514c9d8c1331c594b2457bc2850ad02f21640411779acff37e8725dce1727",
+        "platform": {
+          "machine": "arm64",
+          "release": "25.5.0",
+          "system": "Darwin"
+        },
+        "python": {
+          "executable": "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9",
+          "implementation": "CPython",
+          "version": "3.9.6"
+        },
+        "recorded_at": "2026-08-24T04:38:19+00:00",
+        "release_unit": null,
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "runner_version": "controlled-validation-runner-v1",
+        "scope_hash": "sha256:144d406514cc25c26717b4fb45a7301dc48b1f96f8f643f22fefa4f2ba68dd44",
+        "source": "controlled-validation-runner-v1",
+        "started_at": "2026-08-24T04:38:17+00:00",
+        "status": "passed",
+        "stderr": {
+          "byte_count": 6474,
+          "sha256": "4b195ec5ea1f25ef94564444c7567e15f99a76e63a9a2b98031318782ef4367e"
+        },
+        "stdout": {
+          "byte_count": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "subject": "workspace:sha256:8616a96e2b34ced69a6b625862eb7e714f58c32f96d5c92c921b5509ea5526ba",
+        "timed_out": false,
+        "timeout_seconds": 600.0
+      },
+      {
+        "actor": "controlled-validation-runner",
+        "argv_sha256": "sha256:e00bcb3ab83778088a7c5e5a6f63792549dcff2cf5b16922fde245973f5b644c",
+        "check_id": "repository_reconcile",
+        "declared_argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "static",
+          "--json"
+        ],
+        "duration_ms": 331,
+        "environment": "controlled-local-final",
+        "evidence": "controlled-validation-runner-v1 derived status from process execution",
+        "executed_argv": [
+          "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9",
+          "tools/governance/reconcile.py",
+          "static",
+          "--json"
+        ],
+        "exit_code": 0,
+        "finished_at": "2026-08-24T04:38:20+00:00",
+        "integrity": {
+          "issues": [],
+          "managed_content_subject_after": "workspace:sha256:8616a96e2b34ced69a6b625862eb7e714f58c32f96d5c92c921b5509ea5526ba",
+          "managed_content_subject_before": "workspace:sha256:8616a96e2b34ced69a6b625862eb7e714f58c32f96d5c92c921b5509ea5526ba",
+          "protected_state_digest_after": "protected-state:sha256:a9287230647ca4434027b33933f8fc6b9d26e4ee0d1b9c4faf12ab7aab85ec3a",
+          "protected_state_digest_before": "protected-state:sha256:a9287230647ca4434027b33933f8fc6b9d26e4ee0d1b9c4faf12ab7aab85ec3a",
+          "scope_hash_after": "sha256:144d406514cc25c26717b4fb45a7301dc48b1f96f8f643f22fefa4f2ba68dd44",
+          "scope_hash_before": "sha256:144d406514cc25c26717b4fb45a7301dc48b1f96f8f643f22fefa4f2ba68dd44",
+          "unchanged": true
+        },
+        "launch_error": null,
+        "phase": "local",
+        "plan_sha256": "sha256:fa1a62b36699931ec7d87b101be653fff74aec45419fa9dfe5f1e90857bb5699",
+        "platform": {
+          "machine": "arm64",
+          "release": "25.5.0",
+          "system": "Darwin"
+        },
+        "python": {
+          "executable": "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9",
+          "implementation": "CPython",
+          "version": "3.9.6"
+        },
+        "recorded_at": "2026-08-24T04:38:20+00:00",
+        "release_unit": null,
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "runner_version": "controlled-validation-runner-v1",
+        "scope_hash": "sha256:144d406514cc25c26717b4fb45a7301dc48b1f96f8f643f22fefa4f2ba68dd44",
+        "source": "controlled-validation-runner-v1",
+        "started_at": "2026-08-24T04:38:19+00:00",
+        "status": "passed",
+        "stderr": {
+          "byte_count": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout": {
+          "byte_count": 16108,
+          "sha256": "27e6cec2b039727bee70574970ac38f0e201678fc9b795abe2edfedf48e70fa3"
+        },
+        "subject": "workspace:sha256:8616a96e2b34ced69a6b625862eb7e714f58c32f96d5c92c921b5509ea5526ba",
+        "timed_out": false,
+        "timeout_seconds": 120.0
+      }
+    ]
+  }
+}

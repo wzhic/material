@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0008",
+  "base_head": "b07c9d1f655d8cf4e4f3a1ae49285580a960c3f4",
+  "paths": [
+    "tools/governance/tests/test_reconcile_ci_static.py"
+  ]
+}

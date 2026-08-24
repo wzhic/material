@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0003",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "requirement": {
+    "id": "产品库-REQ-0003",
+    "name": "产品库",
+    "version": "v1.0",
+    "interaction_kind": "ui"
+  },
+  "summary": "在任何产品库业务实现开始前，将已确认方向整理为可实现、可验收的 V1 产品需求文档：覆盖服饰与游戏产品的用户主动创建、编辑、删除、查找、可选绑定、重复提醒、版本与渠道结构、报告快照关系，以及入口、取消、空/加载/成功/失败、离线/超时、恢复、权限和无障碍状态；提供不限制扩展性的表单样例与必填规则。本任务不实现客户端代码、SQLite schema、模型接入、素材分析、素材库或标签库。",
+  "release_units": [
+    "mac",
+    "win"
+  ],
+  "branch": "codex/req-0003-app-0003-product-library-prd",
+  "base_branch": "codex/req-0004-gov-0003-minimal-governance",
+  "allowed_paths": [
+    "docs/requirements/产品库-REQ-0003/**",
+    "project-control/**"
+  ],
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reviewctl.py verify --json",
+    "python3 tools/governance/reviewctl.py record-conversation APP-0003",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py docs --json",
+    "python3 tools/governance/reconcile.py workflow --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/reconcile.py precommit --json",
+    "python3 tools/governance/taskctl.py start-branch APP-0003",
+    "python3 tools/governance/taskctl.py run-validation APP-0003",
+    "python3 tools/governance/taskctl.py run-required APP-0003",
+    "python3 tools/governance/taskctl.py commit-task APP-0003",
+    "python3 tools/governance/taskctl.py push-task APP-0003",
+    "python3 tools/governance/taskctl.py open-pr APP-0003",
+    "python3 tools/governance/taskctl.py subtask-start APP-0003",
+    "python3 tools/governance/taskctl.py subtask-finish APP-0003"
+  ],
+  "allowed_tools": [
+    "apply_patch",
+    "ApplyPatch",
+    "Bash",
+    "Read",
+    "Glob",
+    "Grep",
+    "view_image",
+    "codex_app__read_thread_terminal",
+    "request_plugin_install",
+    "spawn_agent",
+    "send_message",
+    "followup_task",
+    "wait_agent",
+    "interrupt_agent",
+    "list_agents",
+    "collaborationspawn_agent",
+    "collaborationsend_message",
+    "collaborationfollowup_task",
+    "collaborationwait_agent",
+    "collaborationinterrupt_agent",
+    "collaborationlist_agents"
+  ],
+  "dependencies": [],
+  "required_docs": [
+    "docs/requirements/产品库-REQ-0003/产品库-REQ-0003-v1.0.md"
+  ],
+  "validation": {
+    "required": [
+      {
+        "id": "docs_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "docs", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "repository_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "static", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "governance_unit_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", "tools/governance/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      }
+    ],
+    "results": []
+  },
+  "assumptions": [
+    {
+      "id": "APP-0003-ASM-001",
+      "statement": "本任务只定稿产品库 V1 产品需求、流程、数据边界和验收；产品代码、数据库 schema 与交互实现必须在文档确认后的独立任务中开展。",
+      "status": "confirmed",
+      "source": "用户明确要求开工前准备并补全产品需求文档"
+    },
+    {
+      "id": "APP-0003-ASM-002",
+      "statement": "产品只由用户通过结构化表单主动创建；V1 不从素材、搜索或分析结果自动创建、保存或覆盖产品。",
+      "status": "confirmed",
+      "source": "用户明确确认产品库创建边界"
+    },
+    {
+      "id": "APP-0003-ASM-003",
+      "statement": "服饰产品仅以产品名称和服饰类别为必填；游戏产品仅以游戏名称为必填，版本和渠道结构保留但可选。",
+      "status": "confirmed",
+      "source": "用户确认产品表单必填项"
+    },
+    {
+      "id": "APP-0003-ASM-004",
+      "statement": "重复检测只提示候选，不自动合并或覆盖；删除产品不删除已确认报告中的产品快照。",
+      "status": "confirmed",
+      "source": "用户采纳产品去重与报告快照建议"
+    },
+    {
+      "id": "APP-0003-ASM-005",
+      "statement": "GitHub 插件仅用于仓库 PR/CI 协作，不属于产品能力；用户已明确授权安装，连接后的具体权限仍需按实际能力核验。",
+      "status": "confirmed",
+      "source": "用户确认安装 GitHub 插件"
+    },
+    {
+      "id": "APP-0003-ASM-006",
+      "statement": "任务从已提交并已推送的 GOV-0003 治理分支建立叠加分支，只复用治理和脚手架基线，不宣称任何上游任务已合并或发布。",
+      "status": "confirmed",
+      "source": "用户要求治理完成后直接进入 PRD 生产"
+    },
+    {
+      "id": "APP-0003-ASM-007",
+      "statement": "治理交接完成后无需二次确认即可直接开始产品库 PRD 的编写、复核和本地验证。",
+      "status": "confirmed",
+      "source": "用户本轮明确授权"
+    }
+  ],
+  "open_questions": [],
+  "blockers": [],
+  "review_authority": {
+    "scheme": "ssh-keygen-y-v1",
+    "identity": "material-project-owner",
+    "namespace": "material-governance-review",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E"
+  },
+  "ci_trust": {
+    "provider": "github_actions_rest_v1",
+    "repository": "wzhic/material",
+    "workflow_path": ".github/workflows/governance.yml",
+    "api_base": "https://api.github.com",
+    "api_version": "2026-03-10",
+    "private": true,
+    "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "ci_events": ["pull_request", "push"],
+    "post_merge_events": ["push"],
+    "required_jobs": {
+      "pull_request": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"],
+      "push": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"]
+    }
+  },
+  "coordination": {
+    "mode": "coordinated-multi",
+    "coordinator_task": "APP-0003",
+    "unit_tasks": {"mac": "APP-0003", "win": "APP-0003"},
+    "compatibility_matrix_doc": "docs/requirements/产品库-REQ-0003/产品库-REQ-0003-v1.0.md",
+    "deployment_order": ["mac", "win"],
+    "rollback_order": ["win", "mac"],
+    "unit_validation_checks": {
+      "mac": ["docs_reconcile", "repository_reconcile", "governance_unit_tests"],
+      "win": ["docs_reconcile", "repository_reconcile", "governance_unit_tests"]
+    },
+    "unit_rollback_checks": {"mac": ["docs_reconcile"], "win": ["docs_reconcile"]}
+  }
+}

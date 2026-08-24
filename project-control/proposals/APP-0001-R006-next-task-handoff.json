@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0001",
+  "base_head": "aabf72a3304993fe0015745d1aab08561ca6ec72",
+  "paths": [
+    "apps/desktop/forge.config.ts",
+    "project-control/proposals/APP-0002-task.json"
+  ]
+}

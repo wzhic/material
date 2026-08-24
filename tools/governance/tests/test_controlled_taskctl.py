@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 GOVERNANCE_DIR = Path(__file__).resolve().parents[1]
@@ -12,7 +14,7 @@ if str(GOVERNANCE_DIR) not in sys.path:
 
 import taskctl  # noqa: E402
 from core import read_json, task_path  # noqa: E402
-from helpers import AuthenticatedReceiptTestCase, base_task, initialize_root  # noqa: E402
+from helpers import AuthenticatedReceiptTestCase, base_task, initialize_root, write_json  # noqa: E402
 from validation_runner import RUNNER_VERSION  # noqa: E402
 
 
@@ -68,6 +70,29 @@ class ControlledTaskCtlTests(AuthenticatedReceiptTestCase):
                 "run-required", task["task_id"], "--phase", "ci",
                 "--release-unit", "mac", "--root", str(root), "--json",
             ])
+            self.assertEqual(0, code)
+            stored = read_json(task_path(root, task["task_id"]))
+            self.assertEqual([], stored["validation"]["results"])
+
+    def test_ci_unaffected_release_unit_returns_not_applicable_without_results(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = self._task(root, status="COMMITTED")
+            task["release_units"] = ["mac"]
+            task["validation"]["required"][0]["release_units"] = ["mac"]
+            task["coordination"]["deployment_order"] = ["mac"]
+            task["coordination"]["rollback_order"] = ["mac"]
+            task["coordination"]["unit_tasks"] = {"mac": task["task_id"]}
+            task["coordination"]["unit_validation_checks"] = {"mac": ["unit"]}
+            task["coordination"]["unit_rollback_checks"] = {"mac": ["unit"]}
+            write_json(task_path(root, task["task_id"]), task)
+            with mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=False), mock.patch.object(
+                taskctl, "_require_validation_branch"
+            ):
+                code = taskctl.main([
+                    "run-required", task["task_id"], "--phase", "ci",
+                    "--release-unit", "backend", "--root", str(root), "--json",
+                ])
             self.assertEqual(0, code)
             stored = read_json(task_path(root, task["task_id"]))
             self.assertEqual([], stored["validation"]["results"])

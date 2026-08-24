@@ -28,6 +28,7 @@ from core import (
     default_root,
     expected_validation_subject,
     find_effective_code_review,
+    find_effective_final_action_review,
     find_effective_irreversible_operation_review,
     find_effective_rework_review,
     find_effective_review,
@@ -82,7 +83,10 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument(
         "--kind",
         default="scope",
-        choices=("scope", "code", "validation_waiver", "irreversible_operation", "rework"),
+        choices=(
+            "scope", "code", "validation_waiver", "irreversible_operation", "rework",
+            "final_action",
+        ),
     )
     verify.add_argument("--check-id")
     verify.add_argument("--phase", choices=sorted(VALIDATION_PHASES))
@@ -90,6 +94,7 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--environment")
     verify.add_argument("--operation-id")
     verify.add_argument("--target-digest")
+    verify.add_argument("--action", choices=("merge", "deploy", "release"))
     common(verify)
 
     prepare = subparsers.add_parser(
@@ -144,7 +149,10 @@ def build_parser() -> argparse.ArgumentParser:
     conversation.add_argument(
         "--kind",
         default="scope",
-        choices=("scope", "code", "validation_waiver", "irreversible_operation", "rework"),
+        choices=(
+            "scope", "code", "validation_waiver", "irreversible_operation", "rework",
+            "final_action",
+        ),
     )
     conversation.add_argument("--reason", required=True)
     conversation.add_argument("--confirmation-ref", required=True)
@@ -159,6 +167,7 @@ def build_parser() -> argparse.ArgumentParser:
     conversation.add_argument("--environment")
     conversation.add_argument("--operation-id")
     conversation.add_argument("--target-digest")
+    conversation.add_argument("--action", choices=("merge", "deploy", "release"))
     common(conversation)
 
     record = subparsers.add_parser(
@@ -232,8 +241,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             if args.kind == "validation_waiver":
                 if not args.check_id or not args.phase:
                     raise GovernanceError("validation_waiver verification requires --check-id and --phase")
-                if any((args.operation_id, args.target_digest)):
-                    raise GovernanceError("validation_waiver verification does not accept operation bindings")
+                if any((args.operation_id, args.target_digest, args.action)):
+                    raise GovernanceError("validation_waiver verification does not accept unrelated bindings")
                 gate = PHASE_GATES[args.phase]
                 expected_subject, subject_error = expected_validation_subject(root, task, gate)
                 if subject_error:
@@ -254,7 +263,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                     root, task, args.check_id, args.phase, environment
                 )
             elif args.kind == "code":
-                if any((args.check_id, args.phase, args.environment, args.operation_id, args.target_digest)):
+                if any((
+                    args.check_id, args.phase, args.environment, args.operation_id,
+                    args.target_digest, args.action,
+                )):
                     raise GovernanceError("code verification only accepts a commit binding")
                 receipt, reason = find_effective_code_review(root, task, args.commit)
             elif args.kind == "irreversible_operation":
@@ -262,7 +274,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     raise GovernanceError(
                         "irreversible_operation verification requires --operation-id and --target-digest"
                     )
-                if any((args.check_id, args.phase, args.commit, args.environment)):
+                if any((args.check_id, args.phase, args.commit, args.environment, args.action)):
                     raise GovernanceError(
                         "irreversible_operation verification only accepts operation bindings"
                     )
@@ -272,14 +284,23 @@ def main(argv: Optional[List[str]] = None) -> int:
             elif args.kind == "rework":
                 if any((
                     args.check_id, args.phase, args.commit, args.environment,
-                    args.operation_id, args.target_digest,
+                    args.operation_id, args.target_digest, args.action,
                 )):
                     raise GovernanceError("rework verification derives its frozen subject from the task")
                 receipt, reason = find_effective_rework_review(root, task)
-            else:
+            elif args.kind == "final_action":
+                if not args.action:
+                    raise GovernanceError("final_action verification requires --action")
                 if any((
                     args.check_id, args.phase, args.commit, args.environment,
                     args.operation_id, args.target_digest,
+                )):
+                    raise GovernanceError("final_action verification only accepts --action")
+                receipt, reason = find_effective_final_action_review(root, task, args.action)
+            else:
+                if any((
+                    args.check_id, args.phase, args.commit, args.environment,
+                    args.operation_id, args.target_digest, args.action,
                 )):
                     raise GovernanceError("scope verification does not accept specialized binding arguments")
                 receipt, reason = find_effective_review(root, task)
@@ -390,6 +411,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "%s conversation decision may only be recorded while task is %s"
                     % (args.kind, expected_state)
                 )
+            if args.kind == "final_action":
+                if args.action == "merge":
+                    allowed_states = ("COMMITTED", "CI_VERIFIED", "CODE_REVIEWED")
+                else:
+                    allowed_states = ("MERGED", "POST_MERGE_VERIFIED", "DONE")
+                if task.get("status") not in allowed_states:
+                    raise GovernanceError(
+                        "%s final decision may only be recorded while task is %s"
+                        % (args.action, " or ".join(allowed_states))
+                    )
             receipt = build_conversation_receipt(
                 root,
                 task,
@@ -409,6 +440,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 environment=args.environment,
                 operation_id=args.operation_id,
                 target_digest=args.target_digest,
+                action=args.action,
             )
             if args.supersedes is not None:
                 prior = _find_by_id(root, args.supersedes)

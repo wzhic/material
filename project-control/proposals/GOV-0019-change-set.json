@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0019",
+  "base_head": "5a5afe8ccbe23c841165a78a752757a04a523ee7",
+  "paths": [
+    "tools/governance/taskctl.py",
+    "tools/governance/tests/test_stack_merge_evidence.py"
+  ]
+}

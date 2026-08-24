@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0022",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "summary": "修复受控验证对 Git 已忽略构建产物的误报：忽略未跟踪且被仓库规则排除的生成文件，同时继续绑定源文件、已跟踪文件与受保护治理状态。",
+  "requirement": {
+    "id": "治理精简-REQ-0004",
+    "name": "治理精简",
+    "version": "v1.0",
+    "interaction_kind": "non_ui"
+  },
+  "release_units": ["mac", "win", "backend"],
+  "branch": "codex/req-0004-gov-0022-ci-generated-output-integrity",
+  "base_branch": "codex/req-0002-app-0001-project-bootstrap",
+  "allowed_paths": [
+    "project-control/**",
+    "tools/governance/core.py",
+    "tools/governance/tests/test_core.py"
+  ],
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/taskctl.py begin GOV-0022",
+    "python3 tools/governance/taskctl.py run-required GOV-0022",
+    "python3 tools/governance/taskctl.py commit-task GOV-0022",
+    "python3 tools/governance/taskctl.py push-task GOV-0022",
+    "python3 tools/governance/taskctl.py open-pr GOV-0022"
+  ],
+  "allowed_tools": ["apply_patch", "ApplyPatch", "Bash", "Read", "Glob", "Grep", "web__run"],
+  "dependencies": ["GOV-0021"],
+  "blockers": [],
+  "open_questions": [],
+  "required_docs": ["docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md"],
+  "assumptions": [
+    {
+      "id": "GOV-0022-ASM-001",
+      "statement": "PR #14 的 macOS 检查已实际完成依赖安装，但 desktop_package 因新生成的 .webpack/out 目录触发 managed_content_changed。",
+      "status": "confirmed",
+      "source": "GitHub Actions run 32691604997 macOS job 97326175617"
+    },
+    {
+      "id": "GOV-0022-ASM-002",
+      "statement": "Git 已忽略且未跟踪的构建产物不是受审项目内容；已跟踪文件即使匹配忽略规则仍必须参与摘要。",
+      "status": "confirmed",
+      "source": "现有 .gitignore 与受控验证内容完整性边界"
+    }
+  ],
+  "review_authority": {
+    "scheme": "ssh-keygen-y-v1",
+    "identity": "material-project-owner",
+    "namespace": "material-governance-review",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E"
+  },
+  "ci_trust": {
+    "provider": "github_actions_rest_v1",
+    "repository": "wzhic/material",
+    "workflow_path": ".github/workflows/governance.yml",
+    "private": true,
+    "api_base": "https://api.github.com",
+    "api_version": "2026-03-10",
+    "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "ci_events": ["pull_request", "push"],
+    "post_merge_events": ["push"],
+    "required_jobs": {
+      "pull_request": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"],
+      "push": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"]
+    }
+  },
+  "coordination": {
+    "mode": "coordinated-multi",
+    "coordinator_task": "GOV-0022",
+    "compatibility_matrix_doc": "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md",
+    "deployment_order": ["backend", "mac", "win"],
+    "rollback_order": ["win", "mac", "backend"],
+    "unit_tasks": {"mac": "GOV-0022", "win": "GOV-0022", "backend": "GOV-0022"},
+    "unit_validation_checks": {
+      "mac": ["governance_unit_tests", "hook_contract_tests", "repository_reconcile"],
+      "win": ["governance_unit_tests", "hook_contract_tests", "repository_reconcile"],
+      "backend": ["governance_unit_tests", "hook_contract_tests", "repository_reconcile"]
+    },
+    "unit_rollback_checks": {
+      "mac": ["governance_unit_tests"],
+      "win": ["governance_unit_tests"],
+      "backend": ["governance_unit_tests"]
+    }
+  },
+  "validation": {
+    "required": [
+      {
+        "id": "governance_unit_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", "tools/governance/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      },
+      {
+        "id": "hook_contract_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", ".codex/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 600,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      },
+      {
+        "id": "repository_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "static", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      }
+    ]
+  }
+}
