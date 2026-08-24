@@ -39,7 +39,8 @@
     "GOV-0024"
   ],
   "git": {
-    "committed_sha": "d33566e2e25d7b854c9d1c8524dbb1b32f535ce5"
+    "committed_sha": "d33566e2e25d7b854c9d1c8524dbb1b32f535ce5",
+    "merged_sha": "cb80cf4824b3cc59e5677d7654b3afb586a7498d"
   },
   "history": [
     {
@@ -71,6 +72,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "fix trusted terminal pull-request branch validation and add regression coverage",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T06:58:01+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #23 merged after Governance run 32698909033 passed on Ubuntu, macOS, and Windows",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T06:58:05+00:00",
+      "from": "MERGED",
+      "reason": "GOV-0025 repair merged with all three GitHub CI jobs successful",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -90,10 +105,10 @@
   },
   "schema_version": 1,
   "scope_version": 1,
-  "status": "COMMITTED",
+  "status": "DONE",
   "summary": "修复终态任务的追加式控制 PR 被误判为 post-merge main push：可信 pull_request 始终核对任务分支，只有可信 push 才核对 base_branch。",
   "task_id": "GOV-0025",
-  "updated_at": "2026-08-24T06:48:00+00:00",
+  "updated_at": "2026-08-24T06:58:05+00:00",
   "validation": {
     "required": [
       {
