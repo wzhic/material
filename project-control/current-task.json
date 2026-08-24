@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0010",
-  "reason": "切换到用户要求的 M01-M08 独立开发任务",
+  "previous_task_id": "APP-0011",
+  "reason": "APP-0011 已完成并提交，切换到用户要求的独立模型接入任务",
   "schema_version": 1,
-  "selected_at": "2026-08-24T08:29:32+00:00",
+  "selected_at": "2026-08-24T09:49:35+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0011"
+  "task_id": "APP-0012"
 }
