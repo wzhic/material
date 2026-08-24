@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0003",
-  "reason": "修复新分支创建后恢复旧选择的机器状态漂移，当前工作继续归属单素材分析 PRD",
+  "previous_task_id": "APP-0004",
+  "reason": "用户要求开始单素材分析对应开发，切换到首个桌面端工程工作包",
   "schema_version": 1,
-  "selected_at": "2026-08-23T05:18:34+00:00",
+  "selected_at": "2026-08-24T04:22:42+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0004"
+  "task_id": "APP-0005"
 }
