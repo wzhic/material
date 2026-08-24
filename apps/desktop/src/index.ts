@@ -40,8 +40,9 @@ const createWindow = (): void => {
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
   const databasePath = path.join(app.getPath('userData'), 'material-products.sqlite3');
+  const backupDirectory = path.join(app.getPath('userData'), 'backups', 'products');
   try {
-    productRepository = new ProductRepository(databasePath);
+    productRepository = new ProductRepository(databasePath, backupDirectory);
     registerProductIpc(productRepository);
   } catch {
     registerUnavailableProductIpc('产品库无法打开，请检查应用数据目录权限或数据库版本');

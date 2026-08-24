@@ -1,18 +1,21 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Button, Input, Tag } from 'tdesign-react';
 
+import { formatFileSize } from '../analysis/draft';
 import { productIndustryLabel } from '../product/domain';
 import {
   DuplicateCandidate,
   GameContext,
+  ProductBackupInfo,
   ProductDimension,
   ProductIndustry,
   ProductInput,
   ProductListItem,
   ProductRecord,
+  ProductStorageStatus,
 } from '../product/types';
 
-type ProductView = 'list' | 'form' | 'detail';
+type ProductView = 'list' | 'form' | 'detail' | 'maintenance';
 
 interface ProductLibraryPageProps {
   onProductsChanged: () => void;
@@ -589,11 +592,192 @@ const ProductDetail = ({
   </main>
 );
 
+interface ProductMaintenanceProps {
+  onBack: () => void;
+  onRestored: () => void;
+}
+
+const backupKindLabel = (backup: ProductBackupInfo): string => {
+  if (backup.kind === 'pre-restore') {
+    return '恢复前安全备份';
+  }
+  if (backup.kind === 'pre-migration') {
+    return '迁移前备份';
+  }
+  return '手动备份';
+};
+
+const ProductMaintenance = ({
+  onBack,
+  onRestored,
+}: ProductMaintenanceProps): React.JSX.Element => {
+  const [status, setStatus] = useState<ProductStorageStatus | null>(null);
+  const [backups, setBackups] = useState<ProductBackupInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [restoreTarget, setRestoreTarget] = useState<ProductBackupInfo | null>(null);
+
+  const load = useCallback(async (): Promise<void> => {
+    setLoading(true);
+    const [statusResult, backupResult] = await Promise.all([
+      window.materialApi.products.storageStatus(),
+      window.materialApi.products.listBackups(),
+    ]);
+    if (!statusResult.ok) {
+      setError(statusResult.error.message);
+    } else if (!backupResult.ok) {
+      setError(backupResult.error.message);
+    } else {
+      setStatus(statusResult.data);
+      setBackups(backupResult.data);
+      setError('');
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const createBackup = async (): Promise<void> => {
+    setBusy(true);
+    setError('');
+    setSuccess('');
+    const result = await window.materialApi.products.createBackup();
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error.message);
+      return;
+    }
+    setSuccess(`已创建并验证备份，包含 ${result.data.productCount ?? 0} 个产品。`);
+    await load();
+  };
+
+  const restore = async (): Promise<void> => {
+    if (!restoreTarget) {
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setSuccess('');
+    const result = await window.materialApi.products.restoreBackup(restoreTarget.id);
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error.message);
+      setRestoreTarget(null);
+      return;
+    }
+    setRestoreTarget(null);
+    setSuccess(
+      `已恢复到 ${formatLocalTime(restoreTarget.createdAt)} 的备份；恢复前数据已另存为安全备份。`,
+    );
+    onRestored();
+    await load();
+  };
+
+  return (
+    <main className="page-shell product-maintenance-page">
+      <header className="page-header">
+        <div>
+          <button className="text-back" onClick={onBack} type="button">← 返回产品库</button>
+          <h1>产品库数据维护</h1>
+          <p>检查本地数据库状态，并管理由客户端验证过的备份。</p>
+        </div>
+        <Button disabled={busy || !status?.writable} loading={busy} onClick={() => void createBackup()} theme="primary">
+          创建备份
+        </Button>
+      </header>
+
+      {error ? <div className="page-alert is-error" role="alert">{error}</div> : null}
+      {success ? <div className="page-alert is-success" role="status">{success}</div> : null}
+
+      <section className="storage-status-grid" aria-label="产品库状态">
+        <div>
+          <span>完整性</span>
+          <strong className={status?.integrity === 'ok' ? 'is-healthy' : 'is-unhealthy'}>
+            {loading ? '检查中' : status?.integrity === 'ok' ? '正常' : '需要处理'}
+          </strong>
+        </div>
+        <div><span>Schema</span><strong>v{status?.schemaVersion ?? '—'}</strong></div>
+        <div><span>写入状态</span><strong>{status?.writable ? '可读写' : '只读'}</strong></div>
+        <div><span>当前产品</span><strong>{status?.productCount ?? '—'}</strong></div>
+        <div><span>已保留备份</span><strong>{status?.backupCount ?? '—'}</strong></div>
+      </section>
+
+      <section className="backup-section">
+        <div className="section-heading">
+          <div>
+            <h2>备份记录</h2>
+            <p>备份保存在应用管理目录；V1 不自动删除，也不暴露本地绝对路径。</p>
+          </div>
+          <Button disabled={busy} onClick={() => void load()} size="small" variant="outline">刷新</Button>
+        </div>
+        {loading ? <div className="backup-empty">正在读取备份…</div> : null}
+        {!loading && !backups.length ? (
+          <div className="backup-empty">尚无备份。创建首个备份后可以在这里核对和恢复。</div>
+        ) : null}
+        {!loading && backups.length ? (
+          <div className="backup-list">
+            <div className="backup-list-head">
+              <span>创建时间</span><span>类型</span><span>产品数</span><span>大小</span><span>校验</span><span />
+            </div>
+            {backups.map((backup) => (
+              <div className="backup-row" key={backup.id}>
+                <time dateTime={backup.createdAt}>{formatLocalTime(backup.createdAt)}</time>
+                <span>{backupKindLabel(backup)}</span>
+                <span>{backup.productCount ?? '—'}</span>
+                <span>{formatFileSize(backup.size)}</span>
+                <Tag theme={backup.integrity === 'ok' ? 'success' : 'danger'} variant="light">
+                  {backup.integrity === 'ok' ? `v${backup.schemaVersion} 可用` : '校验失败'}
+                </Tag>
+                <Button
+                  disabled={busy || backup.integrity !== 'ok' || !status?.writable}
+                  onClick={() => setRestoreTarget(backup)}
+                  size="small"
+                  variant="text"
+                >
+                  恢复
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="maintenance-note">
+        <strong>恢复规则</strong>
+        <p>恢复前会再次校验目标备份，并自动保存当前产品库。替换失败时恢复原库，不会静默建立空库。</p>
+      </section>
+
+      {restoreTarget ? (
+        <div className="modal-backdrop" role="presentation">
+          <section aria-labelledby="restore-title" aria-modal="true" className="app-modal" role="dialog">
+            <Tag theme="warning" variant="light">将替换当前产品库</Tag>
+            <h2 id="restore-title">恢复 {formatLocalTime(restoreTarget.createdAt)} 的备份？</h2>
+            <p>
+              当前产品库将替换为包含 {restoreTarget.productCount ?? '未知数量'} 个产品的已验证备份。
+              恢复前会自动创建当前数据的安全备份，操作失败则回滚。
+            </p>
+            <div className="modal-actions">
+              <Button disabled={busy} onClick={() => setRestoreTarget(null)} variant="outline">取消</Button>
+              <Button loading={busy} onClick={() => void restore()} theme="warning">确认恢复</Button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </main>
+  );
+};
+
 export const ProductLibraryPage = ({
   onProductsChanged,
 }: ProductLibraryPageProps): React.JSX.Element => {
   const [view, setView] = useState<ProductView>('list');
   const [items, setItems] = useState<ProductListItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [query, setQuery] = useState('');
   const [industry, setIndustry] = useState<ProductIndustry | ''>('');
   const [loading, setLoading] = useState(true);
@@ -606,15 +790,26 @@ export const ProductLibraryPage = ({
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true);
-    const result = await window.materialApi.products.list({ query, industry });
+    const result = await window.materialApi.products.list({
+      query,
+      industry,
+      limit: 50,
+      offset,
+    });
     if (result.ok) {
-      setItems(result.data);
+      if (result.data.total > 0 && offset >= result.data.total) {
+        setOffset(Math.floor((result.data.total - 1) / 50) * 50);
+        setLoading(false);
+        return;
+      }
+      setItems(result.data.items);
+      setTotal(result.data.total);
       setError('');
     } else {
       setError(result.error.message);
     }
     setLoading(false);
-  }, [industry, query]);
+  }, [industry, offset, query]);
 
   useEffect(() => {
     void load();
@@ -709,6 +904,17 @@ export const ProductLibraryPage = ({
       </>
     );
   }
+  if (view === 'maintenance') {
+    return (
+      <ProductMaintenance
+        onBack={() => setView('list')}
+        onRestored={() => {
+          void load();
+          onProductsChanged();
+        }}
+      />
+    );
+  }
 
   const emptyLibrary = !loading && !error && !items.length && !query && !industry;
   const emptySearch = !loading && !error && !items.length && Boolean(query || industry);
@@ -721,26 +927,32 @@ export const ProductLibraryPage = ({
           <h1>产品库</h1>
           <p>由你主动创建和维护，素材分析不会自动新增或修改产品。</p>
         </div>
-        <Button onClick={openCreate} theme="primary">新建产品</Button>
+        <div className="header-actions">
+          <Button onClick={() => setView('maintenance')} variant="outline">数据维护</Button>
+          <Button onClick={openCreate} theme="primary">新建产品</Button>
+        </div>
       </header>
 
       <section className="product-toolbar" aria-label="产品筛选">
         <Input
           clearable
-          onChange={setQuery}
+          onChange={(value) => { setQuery(value); setOffset(0); }}
           placeholder="搜索产品名称或已填写信息"
           value={query}
         />
         <select
           aria-label="筛选产品行业"
-          onChange={(event) => setIndustry(event.target.value as ProductIndustry | '')}
+          onChange={(event) => {
+            setIndustry(event.target.value as ProductIndustry | '');
+            setOffset(0);
+          }}
           value={industry}
         >
           <option value="">全部行业</option>
           <option value="apparel">服饰</option>
           <option value="game">游戏</option>
         </select>
-        <span>{loading ? '正在读取…' : `${items.length} 个结果`}</span>
+        <span>{loading ? '正在读取…' : `共 ${total} 个结果`}</span>
       </section>
 
       {error ? (
@@ -770,30 +982,41 @@ export const ProductLibraryPage = ({
         <section className="product-state">
           <h2>没有符合当前条件的产品</h2>
           <p>产品库中可能仍有其他产品，可清空关键词和行业筛选。</p>
-          <Button onClick={() => { setQuery(''); setIndustry(''); }} variant="outline">清空条件</Button>
+          <Button onClick={() => { setQuery(''); setIndustry(''); setOffset(0); }} variant="outline">清空条件</Button>
         </section>
       ) : null}
 
       {!loading && items.length ? (
-        <section className="product-list" aria-label="产品列表">
-          <div className="product-list-head">
-            <span>产品</span><span>行业</span><span>关键摘要</span><span>更新时间</span><span />
-          </div>
-          {items.map((item) => (
-            <button className="product-row" key={item.id} onClick={() => void openDetail(item.id)} type="button">
-              <span className="product-name-cell">
-                <span className={`product-avatar is-${item.industry}`}>{item.name.slice(0, 1).toLocaleUpperCase()}</span>
-                <strong>{item.name}</strong>
-              </span>
-              <Tag theme={item.industry === 'apparel' ? 'primary' : 'success'} variant="light">
-                {productIndustryLabel(item.industry)}
-              </Tag>
-              <span className="product-row-summary">{item.summary}</span>
-              <time dateTime={item.updatedAt}>{formatLocalTime(item.updatedAt)}</time>
-              <span className="row-action">查看 →</span>
-            </button>
-          ))}
-        </section>
+        <>
+          <section className="product-list" aria-label="产品列表">
+            <div className="product-list-head">
+              <span>产品</span><span>行业</span><span>关键摘要</span><span>更新时间</span><span />
+            </div>
+            {items.map((item) => (
+              <button className="product-row" key={item.id} onClick={() => void openDetail(item.id)} type="button">
+                <span className="product-name-cell">
+                  <span className={`product-avatar is-${item.industry}`}>{item.name.slice(0, 1).toLocaleUpperCase()}</span>
+                  <strong>{item.name}</strong>
+                </span>
+                <Tag theme={item.industry === 'apparel' ? 'primary' : 'success'} variant="light">
+                  {productIndustryLabel(item.industry)}
+                </Tag>
+                <span className="product-row-summary">{item.summary}</span>
+                <time dateTime={item.updatedAt}>{formatLocalTime(item.updatedAt)}</time>
+                <span className="row-action">查看 →</span>
+              </button>
+            ))}
+          </section>
+          <nav aria-label="产品列表分页" className="product-pagination">
+            <Button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 50))} size="small" variant="outline">
+              上一页
+            </Button>
+            <span>第 {Math.floor(offset / 50) + 1} 页，共 {Math.max(1, Math.ceil(total / 50))} 页</span>
+            <Button disabled={offset + items.length >= total} onClick={() => setOffset(offset + 50)} size="small" variant="outline">
+              下一页
+            </Button>
+          </nav>
+        </>
       ) : null}
     </main>
   );

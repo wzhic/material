@@ -30,6 +30,20 @@ const safely = <T>(operation: () => T): ProductApiResult<T> => {
   }
 };
 
+const safelyAsync = async <T>(operation: () => Promise<T>): Promise<ProductApiResult<T>> => {
+  try {
+    return { ok: true, data: await operation() };
+  } catch (error) {
+    if (error instanceof ProductRepositoryError) {
+      return failure(error.code, error.message);
+    }
+    if (error instanceof ProductValidationError) {
+      return failure('INVALID_INPUT', error.message);
+    }
+    return failure('UNKNOWN', '产品库操作失败，请重试');
+  }
+};
+
 const clearProductHandlers = (): void => {
   Object.values(PRODUCT_IPC_CHANNELS).forEach((channel) => ipcMain.removeHandler(channel));
 };
@@ -68,6 +82,18 @@ export const registerProductIpc = (repository: ProductRepository): void => {
     PRODUCT_IPC_CHANNELS.snapshot,
     (_event, id: string, selection?: ProductContextSelection) =>
       safely(() => repository.snapshot(id, selection)),
+  );
+  ipcMain.handle(PRODUCT_IPC_CHANNELS.storageStatus, () =>
+    safely(() => repository.storageStatus()),
+  );
+  ipcMain.handle(PRODUCT_IPC_CHANNELS.listBackups, () =>
+    safely(() => repository.listBackups()),
+  );
+  ipcMain.handle(PRODUCT_IPC_CHANNELS.createBackup, () =>
+    safelyAsync(() => repository.createBackup()),
+  );
+  ipcMain.handle(PRODUCT_IPC_CHANNELS.restoreBackup, (_event, id: string) =>
+    safelyAsync(() => repository.restoreBackup(id)),
   );
 };
 

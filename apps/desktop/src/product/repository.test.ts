@@ -45,8 +45,8 @@ describe('ProductRepository', () => {
     const created = repository.create(apparel());
     expect(created.writeVersion).toBe(1);
     expect(repository.get(created.id).details['品牌']).toBe('Material');
-    expect(repository.list({ query: '通勤' })).toHaveLength(1);
-    expect(repository.list({ industry: 'game' })).toHaveLength(0);
+    expect(repository.list({ query: '通勤' }).items).toHaveLength(1);
+    expect(repository.list({ industry: 'game' }).items).toHaveLength(0);
   });
 
   it('persists game versions, channels and explicit contexts', () => {
@@ -63,7 +63,7 @@ describe('ProductRepository', () => {
 
     const second = repository.create(apparel());
     expect(second.id).not.toBe(first.id);
-    expect(repository.list()).toHaveLength(2);
+    expect(repository.list().items).toHaveLength(2);
   });
 
   it('uses optimistic write versions to reject stale edits', () => {
@@ -81,7 +81,7 @@ describe('ProductRepository', () => {
   it('deletes product content and removes it from search', () => {
     const created = repository.create(game());
     repository.remove(created.id, created.writeVersion);
-    expect(repository.list()).toEqual([]);
+    expect(repository.list().items).toEqual([]);
     expect(() => repository.get(created.id)).toThrow('不存在或已删除');
   });
 
@@ -105,7 +105,22 @@ describe('ProductRepository', () => {
   it('treats LIKE wildcard characters as literal search text', () => {
     repository.create(apparel('100% 通勤套装'));
     repository.create(apparel('普通套装'));
-    expect(repository.list({ query: '100%' })).toHaveLength(1);
-    expect(repository.list({ query: '_' })).toHaveLength(0);
+    expect(repository.list({ query: '100%' }).items).toHaveLength(1);
+    expect(repository.list({ query: '_' }).items).toHaveLength(0);
+  });
+
+  it('returns a bounded page with a stable total count', () => {
+    repository.create(apparel('产品 A'));
+    repository.create(apparel('产品 B'));
+    repository.create(apparel('产品 C'));
+
+    const firstPage = repository.list({ limit: 2, offset: 0 });
+    const secondPage = repository.list({ limit: 2, offset: 2 });
+
+    expect(firstPage).toMatchObject({ total: 3, limit: 2, offset: 0 });
+    expect(firstPage.items).toHaveLength(2);
+    expect(secondPage).toMatchObject({ total: 3, limit: 2, offset: 2 });
+    expect(secondPage.items).toHaveLength(1);
+    expect(new Set([...firstPage.items, ...secondPage.items].map((item) => item.id)).size).toBe(3);
   });
 });

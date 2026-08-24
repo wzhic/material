@@ -14,6 +14,10 @@ const productApi: ProductApi = {
     ipcRenderer.invoke(PRODUCT_IPC_CHANNELS.remove, id, expectedVersion),
   snapshot: (id, selection) =>
     ipcRenderer.invoke(PRODUCT_IPC_CHANNELS.snapshot, id, selection),
+  storageStatus: () => ipcRenderer.invoke(PRODUCT_IPC_CHANNELS.storageStatus),
+  listBackups: () => ipcRenderer.invoke(PRODUCT_IPC_CHANNELS.listBackups),
+  createBackup: () => ipcRenderer.invoke(PRODUCT_IPC_CHANNELS.createBackup),
+  restoreBackup: (id) => ipcRenderer.invoke(PRODUCT_IPC_CHANNELS.restoreBackup, id),
 };
 
 contextBridge.exposeInMainWorld('materialApi', {

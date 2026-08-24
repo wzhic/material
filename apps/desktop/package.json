@@ -12,7 +12,7 @@
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --reporter=verbose"
   },
   "keywords": [],
   "author": "wzhic",

@@ -1,5 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import { DatabaseSync } from 'node:sqlite';
+import {
+  constants as fsConstants,
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+} from 'node:fs';
+import path from 'node:path';
+import { backup, DatabaseSync } from 'node:sqlite';
 
 import {
   buildProductSearchText,
@@ -9,13 +21,17 @@ import {
 } from './domain';
 import {
   DuplicateCandidate,
+  ProductBackupInfo,
+  ProductBackupKind,
   ProductApiErrorCode,
   ProductContextSelection,
   ProductInput,
-  ProductListItem,
+  ProductListPage,
   ProductListQuery,
   ProductRecord,
+  ProductRestoreResult,
   ProductSnapshot,
+  ProductStorageStatus,
 } from './types';
 
 interface ProductRow {
@@ -46,6 +62,18 @@ interface VersionRow {
   user_version: number;
 }
 
+interface QuickCheckRow {
+  quick_check: string;
+}
+
+interface CountRow {
+  count: number;
+}
+
+interface BackupEntry extends ProductBackupInfo {
+  filePath: string;
+}
+
 export class ProductRepositoryError extends Error {
   readonly code: ProductApiErrorCode;
 
@@ -62,42 +90,48 @@ const asRow = <T>(row: unknown): T | undefined => row as T | undefined;
 const escapeLike = (value: string): string =>
   value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
 
-export class ProductRepository {
-  private readonly database: DatabaseSync;
-  private readonly writable: boolean;
+const BACKUP_PATTERN =
+  /^product-(manual|pre-migration|pre-restore)-(\d{13})-([0-9a-f-]{36})\.sqlite3$/;
+const RESTORE_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-  constructor(path: string) {
+export class ProductRepository {
+  private database: DatabaseSync;
+  private writable: boolean;
+  private readonly databasePath: string;
+  private readonly backupDirectory: string | null;
+  private maintenance = false;
+
+  constructor(databasePath: string, backupDirectory?: string) {
+    this.databasePath = databasePath;
+    this.backupDirectory =
+      databasePath === ':memory:'
+        ? null
+        : backupDirectory ?? path.join(path.dirname(databasePath), 'product-backups');
+    this.recoverInterruptedRestore();
+    const opened = this.openDatabase(databasePath);
+    this.database = opened.database;
+    this.writable = opened.writable;
     try {
-      this.database = new DatabaseSync(path, {
-        enableForeignKeyConstraints: true,
-        timeout: 5_000,
-      });
-      this.writable = true;
-    } catch {
-      try {
-        this.database = new DatabaseSync(path, {
-          enableForeignKeyConstraints: true,
-          readOnly: true,
-          timeout: 5_000,
-        });
-        this.writable = false;
-      } catch {
-        throw new ProductRepositoryError(
-          'DATABASE_UNAVAILABLE',
-          '产品库无法打开，请检查应用数据目录权限',
-        );
+      this.initialize();
+      if (databasePath !== ':memory:' && this.writable) {
+        chmodSync(databasePath, 0o600);
       }
+      this.cleanupRestoreFiles();
+    } catch (error) {
+      this.database.close();
+      throw error;
     }
-    this.initialize();
   }
 
   close(): void {
     this.database.close();
   }
 
-  list(query: ProductListQuery = {}): ProductListItem[] {
+  list(query: ProductListQuery = {}): ProductListPage {
+    this.ensureAvailable();
     const conditions: string[] = [];
-    const parameters: string[] = [];
+    const parameters: Array<number | string> = [];
     if (query.industry) {
       conditions.push('p.industry = ?');
       parameters.push(query.industry);
@@ -108,6 +142,14 @@ export class ProductRepository {
       parameters.push(`%${escapeLike(normalizedQuery)}%`);
     }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limit = Math.min(10_000, Math.max(1, Math.trunc(query.limit ?? 100)));
+    const offset = Math.max(0, Math.trunc(query.offset ?? 0));
+    const total =
+      asRow<CountRow>(
+        this.database
+          .prepare(`SELECT COUNT(*) AS count FROM products p ${where}`)
+          .get(...parameters),
+      )?.count ?? 0;
     const rows = asRows<ProductRow & { version_count: number; channel_count: number }>(
       this.database
         .prepare(
@@ -115,11 +157,12 @@ export class ProductRepository {
             (SELECT COUNT(*) FROM game_versions v WHERE v.product_id = p.id) AS version_count,
             (SELECT COUNT(*) FROM game_channels c WHERE c.product_id = p.id) AS channel_count
            FROM products p ${where}
-           ORDER BY p.updated_at DESC, p.name COLLATE NOCASE ASC`,
+           ORDER BY p.updated_at DESC, p.name COLLATE NOCASE ASC
+           LIMIT ? OFFSET ?`,
         )
-        .all(...parameters),
+        .all(...parameters, limit, offset),
     );
-    return rows.map((row) => {
+    const items = rows.map((row) => {
       const details = this.parseDetails(row.details_json);
       return {
         id: row.id,
@@ -142,9 +185,11 @@ export class ProductRepository {
         updatedAt: row.updated_at,
       };
     });
+    return { items, total, limit, offset };
   }
 
   get(id: string): ProductRecord {
+    this.ensureAvailable();
     const row = asRow<ProductRow>(
       this.database.prepare('SELECT * FROM products WHERE id = ?').get(id),
     );
@@ -155,6 +200,7 @@ export class ProductRepository {
   }
 
   findDuplicates(input: ProductInput, excludeId?: string): DuplicateCandidate[] {
+    this.ensureAvailable();
     const normalized = normalizeProductInput(input);
     const parameters: string[] = [normalizeSearchText(normalized.name), normalized.industry];
     let exclusion = '';
@@ -195,6 +241,7 @@ export class ProductRepository {
   }
 
   create(input: ProductInput): ProductRecord {
+    this.ensureAvailable();
     const normalized = normalizeProductInput(input);
     const id = randomUUID();
     const now = new Date().toISOString();
@@ -223,6 +270,7 @@ export class ProductRepository {
   }
 
   update(id: string, expectedVersion: number, input: ProductInput): ProductRecord {
+    this.ensureAvailable();
     const normalized = normalizeProductInput(input);
     const now = new Date().toISOString();
     this.transaction(() => {
@@ -268,6 +316,7 @@ export class ProductRepository {
   }
 
   remove(id: string, expectedVersion: number): void {
+    this.ensureAvailable();
     this.transaction(() => {
       const existing = this.get(id);
       if (existing.writeVersion !== expectedVersion) {
@@ -297,6 +346,7 @@ export class ProductRepository {
   }
 
   snapshot(id: string, selection: ProductContextSelection = {}): ProductSnapshot {
+    this.ensureAvailable();
     const product = this.get(id);
     if (product.industry === 'game') {
       this.validateSelection(product, selection);
@@ -323,6 +373,336 @@ export class ProductRepository {
             }
           : null,
     };
+  }
+
+  storageStatus(): ProductStorageStatus {
+    this.ensureAvailable();
+    return this.storageStatusInternal();
+  }
+
+  listBackups(): ProductBackupInfo[] {
+    this.ensureAvailable();
+    return this.listBackupEntries().map((entry) => ({
+      id: entry.id,
+      kind: entry.kind,
+      createdAt: entry.createdAt,
+      size: entry.size,
+      schemaVersion: entry.schemaVersion,
+      productCount: entry.productCount,
+      integrity: entry.integrity,
+    }));
+  }
+
+  async createBackup(): Promise<ProductBackupInfo> {
+    this.ensureAvailable();
+    this.maintenance = true;
+    try {
+      return await this.createBackupInternal('manual');
+    } finally {
+      this.maintenance = false;
+    }
+  }
+
+  async restoreBackup(id: string): Promise<ProductRestoreResult> {
+    this.ensureAvailable();
+    this.requireBackupDirectory();
+    if (!this.writable) {
+      throw new ProductRepositoryError(
+        'DATABASE_UNAVAILABLE',
+        '产品库当前为只读，恢复写入权限后才能恢复备份',
+      );
+    }
+    const entry = this.listBackupEntries().find((candidate) => candidate.id === id);
+    if (!entry) {
+      throw new ProductRepositoryError('NOT_FOUND', '备份不存在或已被移除');
+    }
+    if (entry.integrity !== 'ok' || entry.schemaVersion !== 1) {
+      throw new ProductRepositoryError('INVALID_INPUT', '备份未通过完整性或版本校验');
+    }
+
+    this.maintenance = true;
+    const restoreId = randomUUID();
+    const stagingPath = `${this.databasePath}.restore-new-${restoreId}`;
+    const oldPath = `${this.databasePath}.restore-old-${restoreId}`;
+    try {
+      const safetyBackup = await this.createBackupInternal('pre-restore');
+      copyFileSync(entry.filePath, stagingPath, fsConstants.COPYFILE_EXCL);
+      const staged = this.inspectDatabase(stagingPath);
+      if (staged.integrity !== 'ok' || staged.schemaVersion !== 1) {
+        throw new ProductRepositoryError('INVALID_INPUT', '备份副本复验失败，未修改当前产品库');
+      }
+
+      this.database.close();
+      try {
+        renameSync(this.databasePath, oldPath);
+        renameSync(stagingPath, this.databasePath);
+        const opened = this.openDatabase(this.databasePath);
+        this.database = opened.database;
+        this.writable = opened.writable;
+        this.initialize();
+        const status = this.storageStatusInternal();
+        if (status.integrity !== 'ok') {
+          throw new ProductRepositoryError('DATABASE_UNAVAILABLE', '恢复后的产品库复验失败');
+        }
+        if (existsSync(oldPath)) {
+          unlinkSync(oldPath);
+        }
+        return { restoredBackupId: id, safetyBackup, status };
+      } catch (error) {
+        try {
+          this.database.close();
+        } catch {
+          // The connection can already be closed when replacement failed early.
+        }
+        if (existsSync(this.databasePath) && existsSync(oldPath)) {
+          unlinkSync(this.databasePath);
+        }
+        if (existsSync(oldPath)) {
+          renameSync(oldPath, this.databasePath);
+        }
+        const reopened = this.openDatabase(this.databasePath);
+        this.database = reopened.database;
+        this.writable = reopened.writable;
+        this.initialize();
+        if (error instanceof ProductRepositoryError) {
+          throw error;
+        }
+        throw new ProductRepositoryError(
+          'DATABASE_UNAVAILABLE',
+          '备份恢复失败，原产品库已恢复',
+        );
+      }
+    } finally {
+      if (existsSync(stagingPath)) {
+        unlinkSync(stagingPath);
+      }
+      this.maintenance = false;
+    }
+  }
+
+  private openDatabase(databasePath: string): {
+    database: DatabaseSync;
+    writable: boolean;
+  } {
+    try {
+      return {
+        database: new DatabaseSync(databasePath, {
+          enableForeignKeyConstraints: true,
+          timeout: 5_000,
+        }),
+        writable: true,
+      };
+    } catch {
+      try {
+        return {
+          database: new DatabaseSync(databasePath, {
+            enableForeignKeyConstraints: true,
+            readOnly: true,
+            timeout: 5_000,
+          }),
+          writable: false,
+        };
+      } catch {
+        throw new ProductRepositoryError(
+          'DATABASE_UNAVAILABLE',
+          '产品库无法打开，请检查应用数据目录权限',
+        );
+      }
+    }
+  }
+
+  private ensureAvailable(): void {
+    if (this.maintenance) {
+      throw new ProductRepositoryError(
+        'CONFLICT',
+        '产品库正在执行备份或恢复，请稍后重试',
+      );
+    }
+  }
+
+  private requireBackupDirectory(): string {
+    if (!this.backupDirectory || this.databasePath === ':memory:') {
+      throw new ProductRepositoryError(
+        'DATABASE_UNAVAILABLE',
+        '当前产品库不支持文件备份',
+      );
+    }
+    return this.backupDirectory;
+  }
+
+  private storageStatusInternal(): ProductStorageStatus {
+    const version = asRow<VersionRow>(
+      this.database.prepare('PRAGMA user_version').get(),
+    )?.user_version ?? 0;
+    const integrity = this.quickCheck(this.database) ? 'ok' : 'failed';
+    const productCount =
+      asRow<CountRow>(
+        this.database.prepare('SELECT COUNT(*) AS count FROM products').get(),
+      )?.count ?? 0;
+    return {
+      schemaVersion: version,
+      integrity,
+      writable: this.writable,
+      productCount,
+      backupCount: this.listBackupEntries().length,
+    };
+  }
+
+  private async createBackupInternal(kind: ProductBackupKind): Promise<ProductBackupInfo> {
+    const backupDirectory = this.requireBackupDirectory();
+    mkdirSync(backupDirectory, { recursive: true, mode: 0o700 });
+    chmodSync(backupDirectory, 0o700);
+    const createdAt = Date.now();
+    const id = randomUUID();
+    const fileName = `product-${kind}-${createdAt}-${id}.sqlite3`;
+    const destination = path.join(backupDirectory, fileName);
+    try {
+      await backup(this.database, destination, { rate: 128 });
+      chmodSync(destination, 0o600);
+      const inspection = this.inspectDatabase(destination);
+      if (inspection.integrity !== 'ok' || inspection.schemaVersion !== 1) {
+        throw new ProductRepositoryError(
+          'DATABASE_UNAVAILABLE',
+          '备份完整性校验失败，未保留该备份',
+        );
+      }
+      return {
+        id,
+        kind,
+        createdAt: new Date(createdAt).toISOString(),
+        size: statSync(destination).size,
+        schemaVersion: inspection.schemaVersion,
+        productCount: inspection.productCount,
+        integrity: 'ok',
+      };
+    } catch (error) {
+      if (existsSync(destination)) {
+        unlinkSync(destination);
+      }
+      if (error instanceof ProductRepositoryError) {
+        throw error;
+      }
+      throw new ProductRepositoryError(
+        'DATABASE_UNAVAILABLE',
+        '产品库备份失败，请检查磁盘空间和目录权限',
+      );
+    }
+  }
+
+  private listBackupEntries(): BackupEntry[] {
+    if (!this.backupDirectory || !existsSync(this.backupDirectory)) {
+      return [];
+    }
+    return readdirSync(this.backupDirectory, { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .flatMap((entry) => {
+        const match = BACKUP_PATTERN.exec(entry.name);
+        if (!match) {
+          return [];
+        }
+        const kind = match[1] as ProductBackupKind;
+        const createdAt = Number(match[2]);
+        const id = match[3];
+        const filePath = path.join(this.backupDirectory as string, entry.name);
+        const inspection = this.inspectDatabase(filePath);
+        return [
+          {
+            id,
+            kind,
+            createdAt: new Date(createdAt).toISOString(),
+            size: statSync(filePath).size,
+            schemaVersion: inspection.schemaVersion,
+            productCount: inspection.productCount,
+            integrity: inspection.integrity,
+            filePath,
+          },
+        ];
+      })
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  private inspectDatabase(databasePath: string): Pick<
+    ProductBackupInfo,
+    'integrity' | 'productCount' | 'schemaVersion'
+  > {
+    let database: DatabaseSync | null = null;
+    try {
+      database = new DatabaseSync(databasePath, {
+        enableForeignKeyConstraints: true,
+        readOnly: true,
+        timeout: 5_000,
+      });
+      const schemaVersion = asRow<VersionRow>(
+        database.prepare('PRAGMA user_version').get(),
+      )?.user_version ?? null;
+      const productCount =
+        schemaVersion === 1
+          ? asRow<CountRow>(
+              database.prepare('SELECT COUNT(*) AS count FROM products').get(),
+            )?.count ?? null
+          : null;
+      return {
+        schemaVersion,
+        productCount,
+        integrity: this.quickCheck(database) ? 'ok' : 'failed',
+      };
+    } catch {
+      return { schemaVersion: null, productCount: null, integrity: 'failed' };
+    } finally {
+      database?.close();
+    }
+  }
+
+  private quickCheck(database: DatabaseSync): boolean {
+    const rows = asRows<QuickCheckRow>(database.prepare('PRAGMA quick_check').all());
+    return rows.length > 0 && rows.every((row) => row.quick_check === 'ok');
+  }
+
+  private recoverInterruptedRestore(): void {
+    if (this.databasePath === ':memory:' || existsSync(this.databasePath)) {
+      return;
+    }
+    const directory = path.dirname(this.databasePath);
+    if (!existsSync(directory)) {
+      return;
+    }
+    const prefix = `${path.basename(this.databasePath)}.restore-old-`;
+    const candidates = readdirSync(directory, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isFile() &&
+          entry.name.startsWith(prefix) &&
+          RESTORE_ID_PATTERN.test(entry.name.slice(prefix.length)),
+      )
+      .map((entry) => ({
+        name: entry.name,
+        modifiedAt: statSync(path.join(directory, entry.name)).mtimeMs,
+      }))
+      .sort((left, right) => right.modifiedAt - left.modifiedAt);
+    const newest = candidates[0];
+    if (newest) {
+      renameSync(path.join(directory, newest.name), this.databasePath);
+    }
+  }
+
+  private cleanupRestoreFiles(): void {
+    if (this.databasePath === ':memory:' || !this.quickCheck(this.database)) {
+      return;
+    }
+    const directory = path.dirname(this.databasePath);
+    const baseName = path.basename(this.databasePath);
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const oldPrefix = `${baseName}.restore-old-`;
+      const newPrefix = `${baseName}.restore-new-`;
+      const suffix = entry.name.startsWith(oldPrefix)
+        ? entry.name.slice(oldPrefix.length)
+        : entry.name.startsWith(newPrefix)
+          ? entry.name.slice(newPrefix.length)
+          : '';
+      if (entry.isFile() && RESTORE_ID_PATTERN.test(suffix)) {
+        unlinkSync(path.join(directory, entry.name));
+      }
+    }
   }
 
   private initialize(): void {

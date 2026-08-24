@@ -45,6 +45,15 @@ export interface ProductListItem {
 export interface ProductListQuery {
   query?: string;
   industry?: ProductIndustry | '';
+  limit?: number;
+  offset?: number;
+}
+
+export interface ProductListPage {
+  items: ProductListItem[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface DuplicateCandidate {
@@ -79,6 +88,32 @@ export interface ProductSnapshot {
   } | null;
 }
 
+export type ProductBackupKind = 'manual' | 'pre-migration' | 'pre-restore';
+
+export interface ProductBackupInfo {
+  id: string;
+  kind: ProductBackupKind;
+  createdAt: string;
+  size: number;
+  schemaVersion: number | null;
+  productCount: number | null;
+  integrity: 'failed' | 'ok';
+}
+
+export interface ProductStorageStatus {
+  schemaVersion: number;
+  integrity: 'failed' | 'ok';
+  writable: boolean;
+  productCount: number;
+  backupCount: number;
+}
+
+export interface ProductRestoreResult {
+  restoredBackupId: string;
+  safetyBackup: ProductBackupInfo;
+  status: ProductStorageStatus;
+}
+
 export type ProductApiErrorCode =
   | 'CONFLICT'
   | 'DATABASE_UNAVAILABLE'
@@ -96,7 +131,7 @@ export type ProductApiResult<T> =
   | { ok: false; error: ProductApiError };
 
 export interface ProductApi {
-  list: (query?: ProductListQuery) => Promise<ProductApiResult<ProductListItem[]>>;
+  list: (query?: ProductListQuery) => Promise<ProductApiResult<ProductListPage>>;
   get: (id: string) => Promise<ProductApiResult<ProductRecord>>;
   findDuplicates: (
     input: ProductInput,
@@ -113,6 +148,10 @@ export interface ProductApi {
     id: string,
     selection?: ProductContextSelection,
   ) => Promise<ProductApiResult<ProductSnapshot>>;
+  storageStatus: () => Promise<ProductApiResult<ProductStorageStatus>>;
+  listBackups: () => Promise<ProductApiResult<ProductBackupInfo[]>>;
+  createBackup: () => Promise<ProductApiResult<ProductBackupInfo>>;
+  restoreBackup: (id: string) => Promise<ProductApiResult<ProductRestoreResult>>;
 }
 
 export const PRODUCT_IPC_CHANNELS = {
@@ -120,7 +159,11 @@ export const PRODUCT_IPC_CHANNELS = {
   findDuplicates: 'material:products:find-duplicates',
   get: 'material:products:get',
   list: 'material:products:list',
+  listBackups: 'material:products:list-backups',
   remove: 'material:products:remove',
+  restoreBackup: 'material:products:restore-backup',
   snapshot: 'material:products:snapshot',
+  storageStatus: 'material:products:storage-status',
   update: 'material:products:update',
+  createBackup: 'material:products:create-backup',
 } as const;

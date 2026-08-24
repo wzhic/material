@@ -687,11 +687,11 @@ export const App = (): React.JSX.Element => {
   const [productId, setProductId] = useState('');
 
   const refreshProducts = useCallback(async (): Promise<void> => {
-    const result = await window.materialApi.products.list();
+    const result = await window.materialApi.products.list({ limit: 500 });
     if (result.ok) {
-      setProducts(result.data);
+      setProducts(result.data.items);
       setProductId((current) =>
-        current && result.data.some((product) => product.id === current) ? current : '',
+        current && result.data.items.some((product) => product.id === current) ? current : '',
       );
     }
   }, []);
