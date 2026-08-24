@@ -14,6 +14,7 @@ if str(GOVERNANCE_DIR) not in sys.path:
 from core import validation_gate_status
 from helpers import base_task, initialize_root, valid_local_pass, write_json
 from reconcile import _ci_commit_protocol_check, _completed_successor_merge_coverage
+from taskctl import _verify_task_stack_control_commits
 
 
 def git(root: Path, *arguments: str) -> str:
@@ -227,6 +228,45 @@ class StackMergeEvidenceTests(unittest.TestCase):
             )
             self.assertTrue(errors)
             self.assertFalse(any(item.get("kind") == "absorbed_parent_subject" for item in details))
+
+    def test_push_transport_accepts_completed_successor_stack(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task, subject, head, _trusted_base = self._absorbed_parent_subject_history(root)
+
+            _verify_task_stack_control_commits(root, task, subject, head)
+
+    def test_push_transport_rejects_rewritten_successor_merge(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task, subject, head, _trusted_base = self._absorbed_parent_subject_history(
+                root, rewrite=True
+            )
+
+            with self.assertRaisesRegex(Exception, "not a trusted completed PR stack"):
+                _verify_task_stack_control_commits(root, task, subject, head)
+
+    def test_push_transport_rejects_unattributed_ordinary_continuation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = base_task(status="COMMITTED")
+            initialize_root(root, task)
+            git(root, "init", "--quiet")
+            git(root, "config", "user.name", "Stack Test")
+            git(root, "config", "user.email", "stack@example.invalid")
+            governed = root / "tools" / "governance" / "root.py"
+            governed.parent.mkdir(parents=True, exist_ok=True)
+            governed.write_text("root = True\n", encoding="utf-8")
+            git(root, "add", "--all")
+            git(root, "commit", "-m", "content")
+            subject = git(root, "rev-parse", "HEAD")
+            governed.write_text("root = False\n", encoding="utf-8")
+            git(root, "add", "--all")
+            git(root, "commit", "-m", "unattributed continuation")
+            head = git(root, "rev-parse", "HEAD")
+
+            with self.assertRaisesRegex(Exception, "unattributed ordinary paths"):
+                _verify_task_stack_control_commits(root, task, subject, head)
 
     def test_completed_successor_recursion_uses_its_merge_first_parent(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
