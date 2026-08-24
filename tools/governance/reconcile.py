@@ -1487,6 +1487,83 @@ def _completed_successor_merge_coverage(
     return covered, errors, details
 
 
+def _terminal_main_push_successor_coverage(
+    root: Path,
+    task: Mapping[str, Any],
+    ci_context: Mapping[str, Any],
+) -> Tuple[Set[str], List[str], List[Dict[str, Any]]]:
+    """Attribute a clean main merge's side branch to completed successors.
+
+    A closeout PR may start from the reviewed task branch while ``main``
+    already contains that task through an earlier merge.  The final push then
+    has ``task.git.merged_sha`` as its first parent and the closeout stack as
+    its second parent.  Validate that exact topology and reuse the successor
+    attribution rules on the side branch; direct or rewritten main pushes do
+    not enter this exception.
+    """
+
+    if (
+        ci_context.get("event") != "push"
+        or ci_context.get("head_branch") != "main"
+        or _effective_status_index(task) < status_index("MERGED")
+    ):
+        return set(), [], []
+    git_evidence = task.get("git", {}) if isinstance(task.get("git"), Mapping) else {}
+    merged_sha = git_evidence.get("merged_sha")
+    committed_sha = git_evidence.get("committed_sha")
+    base = ci_context.get("base_sha")
+    head = ci_context.get("head_sha")
+    if (
+        not isinstance(merged_sha, str)
+        or not isinstance(committed_sha, str)
+        or not isinstance(base, str)
+        or not isinstance(head, str)
+        or not _valid_oid(merged_sha)
+        or not _valid_oid(committed_sha)
+        or not _valid_oid(base)
+        or not _valid_oid(head)
+        or merged_sha.lower() != base.lower()
+    ):
+        return set(), [], []
+
+    parents_output, parents_error = run_git(
+        root, ("rev-list", "--parents", "-n", "1", head)
+    )
+    parts = (parents_output or "").split()
+    if parents_error or len(parts) != 3 or parts[1].lower() != base.lower():
+        return set(), [
+            "terminal main push must be a two-parent merge whose first parent is the push before commit"
+        ], []
+    side_parent = parts[2]
+    merge_tree_output, merge_tree_error = run_git(
+        root, ("merge-tree", "--write-tree", parts[1], side_parent)
+    )
+    commit_tree, commit_tree_error = run_git(root, ("rev-parse", "%s^{tree}" % head))
+    clean_tree = (merge_tree_output or "").splitlines()[0:1]
+    if (
+        merge_tree_error
+        or commit_tree_error
+        or len(clean_tree) != 1
+        or clean_tree[0] != commit_tree
+    ):
+        return set(), ["terminal main push does not match Git's clean merge result"], []
+
+    covered, errors, details = _completed_successor_merge_coverage(
+        root,
+        task,
+        committed_sha.lower(),
+        side_parent,
+        trusted_base=base.lower(),
+    )
+    return covered, errors, [{
+        "kind": "terminal_main_push_merge",
+        "merged_sha": head.lower(),
+        "base_parent_sha": base.lower(),
+        "side_parent_sha": side_parent,
+        "successor_merges": details,
+    }]
+
+
 def _ci_commit_protocol_check(
     root: Path,
     project: Mapping[str, Any],
@@ -1703,6 +1780,10 @@ def _ci_commit_protocol_check(
             _completed_successor_merge_coverage(
                 root, task, subject, head, trusted_base=base
             )
+        )
+    elif event_name == "push":
+        successor_paths, successor_errors, successor_details = (
+            _terminal_main_push_successor_coverage(root, task, ci_context)
         )
     if successor_errors:
         return _check(
@@ -2044,6 +2125,15 @@ def run_reconcile(
                 if successor_errors:
                     changes_error = (
                         "untrusted stacked continuation: %s" % "; ".join(successor_errors)
+                    )
+            elif changes_error is None and ci_context.get("event") == "push":
+                successor_paths, successor_errors, successor_details = (
+                    _terminal_main_push_successor_coverage(root, task, ci_context)
+                )
+                if successor_errors:
+                    changes_error = (
+                        "untrusted terminal main continuation: %s"
+                        % "; ".join(successor_errors)
                     )
         else:
             changed, changes_error = (set(git_changes), None) if git_changes is not None else changed_paths(root)
