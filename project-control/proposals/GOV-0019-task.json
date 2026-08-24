@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0019",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "requirement": {"id": "治理精简-REQ-0004", "name": "治理精简", "version": "v1.0", "interaction_kind": "non_ui"},
+  "summary": "修复父任务吸收已完成后继 PR 后，push-task 仍把可信栈合并误判为普通内容越界的问题；复用现有 CI 栈归因并保持非强制、已完成任务和精确合并树约束。",
+  "release_units": ["mac", "win", "backend"],
+  "branch": "codex/req-0004-gov-0019-stack-push-coverage",
+  "base_branch": "codex/req-0002-app-0001-project-bootstrap",
+  "allowed_paths": [
+    "project-control/**",
+    "tools/governance/taskctl.py",
+    "tools/governance/tests/test_git_transport.py",
+    "tools/governance/tests/test_stack_merge_evidence.py"
+  ],
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/taskctl.py begin GOV-0019",
+    "python3 tools/governance/taskctl.py run-required GOV-0019",
+    "python3 tools/governance/taskctl.py commit-task GOV-0019",
+    "python3 tools/governance/taskctl.py push-task GOV-0019",
+    "python3 tools/governance/taskctl.py open-pr GOV-0019"
+  ],
+  "allowed_tools": ["apply_patch", "ApplyPatch", "Bash", "Read", "Glob", "Grep", "web__run"],
+  "dependencies": [],
+  "required_docs": ["docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md"],
+  "validation": {
+    "required": [
+      {
+        "id": "governance_unit_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", "tools/governance/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      },
+      {
+        "id": "hook_contract_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", ".codex/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 600,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      },
+      {
+        "id": "repository_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "static", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      }
+    ],
+    "results": []
+  },
+  "assumptions": [
+    {"id": "GOV-0019-ASM-001", "statement": "现有 reconcile 已能以 DONE 后继任务、merged_sha、第一父链和精确 clean merge tree 归因可信栈合并。", "status": "confirmed", "source": "tools/governance/reconcile.py 与 test_stack_merge_evidence.py"},
+    {"id": "GOV-0019-ASM-002", "statement": "本修复不允许普通非合并提交、未完成任务、范围外路径、冲突改写或非快进推送。", "status": "confirmed", "source": "最小安全收口"}
+  ],
+  "open_questions": [],
+  "blockers": [],
+  "review_authority": {
+    "scheme": "ssh-keygen-y-v1",
+    "identity": "material-project-owner",
+    "namespace": "material-governance-review",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E"
+  },
+  "ci_trust": {
+    "provider": "github_actions_rest_v1",
+    "repository": "wzhic/material",
+    "workflow_path": ".github/workflows/governance.yml",
+    "api_base": "https://api.github.com",
+    "api_version": "2026-03-10",
+    "private": true,
+    "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "ci_events": ["pull_request", "push"],
+    "post_merge_events": ["push"],
+    "required_jobs": {
+      "pull_request": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"],
+      "push": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"]
+    }
+  },
+  "coordination": {
+    "mode": "coordinated-multi",
+    "coordinator_task": "GOV-0019",
+    "unit_tasks": {"mac": "GOV-0019", "win": "GOV-0019", "backend": "GOV-0019"},
+    "compatibility_matrix_doc": "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md",
+    "deployment_order": ["backend", "mac", "win"],
+    "rollback_order": ["win", "mac", "backend"],
+    "unit_validation_checks": {
+      "mac": ["governance_unit_tests", "hook_contract_tests", "repository_reconcile"],
+      "win": ["governance_unit_tests", "hook_contract_tests", "repository_reconcile"],
+      "backend": ["governance_unit_tests", "hook_contract_tests", "repository_reconcile"]
+    },
+    "unit_rollback_checks": {
+      "mac": ["hook_contract_tests"],
+      "win": ["hook_contract_tests"],
+      "backend": ["governance_unit_tests"]
+    }
+  }
+}

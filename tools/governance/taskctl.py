@@ -757,7 +757,7 @@ def _task_push(root: Path, task: Dict[str, Any], actor: str, reason: str) -> Dic
     head = normalize_commit(_git(root, ("rev-parse", "HEAD"), "cannot resolve push head"), "HEAD")
     if head == content_sha:
         raise GovernanceError("push-task requires the protected control commit after task content")
-    _verify_content_control_commits(root, content_sha, head)
+    _verify_task_stack_control_commits(root, task, content_sha, head)
     _configure_fixed_origin(root)
     reference = "refs/heads/" + str(task["branch"])
     remote_before = _remote_ref_sha(
@@ -890,6 +890,55 @@ def _verify_content_control_commits(root: Path, content_sha: str, control_sha: s
         raise GovernanceError(
             "content/control commit range contains ordinary project changes: %s"
             % ", ".join(sorted(outside))
+        )
+
+
+def _verify_task_stack_control_commits(
+    root: Path,
+    task: Mapping[str, Any],
+    content_sha: str,
+    control_sha: str,
+) -> None:
+    """Allow only ordinary deltas attributed to completed stacked successors."""
+
+    if content_sha == control_sha:
+        return
+    _output, ancestor_error = run_git(
+        root, ("merge-base", "--is-ancestor", content_sha, control_sha)
+    )
+    changed, diff_error = run_git(
+        root, ("diff", "--name-only", content_sha + ".." + control_sha)
+    )
+    if diff_error:
+        raise GovernanceError("cannot verify content/control commit diff: %s" % diff_error)
+    ordinary = {
+        path for path in (changed or "").splitlines()
+        if not _protected_control_path(path)
+    }
+    if ancestor_error is None and not ordinary:
+        return
+
+    # Reconcile already proves DONE task binding, reviewed paths, first-parent
+    # ancestry and the exact clean merge tree. Import lazily so unrelated
+    # lifecycle commands do not load the reconciliation profiles.
+    from reconcile import _completed_successor_merge_coverage
+
+    covered, coverage_errors, _details = _completed_successor_merge_coverage(
+        root, task, content_sha, control_sha
+    )
+    uncovered = sorted(ordinary - covered)
+    if coverage_errors or uncovered:
+        reasons = list(coverage_errors)
+        if uncovered:
+            reasons.append(
+                "content/control range has unattributed ordinary paths: %s"
+                % ", ".join(uncovered)
+            )
+        if ancestor_error is not None and not coverage_errors:
+            reasons.append("content commit is not covered by the trusted stack")
+        raise GovernanceError(
+            "content/control commit range is not a trusted completed PR stack: %s"
+            % "; ".join(reasons)
         )
 
 
