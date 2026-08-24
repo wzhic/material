@@ -39,7 +39,8 @@
     "GOV-0002"
   ],
   "git": {
-    "committed_sha": "e31609749d023b680c458e9ad925dd54be3cae42"
+    "committed_sha": "e31609749d023b680c458e9ad925dd54be3cae42",
+    "merged_sha": "e56bc9fd79a479bb878af64502c2b06efc1df798"
   },
   "history": [
     {
@@ -86,6 +87,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "commit narrow reconcile shortcut-gate fix after final controlled validation",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T06:35:32+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #21 merged after exact-head three-platform GitHub CI passed",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T06:35:39+00:00",
+      "from": "MERGED",
+      "reason": "post-merge lifecycle reconcile inconsistency is fixed and merged into main",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -342,10 +357,10 @@
   ],
   "schema_version": 1,
   "scope_version": 1,
-  "status": "COMMITTED",
+  "status": "DONE",
   "summary": "修复已允许 COMMITTED 直接进入 MERGED、MERGED 直接进入 DONE 时，reconcile 仍错误声明跳过的 CI 与 post-merge 状态已经取得的问题；仅根据实际状态历史和持久化验证提交字段判断已取得门禁。",
   "task_id": "GOV-0024",
-  "updated_at": "2026-08-24T06:25:38+00:00",
+  "updated_at": "2026-08-24T06:35:39+00:00",
   "validation": {
     "required": [
       {

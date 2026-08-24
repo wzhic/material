@@ -876,16 +876,68 @@ class TrustedCiContextTests(AuthenticatedReceiptTestCase):
             static_branch = next(item for item in static_report["checks"] if item["id"] == "branch")
             self.assertEqual("trusted_github_event", static_branch["details"]["source"])
 
-    def test_taskctl_ci_branch_gate_accepts_only_a_reconciled_detached_pr_head(self) -> None:
+    def test_terminal_task_pr_still_uses_trusted_event_head_branch(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            task, base_sha, _content_sha, control_sha = self.prepare_two_layer_commits(root)
+            task, base_sha, content_sha, _control_sha = self.prepare_two_layer_commits(root)
+            original_branch = git(root, "rev-parse", "--abbrev-ref", "HEAD")
+            git(root, "switch", "-c", "post-merge-main", base_sha)
+            side_marker = root / "post-merge-main.txt"
+            side_marker.write_text("terminal merge lives on the base branch\n", encoding="utf-8")
+            merged_sha = commit_all(root, "terminal merge on base branch")
+            git(root, "switch", original_branch)
+            task["status"] = "DONE"
+            task["git"] = {
+                "committed_sha": content_sha,
+                "merged_sha": merged_sha,
+            }
+            task_file = root / "project-control" / "tasks" / (task["task_id"] + ".json")
+            write_json(task_file, task)
+            control_sha = commit_all(root, "terminal task control metadata")
             git(root, "checkout", "--detach", control_sha)
             environment = github_pull_request_environment(
                 root, base_sha, control_sha, "main", task["branch"]
             )
             with mock.patch.dict(os.environ, environment, clear=False):
+                ci_report = run_reconcile(root, "ci")
+                report = run_reconcile(root, "static", git_changes=[])
+            self.assertTrue(ci_report["ok"], ci_report)
+            self.assertTrue(report["ok"], report)
+            self.assertEqual("ci", ci_report["context"]["ci"]["phase"])
+            changed = next(item for item in ci_report["checks"] if item["id"] == "changed_paths")
+            self.assertEqual("passed", changed["status"])
+            branch = next(item for item in report["checks"] if item["id"] == "branch")
+            self.assertEqual(task["branch"], branch["details"]["expected"])
+            self.assertEqual(task["branch"], branch["details"]["actual"])
+            self.assertEqual("trusted_github_event", branch["details"]["source"])
+
+    def test_taskctl_ci_branch_gate_accepts_only_a_reconciled_detached_pr_head(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task, base_sha, _content_sha, control_sha = self.prepare_two_layer_commits(root)
+            task["status"] = "DONE"
+            task["git"]["merged_sha"] = control_sha
+            task_file = root / "project-control" / "tasks" / (task["task_id"] + ".json")
+            write_json(task_file, task)
+            terminal_head = commit_all(root, "terminal task PR control metadata")
+            git(root, "checkout", "--detach", terminal_head)
+            environment = github_pull_request_environment(
+                root, base_sha, terminal_head, "main", task["branch"]
+            )
+            before_results = copy.deepcopy(task["validation"]["results"])
+            with mock.patch.dict(os.environ, environment, clear=False):
                 taskctl._require_validation_branch(root, task, "ci")
+                with mock.patch("sys.stdout"):
+                    code = taskctl.main([
+                        "run-required", task["task_id"],
+                        "--phase", "ci",
+                        "--release-unit", "backend",
+                        "--environment", "github-actions:pull_request:backend",
+                        "--root", str(root),
+                        "--json",
+                    ])
+            self.assertEqual(0, code)
+            self.assertEqual(before_results, read_json(task_file)["validation"]["results"])
 
             untrusted = dict(environment)
             untrusted["GITHUB_REPOSITORY"] = "attacker/material"
@@ -901,8 +953,13 @@ class TrustedCiContextTests(AuthenticatedReceiptTestCase):
             git(root, "switch", "main")
             git(root, "merge", "--no-ff", control_sha, "-m", "merge governed task")
             merge_sha = git(root, "rev-parse", "HEAD")
-            git(root, "checkout", "--detach", merge_sha)
-            environment = github_push_environment(root, base_sha, merge_sha, "main")
+            task["status"] = "DONE"
+            task["git"]["merged_sha"] = merge_sha
+            task_file = root / "project-control" / "tasks" / (task["task_id"] + ".json")
+            write_json(task_file, task)
+            terminal_head = commit_all(root, "terminal task main control metadata")
+            git(root, "checkout", "--detach", terminal_head)
+            environment = github_push_environment(root, base_sha, terminal_head, "main")
             with mock.patch.dict(os.environ, environment, clear=False):
                 report = run_reconcile(root, "ci")
                 with mock.patch("sys.stdout"):

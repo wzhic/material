@@ -2116,6 +2116,18 @@ def main(argv: Optional[List[str]] = None) -> int:
                 )
             _require_validation_branch(root, task, phase)
             expected_state = _PHASE_RECORD_STATES[phase]
+            trusted_ephemeral_terminal_ci = (
+                args.command == "run-required"
+                and phase == "ci"
+                and os.environ.get("GITHUB_ACTIONS") == "true"
+                and task.get("status") in (
+                    "CI_VERIFIED",
+                    "CODE_REVIEWED",
+                    "MERGED",
+                    "POST_MERGE_VERIFIED",
+                    "DONE",
+                )
+            )
             if task["status"] != expected_state:
                 if (
                     bootstrap_first_push
@@ -2159,10 +2171,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                         ),
                     }, args.json)
                     return 0
-                raise GovernanceError(
-                    "%s controlled validation may only run while task is %s"
-                    % (phase, expected_state)
-                )
+                if not trusted_ephemeral_terminal_ci:
+                    raise GovernanceError(
+                        "%s controlled validation may only run while task is %s"
+                        % (phase, expected_state)
+                    )
             if (
                 args.command == "run-required"
                 and phase == "ci"

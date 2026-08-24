@@ -1526,7 +1526,11 @@ def _ci_commit_protocol_check(
         "control_head_sha": head,
         "mode": None,
         "evidence_status": "pending",
-        "phase": "post_merge" if task_index >= status_index("MERGED") else "ci",
+        "phase": (
+            "ci"
+            if event_name == "pull_request"
+            else "post_merge" if task_index >= status_index("MERGED") else "ci"
+        ),
     }
     if not isinstance(head, str) or not _valid_oid(head):
         return _check("ci_commit_protocol", False, "trusted event head is unavailable"), result_context
@@ -1560,7 +1564,11 @@ def _ci_commit_protocol_check(
             result_context,
         ), result_context
     git_evidence = task.get("git", {}) if isinstance(task.get("git"), dict) else {}
-    subject_field = "merged_sha" if task_index >= status_index("MERGED") else "committed_sha"
+    subject_field = (
+        "committed_sha"
+        if event_name == "pull_request"
+        else "merged_sha" if task_index >= status_index("MERGED") else "committed_sha"
+    )
     subject = git_evidence.get(subject_field)
     if not isinstance(subject, str) or not _valid_oid(subject):
         return _check(
@@ -1936,9 +1944,13 @@ def run_reconcile(
         and os.environ.get("GITHUB_EVENT_NAME") == "push"
         and branch_input == "main"
     )
+    trusted_pull_request = (
+        branch_source == "trusted_github_event"
+        and os.environ.get("GITHUB_EVENT_NAME") == "pull_request"
+    )
     if trusted_main_push:
         expected_for_phase = "main"
-    elif post_merge_phase:
+    elif post_merge_phase and not trusted_pull_request:
         expected_for_phase = str(task.get("base_branch", ""))
     if trusted_main_push:
         actual_branch = branch_input
@@ -1949,7 +1961,7 @@ def run_reconcile(
             if branch_ok else
             "trusted GitHub main push branch mismatch: found %s" % actual_branch
         )
-    elif post_merge_phase:
+    elif post_merge_phase and not trusted_pull_request:
         _work_ok, _work_message, actual_branch, _work_bootstrap = branch_validity(
             root, task, branch_input
         )
@@ -2005,7 +2017,11 @@ def run_reconcile(
             changed, changes_error = ci_changed, None if ci_event_ok else "trusted committed diff is unavailable"
             git_evidence = task.get("git", {}) if isinstance(task.get("git"), dict) else {}
             task_index = _effective_status_index(task)
-            subject_field = "merged_sha" if task_index >= status_index("MERGED") else "committed_sha"
+            subject_field = (
+                "committed_sha"
+                if ci_context.get("event") == "pull_request"
+                else "merged_sha" if task_index >= status_index("MERGED") else "committed_sha"
+            )
             subject = git_evidence.get(subject_field)
             head = ci_context.get("head_sha")
             if (
