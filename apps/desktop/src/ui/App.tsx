@@ -20,6 +20,7 @@ import {
 } from '../analysis/draft';
 import { ProductListItem } from '../product/types';
 import { ProductLibraryPage } from './ProductLibraryPage';
+import { RecordsPage } from './RecordsPage';
 
 type AppPage = 'new-analysis' | 'products' | 'records' | 'workspace';
 
@@ -643,39 +644,6 @@ const WorkspacePage = ({
     </main>
   );
 };
-
-const RecordsPage = ({ onCreate }: { onCreate: () => void }): React.JSX.Element => (
-  <main className="page-shell records-page">
-    <header className="page-header">
-      <div>
-        <span className="eyebrow">本地报告</span>
-        <h1>分析记录</h1>
-        <p>这里只会出现用户确认并保存成功的正式报告。</p>
-      </div>
-      <Button onClick={onCreate} theme="primary">
-        新建分析
-      </Button>
-    </header>
-    <section className="records-toolbar" aria-label="分析记录筛选">
-      <Input disabled placeholder="搜索素材名称或产品名称" />
-      <select disabled><option>全部行业</option></select>
-      <select disabled><option>全部媒体</option></select>
-      <select disabled><option>确认时间：从新到旧</option></select>
-    </section>
-    <section className="records-empty">
-      <div className="records-empty-illustration" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </div>
-      <h2>尚无已确认的分析记录</h2>
-      <p>真实分析、用户确认与本地持久化将在后续工程工作包接入。</p>
-      <Button onClick={onCreate} variant="outline">
-        先选择一个素材
-      </Button>
-    </section>
-  </main>
-);
 
 export const App = (): React.JSX.Element => {
   const [page, setPage] = useState<AppPage>('new-analysis');

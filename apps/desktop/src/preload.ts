@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 import { PRODUCT_IPC_CHANNELS, ProductApi } from './product/types';
+import { RECORD_IPC_CHANNELS, RecordApi } from './record/types';
 
 const productApi: ProductApi = {
   list: (query) => ipcRenderer.invoke(PRODUCT_IPC_CHANNELS.list, query),
@@ -20,6 +21,16 @@ const productApi: ProductApi = {
   restoreBackup: (id) => ipcRenderer.invoke(PRODUCT_IPC_CHANNELS.restoreBackup, id),
 };
 
+const recordApi: RecordApi = {
+  list: (query) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.list, query),
+  get: (id) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.get, id),
+  saveFeedback: (id, input) =>
+    ipcRenderer.invoke(RECORD_IPC_CHANNELS.saveFeedback, id, input),
+  clearFeedback: (id) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.clearFeedback, id),
+  remove: (id) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.remove, id),
+};
+
 contextBridge.exposeInMainWorld('materialApi', {
   products: productApi,
+  records: recordApi,
 });
