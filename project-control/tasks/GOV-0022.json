@@ -121,7 +121,8 @@
     "GOV-0021"
   ],
   "git": {
-    "committed_sha": "e0f2000fdb418d887467f03784d7608c6483787f"
+    "committed_sha": "e0f2000fdb418d887467f03784d7608c6483787f",
+    "merged_sha": "03633ae5c4a494726cc26fe5dc25fec722f68f7b"
   },
   "history": [
     {
@@ -168,6 +169,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "commit the verified ignored-output integrity boundary and regression",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T05:21:45+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #19 merged after all three required GitHub Actions checks passed",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T05:21:45+00:00",
+      "from": "MERGED",
+      "reason": "PR #19 is merged and its final three-platform CI head is green with no skipped validation",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -655,10 +670,10 @@
   ],
   "schema_version": 1,
   "scope_version": 1,
-  "status": "COMMITTED",
+  "status": "DONE",
   "summary": "修复受控验证对 Git 已忽略构建产物的误报：忽略未跟踪且被仓库规则排除的生成文件，同时继续绑定源文件、已跟踪文件与受保护治理状态。",
   "task_id": "GOV-0022",
-  "updated_at": "2026-08-24T05:05:27+00:00",
+  "updated_at": "2026-08-24T05:21:45+00:00",
   "validation": {
     "required": [
       {
