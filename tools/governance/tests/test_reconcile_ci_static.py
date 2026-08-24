@@ -880,10 +880,16 @@ class TrustedCiContextTests(AuthenticatedReceiptTestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             task, base_sha, content_sha, _control_sha = self.prepare_two_layer_commits(root)
+            original_branch = git(root, "rev-parse", "--abbrev-ref", "HEAD")
+            git(root, "switch", "-c", "post-merge-main", base_sha)
+            side_marker = root / "post-merge-main.txt"
+            side_marker.write_text("terminal merge lives on the base branch\n", encoding="utf-8")
+            merged_sha = commit_all(root, "terminal merge on base branch")
+            git(root, "switch", original_branch)
             task["status"] = "DONE"
             task["git"] = {
                 "committed_sha": content_sha,
-                "merged_sha": "b" * 40,
+                "merged_sha": merged_sha,
             }
             task_file = root / "project-control" / "tasks" / (task["task_id"] + ".json")
             write_json(task_file, task)
@@ -893,8 +899,13 @@ class TrustedCiContextTests(AuthenticatedReceiptTestCase):
                 root, base_sha, control_sha, "main", task["branch"]
             )
             with mock.patch.dict(os.environ, environment, clear=False):
+                ci_report = run_reconcile(root, "ci")
                 report = run_reconcile(root, "static", git_changes=[])
+            self.assertTrue(ci_report["ok"], ci_report)
             self.assertTrue(report["ok"], report)
+            self.assertEqual("ci", ci_report["context"]["ci"]["phase"])
+            changed = next(item for item in ci_report["checks"] if item["id"] == "changed_paths")
+            self.assertEqual("passed", changed["status"])
             branch = next(item for item in report["checks"] if item["id"] == "branch")
             self.assertEqual(task["branch"], branch["details"]["expected"])
             self.assertEqual(task["branch"], branch["details"]["actual"])
