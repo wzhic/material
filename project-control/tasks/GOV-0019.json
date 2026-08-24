@@ -120,7 +120,8 @@
   "created_at": "2026-08-24T03:41:40+00:00",
   "dependencies": [],
   "git": {
-    "committed_sha": "66ff59967e2df2019f2d24b849e255e8394e8165"
+    "committed_sha": "66ff59967e2df2019f2d24b849e255e8394e8165",
+    "merged_sha": "1764f82341d600181b8a02e617eeaca61879de27"
   },
   "history": [
     {
@@ -167,6 +168,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "提交可信 PR 栈推送归因与正负向回归",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T04:26:14+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #17 merged after Governance run 32689533328 succeeded on macOS, Windows and Linux",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T04:26:14+00:00",
+      "from": "MERGED",
+      "reason": "GOV-0019 scope is merged; no validation was skipped or waived",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -430,10 +445,10 @@
   ],
   "schema_version": 1,
   "scope_version": 1,
-  "status": "COMMITTED",
+  "status": "DONE",
   "summary": "修复父任务吸收已完成后继 PR 后，push-task 仍把可信栈合并误判为普通内容越界的问题；复用现有 CI 栈归因并保持非强制、已完成任务和精确合并树约束。",
   "task_id": "GOV-0019",
-  "updated_at": "2026-08-24T03:48:52+00:00",
+  "updated_at": "2026-08-24T04:26:14+00:00",
   "validation": {
     "required": [
       {
