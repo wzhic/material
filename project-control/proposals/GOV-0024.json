@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0024",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "summary": "修复已允许 COMMITTED 直接进入 MERGED、MERGED 直接进入 DONE 时，reconcile 仍错误声明跳过的 CI 与 post-merge 状态已经取得的问题；仅根据实际状态历史和持久化验证提交字段判断已取得门禁。",
+  "requirement": {
+    "id": "治理精简-REQ-0004",
+    "name": "治理精简",
+    "version": "v1.0",
+    "interaction_kind": "non_ui"
+  },
+  "release_units": ["mac", "win", "backend"],
+  "branch": "codex/req-0004-gov-0024-reconcile-shortcut-gates",
+  "base_branch": "main",
+  "allowed_paths": [
+    "project-control/**",
+    "tools/governance/reconcile.py",
+    "tools/governance/tests/test_reconcile_ci_static.py"
+  ],
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/taskctl.py begin GOV-0024",
+    "python3 tools/governance/taskctl.py run-required GOV-0024",
+    "python3 tools/governance/taskctl.py commit-task GOV-0024",
+    "python3 tools/governance/taskctl.py push-task GOV-0024",
+    "python3 tools/governance/taskctl.py open-pr GOV-0024"
+  ],
+  "allowed_tools": ["apply_patch", "ApplyPatch", "Bash", "Read", "Glob", "Grep", "web__run"],
+  "dependencies": ["GOV-0002"],
+  "blockers": [],
+  "open_questions": [],
+  "required_docs": ["docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md"],
+  "assumptions": [
+    {
+      "id": "GOV-0024-ASM-001",
+      "statement": "简化流程明确允许 COMMITTED 直接进入 MERGED、MERGED 直接进入 DONE；未经过 CI_VERIFIED 或 POST_MERGE_VERIFIED 状态时不应由最终状态序号反向声称已取得这些门禁。",
+      "status": "confirmed",
+      "source": "tools/governance/core.py allowed_transition 与 taskctl transition 合同"
+    }
+  ],
+  "validation": {
+    "required": [
+      {
+        "id": "governance_unit_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", "tools/governance/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      },
+      {
+        "id": "hook_contract_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", ".codex/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 600,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      },
+      {
+        "id": "repository_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "static", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      }
+    ]
+  }
+}

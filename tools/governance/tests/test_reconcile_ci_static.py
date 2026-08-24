@@ -1108,6 +1108,64 @@ class TrustedCiContextTests(AuthenticatedReceiptTestCase):
 
 
 class GovernanceConsistencyTests(unittest.TestCase):
+    def test_done_shortcut_claims_only_local_validation_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = prepare_static_root(root, task_status="IN_PROGRESS")
+            store_controlled_local_pass(root, task)
+            task["status"] = "DONE"
+            task["git"] = {
+                "committed_sha": "a" * 40,
+                "merged_sha": "b" * 40,
+            }
+            write_json(
+                root / "project-control" / "tasks" / (task["task_id"] + ".json"),
+                task,
+            )
+
+            report = run_reconcile(root, "session", git_branch="main", git_changes=[])
+
+            self.assertTrue(report["ok"], report)
+            attained = next(
+                item for item in report["checks"]
+                if item["id"] == "attained_validation_gates"
+            )
+            self.assertEqual(
+                ["LOCAL_VERIFIED"],
+                list(attained["details"]["gates"]),
+            )
+
+    def test_done_task_still_enforces_persisted_ci_gate_claim(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = prepare_static_root(root, task_status="IN_PROGRESS")
+            store_controlled_local_pass(root, task)
+            task["status"] = "DONE"
+            task["git"] = {
+                "committed_sha": "a" * 40,
+                "ci_verified_sha": "a" * 40,
+                "merged_sha": "b" * 40,
+            }
+            write_json(
+                root / "project-control" / "tasks" / (task["task_id"] + ".json"),
+                task,
+            )
+
+            report = run_reconcile(root, "session", git_branch="main", git_changes=[])
+
+            self.assertFalse(report["ok"])
+            attained = next(
+                item for item in report["checks"]
+                if item["id"] == "attained_validation_gates"
+            )
+            self.assertEqual(
+                ["LOCAL_VERIFIED", "CI_VERIFIED"],
+                list(attained["details"]["gates"]),
+            )
+            self.assertTrue(
+                attained["details"]["gates"]["CI_VERIFIED"]["missing"]
+            )
+
     def test_project_cannot_extend_bootstrap_main_authority(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

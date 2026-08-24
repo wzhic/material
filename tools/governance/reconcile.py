@@ -1852,13 +1852,25 @@ def run_reconcile(
 
     attained_gates: Dict[str, Any] = {}
     attained_missing: List[str] = []
-    for gate in ("LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"):
-        if status_index(str(task["status"])) >= status_index(gate):
-            gate_status = validation_gate_status(root, task, gate)
-            attained_gates[gate] = gate_status
-            attained_missing.extend(
-                "%s:%s" % (gate, item["check_id"]) for item in gate_status["missing"]
-            )
+    task_status = str(task["status"])
+    git_evidence = task.get("git", {}) if isinstance(task.get("git"), dict) else {}
+    claimed_gates = []
+    if status_index(task_status) >= status_index("LOCAL_VERIFIED"):
+        claimed_gates.append("LOCAL_VERIFIED")
+    if task_status in ("CI_VERIFIED", "CODE_REVIEWED") or git_evidence.get(
+        "ci_verified_sha"
+    ):
+        claimed_gates.append("CI_VERIFIED")
+    if task_status == "POST_MERGE_VERIFIED" or git_evidence.get(
+        "post_merge_verified_sha"
+    ):
+        claimed_gates.append("POST_MERGE_VERIFIED")
+    for gate in claimed_gates:
+        gate_status = validation_gate_status(root, task, gate)
+        attained_gates[gate] = gate_status
+        attained_missing.extend(
+            "%s:%s" % (gate, item["check_id"]) for item in gate_status["missing"]
+        )
     checks.append(_check(
         "attained_validation_gates",
         not attained_missing,

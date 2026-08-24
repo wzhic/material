@@ -180,7 +180,8 @@
   "created_at": "2026-08-19T13:44:08+00:00",
   "dependencies": [],
   "git": {
-    "committed_sha": "c6ca5f348276bc62492a7409657e3c8f7849cbfa"
+    "committed_sha": "c6ca5f348276bc62492a7409657e3c8f7849cbfa",
+    "merged_sha": "d7c79847fdedd31d12ac10f1e67a11ccc12c086c"
   },
   "history": [
     {
@@ -332,6 +333,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "append-only handoff repair for approved automatic project initialization",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T06:14:18+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #1 merged after exact-head three-platform GitHub CI passed",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T06:14:24+00:00",
+      "from": "MERGED",
+      "reason": "governance and project baseline are merged into main",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -1895,10 +1910,10 @@
     }
   ],
   "scope_version": 1,
-  "status": "COMMITTED",
+  "status": "DONE",
   "summary": "简化治理流程：允许在当前任务范围内创建和编辑本地文件、建立本地分支、提交及同范围返工；仅在需求定稿、依赖和架构、数据安全、不兼容迁移、验证豁免、不可逆操作、合并部署发布等关键节点取得用户确认。同时修复现有恢复闭环和 Windows 测试可移植性问题，不涉及业务代码、应用依赖或技术栈初始化。",
   "task_id": "GOV-0002",
-  "updated_at": "2026-08-20T01:36:39+00:00",
+  "updated_at": "2026-08-24T06:14:24+00:00",
   "validation": {
     "required": [
       {

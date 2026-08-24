@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0001",
-  "reason": "resume root governance task after APP-0001 merged and closed",
+  "previous_task_id": "GOV-0002",
+  "reason": "repair post-merge reconcile shortcut gate inconsistency discovered during GOV-0002 closeout",
   "schema_version": 1,
-  "selected_at": "2026-08-24T06:01:54+00:00",
+  "selected_at": "2026-08-24T06:20:13+00:00",
   "selected_by": "Codex",
-  "task_id": "GOV-0002"
+  "task_id": "GOV-0024"
 }
