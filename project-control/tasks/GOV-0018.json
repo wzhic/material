@@ -120,7 +120,8 @@
   "created_at": "2026-08-23T12:27:42+00:00",
   "dependencies": [],
   "git": {
-    "committed_sha": "60fa2641e9bda187ca6a23a9136a8df904723d69"
+    "committed_sha": "60fa2641e9bda187ca6a23a9136a8df904723d69",
+    "merged_sha": "aa61355b941145ccec6c01b8f4cbc8edaf50ad18"
   },
   "history": [
     {
@@ -152,6 +153,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "提交 CI 官方 uv 前置安装及静态合同回归",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T03:35:39+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #16 三平台 CI 全绿并已合并到 APP-0001",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T03:35:44+00:00",
+      "from": "MERGED",
+      "reason": "PR #16 已合并，治理子任务闭环",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -178,10 +193,10 @@
   },
   "schema_version": 1,
   "scope_version": 1,
-  "status": "COMMITTED",
+  "status": "DONE",
   "summary": "修复 PR #14 三平台 CI 未安装 uv，导致受控 backend_import 检查无法启动的问题；使用 Astral 官方 setup-uv Action，并把该前置条件纳入 workflow 静态合同。",
   "task_id": "GOV-0018",
-  "updated_at": "2026-08-23T12:29:36+00:00",
+  "updated_at": "2026-08-24T03:35:44+00:00",
   "validation": {
     "required": [
       {
