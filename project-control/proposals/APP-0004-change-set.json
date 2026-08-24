@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0004",
+  "base_head": "c5434d22e7e143235099db7ed719ca8a1c0c9496",
+  "paths": [
+    "docs/requirements/README.md",
+    "docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md",
+    "docs/requirements/单素材分析-REQ-0005/assets/prototype-analysis-workspace.png",
+    "docs/requirements/单素材分析-REQ-0005/assets/prototype-new-analysis.png",
+    "docs/requirements/单素材分析-REQ-0005/assets/prototype-record-detail.png",
+    "docs/requirements/单素材分析-REQ-0005/assets/prototype-records-list.png",
+    "docs/requirements/单素材分析-REQ-0005/assets/prototype-report-preview.png",
+    "project-control/proposals/APP-0004-task.json"
+  ]
+}

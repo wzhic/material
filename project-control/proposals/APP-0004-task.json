@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0004",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "requirement": {
+    "id": "单素材分析-REQ-0005",
+    "name": "单素材分析",
+    "version": "v1.0",
+    "interaction_kind": "mixed"
+  },
+  "summary": "根据已确认的交互原型，形成单素材分析 V1 完整产品需求文档：覆盖本地视频或图片导入、行业与可选产品绑定、用户自带模型选择、脚本解析与大模型融合、播放器、对话分析、多轨时间轴、情绪曲线、行业模板、标签、评分、问题诊断、优化建议、报告确认后保存、反馈与重新分析、分析记录和导出。当前任务只编写和验证产品文档，不实现客户端、模型、工具、数据库或媒体解析代码。",
+  "release_units": ["mac", "win"],
+  "branch": "codex/req-0005-app-0004-single-material-analysis-prd",
+  "base_branch": "codex/req-0003-app-0003-product-library-prd",
+  "allowed_paths": [
+    "docs/requirements/单素材分析-REQ-0005/**",
+    "docs/requirements/README.md",
+    "project-control/**"
+  ],
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reviewctl.py verify --json",
+    "python3 tools/governance/reviewctl.py record-conversation APP-0004",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py docs --json",
+    "python3 tools/governance/reconcile.py workflow --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/reconcile.py precommit --json",
+    "python3 tools/governance/taskctl.py begin APP-0004",
+    "python3 tools/governance/taskctl.py run-validation APP-0004",
+    "python3 tools/governance/taskctl.py run-required APP-0004",
+    "python3 tools/governance/taskctl.py commit-task APP-0004",
+    "python3 tools/governance/taskctl.py push-task APP-0004",
+    "python3 tools/governance/taskctl.py open-pr APP-0004",
+    "python3 tools/governance/taskctl.py subtask-start APP-0004",
+    "python3 tools/governance/taskctl.py subtask-finish APP-0004"
+  ],
+  "allowed_tools": [
+    "apply_patch", "ApplyPatch", "Bash", "Read", "Glob", "Grep", "view_image",
+    "codex_app__read_thread_terminal", "request_plugin_install", "spawn_agent",
+    "send_message", "followup_task", "wait_agent", "interrupt_agent", "list_agents",
+    "collaborationspawn_agent", "collaborationsend_message", "collaborationfollowup_task",
+    "collaborationwait_agent", "collaborationinterrupt_agent", "collaborationlist_agents"
+  ],
+  "dependencies": [],
+  "required_docs": [
+    "docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md"
+  ],
+  "validation": {
+    "required": [
+      {
+        "id": "docs_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "docs", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "repository_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "static", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "governance_unit_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", "tools/governance/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      }
+    ],
+    "results": []
+  },
+  "assumptions": [
+    {"id": "APP-0004-ASM-001", "statement": "V1 单次只导入一个本地视频或一张本地图片；组图与批量分析均不进入本需求。", "status": "confirmed", "source": "用户明确单次一个文件，并将组图优先级调低"},
+    {"id": "APP-0004-ASM-002", "statement": "V1 覆盖服饰和所有游戏；导入时选择行业，服饰目标固定为下单转化，游戏由素材场景判断拉新或拉活。", "status": "confirmed", "source": "用户逐项确认行业和转化目标边界"},
+    {"id": "APP-0004-ASM-003", "statement": "视频同时支持脚本解析和大模型解析，最终只向用户输出一份融合报告；内部执行拓扑不在报告中公开。", "status": "confirmed", "source": "用户确认双方向解析、融合报告和不公开内部细节"},
+    {"id": "APP-0004-ASM-004", "statement": "分析维度包含脚本结构、镜头、画面、字幕、口播、声音、商品或玩法、卖点、情绪、CTA、标签、问题诊断、优化建议和动态评分。", "status": "confirmed", "source": "用户明确完整分析维度并补充评分与标签"},
+    {"id": "APP-0004-ASM-005", "statement": "分析页面支持源素材播放器、可调布局、多轨时间轴、时间点或时间段引用，以及贯穿全片的情绪变化曲线。", "status": "confirmed", "source": "用户持续核对并调整当前交互原型"},
+    {"id": "APP-0004-ASM-006", "statement": "报告生成后先展示预览；用户确认后才保存分析记录并关联本地素材，拒绝时可指出问题后重新分析。", "status": "confirmed", "source": "用户明确简化报告确认与重新分析链路"},
+    {"id": "APP-0004-ASM-007", "statement": "模型仅使用用户自带 API Key，凭据长期保存在系统安全存储并可删除；同一任务不自动切换模型。", "status": "confirmed", "source": "用户重新确认模型授权、持久化和切换边界"},
+    {"id": "APP-0004-ASM-008", "statement": "分析运行时可调用第三方工具和自研工具、脚本、Skill；能力通过可替换合同接入，不与单个模型或硬编码流程绑定。", "status": "confirmed", "source": "用户补充外挂工具和自研 tools 范围"},
+    {"id": "APP-0004-ASM-009", "statement": "素材文件不复制到应用数据或云端；正式保存的是分析记录、报告和必要的本地素材关联信息。", "status": "confirmed", "source": "用户明确素材只保存在本地电脑且应用不保存素材"},
+    {"id": "APP-0004-ASM-010", "statement": "行业模板、固定加动态标签和评分机制按行业隔离并支持版本化调整；V1 不提供页面权重滑杆或用户模板编辑器。", "status": "confirmed", "source": "用户确认模板评分行业隔离、动态调整和反馈调权语义"}
+  ],
+  "open_questions": [],
+  "blockers": [],
+  "review_authority": {
+    "scheme": "ssh-keygen-y-v1",
+    "identity": "material-project-owner",
+    "namespace": "material-governance-review",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E"
+  },
+  "ci_trust": {
+    "provider": "github_actions_rest_v1",
+    "repository": "wzhic/material",
+    "workflow_path": ".github/workflows/governance.yml",
+    "api_base": "https://api.github.com",
+    "api_version": "2026-03-10",
+    "private": true,
+    "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "ci_events": ["pull_request", "push"],
+    "post_merge_events": ["push"],
+    "required_jobs": {
+      "pull_request": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"],
+      "push": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"]
+    }
+  },
+  "coordination": {
+    "mode": "coordinated-multi",
+    "coordinator_task": "APP-0004",
+    "unit_tasks": {"mac": "APP-0004", "win": "APP-0004"},
+    "compatibility_matrix_doc": "docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md",
+    "deployment_order": ["mac", "win"],
+    "rollback_order": ["win", "mac"],
+    "unit_validation_checks": {
+      "mac": ["docs_reconcile", "repository_reconcile", "governance_unit_tests"],
+      "win": ["docs_reconcile", "repository_reconcile", "governance_unit_tests"]
+    },
+    "unit_rollback_checks": {"mac": ["docs_reconcile"], "win": ["docs_reconcile"]}
+  }
+}
