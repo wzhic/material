@@ -39,7 +39,8 @@
     "GOV-0025"
   ],
   "git": {
-    "committed_sha": "00b3cee8c6a87d775aac5e2aa5663057914cb0ea"
+    "committed_sha": "00b3cee8c6a87d775aac5e2aa5663057914cb0ea",
+    "merged_sha": "d35ae5fcac07b974fb1794431993478c8a50a8ef"
   },
   "history": [
     {
@@ -71,6 +72,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "bind terminal pull-request range and protocol to committed_sha with CI regression coverage",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T07:17:22+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #24 merged after Governance run 32700258912 passed on Ubuntu, macOS, and Windows",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T07:17:27+00:00",
+      "from": "MERGED",
+      "reason": "GOV-0026 repair merged with all three GitHub CI jobs successful",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -90,10 +105,10 @@
   },
   "schema_version": 1,
   "scope_version": 1,
-  "status": "COMMITTED",
+  "status": "DONE",
   "summary": "修复终态任务的追加式 PR 范围核对：可信 pull_request 始终以任务 committed_sha 为内容基准，merged_sha 只用于合并后主分支语义。",
   "task_id": "GOV-0026",
-  "updated_at": "2026-08-24T07:08:29+00:00",
+  "updated_at": "2026-08-24T07:17:27+00:00",
   "validation": {
     "required": [
       {
