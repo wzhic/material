@@ -54,6 +54,18 @@ jobs:
           version: "0.12.5"
           enable-cache: false
 
+      - name: Set up Node.js for desktop checks
+        if: matrix.release_unit != 'backend'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install locked desktop dependencies
+        if: matrix.release_unit != 'backend'
+        run: npm ci --prefix apps/desktop
+
       - name: Require non-empty governance test suites
         run: >-
           python -c "import unittest; counts = {'governance': unittest.TestLoader().discover('tools/governance/tests', pattern='test_*.py').countTestCases(), 'hooks': unittest.TestLoader().discover('.codex/tests', pattern='test_*.py').countTestCases()}; missing = [name for name, count in counts.items() if count == 0]; print('Discovered test counts:', counts); raise SystemExit('No tests discovered: ' + ', '.join(missing) if missing else 0)"
