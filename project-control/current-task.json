@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0021",
-  "reason": "resume APP-0001 after GOV-0021 CI repair merged and closed",
+  "previous_task_id": "APP-0001",
+  "reason": "start bounded PR #14 generated-output integrity repair",
   "schema_version": 1,
-  "selected_at": "2026-08-24T04:52:08+00:00",
+  "selected_at": "2026-08-24T04:59:13+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0001"
+  "task_id": "GOV-0022"
 }
