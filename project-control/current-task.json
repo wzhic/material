@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0024",
-  "reason": "repair trusted terminal pull-request scope subject after CI failure",
+  "previous_task_id": "GOV-0026",
+  "reason": "resume GOV-0024 closeout after GOV-0026 merged and closed",
   "schema_version": 1,
-  "selected_at": "2026-08-24T07:06:11+00:00",
+  "selected_at": "2026-08-24T07:18:18+00:00",
   "selected_by": "Codex",
-  "task_id": "GOV-0026"
+  "task_id": "GOV-0024"
 }
