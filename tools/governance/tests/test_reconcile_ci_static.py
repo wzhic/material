@@ -915,12 +915,29 @@ class TrustedCiContextTests(AuthenticatedReceiptTestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             task, base_sha, _content_sha, control_sha = self.prepare_two_layer_commits(root)
-            git(root, "checkout", "--detach", control_sha)
+            task["status"] = "DONE"
+            task["git"]["merged_sha"] = control_sha
+            task_file = root / "project-control" / "tasks" / (task["task_id"] + ".json")
+            write_json(task_file, task)
+            terminal_head = commit_all(root, "terminal task PR control metadata")
+            git(root, "checkout", "--detach", terminal_head)
             environment = github_pull_request_environment(
-                root, base_sha, control_sha, "main", task["branch"]
+                root, base_sha, terminal_head, "main", task["branch"]
             )
+            before_results = copy.deepcopy(task["validation"]["results"])
             with mock.patch.dict(os.environ, environment, clear=False):
                 taskctl._require_validation_branch(root, task, "ci")
+                with mock.patch("sys.stdout"):
+                    code = taskctl.main([
+                        "run-required", task["task_id"],
+                        "--phase", "ci",
+                        "--release-unit", "backend",
+                        "--environment", "github-actions:pull_request:backend",
+                        "--root", str(root),
+                        "--json",
+                    ])
+            self.assertEqual(0, code)
+            self.assertEqual(before_results, read_json(task_file)["validation"]["results"])
 
             untrusted = dict(environment)
             untrusted["GITHUB_REPOSITORY"] = "attacker/material"
@@ -936,8 +953,13 @@ class TrustedCiContextTests(AuthenticatedReceiptTestCase):
             git(root, "switch", "main")
             git(root, "merge", "--no-ff", control_sha, "-m", "merge governed task")
             merge_sha = git(root, "rev-parse", "HEAD")
-            git(root, "checkout", "--detach", merge_sha)
-            environment = github_push_environment(root, base_sha, merge_sha, "main")
+            task["status"] = "DONE"
+            task["git"]["merged_sha"] = merge_sha
+            task_file = root / "project-control" / "tasks" / (task["task_id"] + ".json")
+            write_json(task_file, task)
+            terminal_head = commit_all(root, "terminal task main control metadata")
+            git(root, "checkout", "--detach", terminal_head)
+            environment = github_push_environment(root, base_sha, terminal_head, "main")
             with mock.patch.dict(os.environ, environment, clear=False):
                 report = run_reconcile(root, "ci")
                 with mock.patch("sys.stdout"):
