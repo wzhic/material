@@ -96,6 +96,15 @@ afterEach(async () => {
 });
 
 describe('schema and registry', () => {
+  it('accepts bounded unions and rejects values outside every branch', () => {
+    const schema: ValueSchema = {
+      anyOf: [{ type: 'null' }, { maxLength: 8, type: 'string' }],
+    };
+    expect(validateValue(schema, null).ok).toBe(true);
+    expect(validateValue(schema, 'runtime').ok).toBe(true);
+    expect(validateValue(schema, 3).ok).toBe(false);
+  });
+
   it('rejects unknown and prototype-pollution shaped input fields', () => {
     const schema = objectSchema({ safe: { type: 'string' } });
     expect(validateValue(schema, { extra: 'no', safe: 'yes' }).ok).toBe(false);
@@ -236,6 +245,10 @@ describe('tool broker and adapters', () => {
 
   it('fails closed when direct broker concurrency reaches its policy limit', async () => {
     const gate: { finish?: () => void } = {};
+    let markStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
     const { broker } = await brokerWith(
       manifest(),
       new FunctionToolAdapter(
@@ -243,17 +256,18 @@ describe('tool broker and adapters', () => {
         ({ input }) =>
           new Promise((resolve) => {
             gate.finish = () => resolve({ echoed: (input as { value: string }).value });
+            markStarted?.();
           }),
       ),
       policy({ maxConcurrentInvocations: 1 }),
     );
     const first = broker.invoke({ capabilityId: 'test.echo', input: { value: 'first' } });
+    await started;
     const second = await broker.invoke({
       capabilityId: 'test.echo',
       input: { value: 'second' },
     });
     expect(second).toMatchObject({ error: { code: 'RESOURCE_BUSY' }, ok: false });
-    await new Promise((resolve) => setTimeout(resolve, 0));
     if (!gate.finish) throw new Error('first invocation did not start');
     gate.finish();
     const firstResult = await first;

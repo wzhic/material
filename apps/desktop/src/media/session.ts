@@ -22,6 +22,12 @@ interface FileDescription {
   summary: LocalMaterialSummary;
 }
 
+export interface MaterialToolSource {
+  filePath: string;
+  modifiedAtMs: number;
+  summary: LocalMaterialSummary;
+}
+
 const VIDEO_TYPES: Record<string, string> = {
   avi: 'video/x-msvideo',
   m4v: 'video/x-m4v',
@@ -207,6 +213,22 @@ export class MaterialSessionService {
       entry.session = { ...entry.session, sourceStatus: 'needs_relocation' };
       return null;
     }
+  }
+
+  async resolveToolSource(sessionId: string): Promise<MaterialToolSource> {
+    const entry = this.requireSession(sessionId);
+    const inspected = await this.inspect(sessionId);
+    if (inspected.sourceStatus !== 'available') {
+      throw new MaterialSessionError(
+        'NOT_FOUND',
+        '本地素材当前不可用于解析，请重新定位后重试',
+      );
+    }
+    return {
+      filePath: entry.absolutePath,
+      modifiedAtMs: entry.modifiedAtMs,
+      summary: { ...entry.session.summary },
+    };
   }
 
   private requireSession(sessionId: string): MaterialSessionEntry {

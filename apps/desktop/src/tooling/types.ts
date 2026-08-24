@@ -45,13 +45,18 @@ export interface ObjectSchema extends SchemaBase {
   required?: readonly string[];
 }
 
+export interface UnionSchema extends SchemaBase {
+  anyOf: readonly ValueSchema[];
+}
+
 export type ValueSchema =
   | ArraySchema
   | BooleanSchema
   | NullSchema
   | NumberSchema
   | ObjectSchema
-  | StringSchema;
+  | StringSchema
+  | UnionSchema;
 
 export type ToolKind = 'builtin' | 'script' | 'skill';
 export type ToolPermission =

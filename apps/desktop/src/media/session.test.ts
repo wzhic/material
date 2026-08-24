@@ -40,6 +40,10 @@ describe('MaterialSessionService', () => {
     expect((await service.resolvePreviewSource(session.sessionId))?.filePath).toBe(
       realpathSync(filePath),
     );
+    const toolSource = await service.resolveToolSource(session.sessionId);
+    expect(toolSource.filePath).toBe(realpathSync(filePath));
+    expect(toolSource.summary).toEqual(session.summary);
+    expect(JSON.stringify(session)).not.toContain(toolSource.filePath);
   });
 
   it('reports a moved file and restores the same bytes at a new location', async () => {

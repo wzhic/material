@@ -39,6 +39,16 @@ const validateDefinitionAt = (
     issues.push(issue(path, 'SCHEMA_DEPTH', 'schema nesting is too deep'));
     return;
   }
+  if ('anyOf' in schema) {
+    if (schema.anyOf.length < 2 || schema.anyOf.length > 8) {
+      issues.push(issue(path, 'SCHEMA_UNION', 'anyOf must contain between 2 and 8 branches'));
+      return;
+    }
+    schema.anyOf.forEach((branch, index) =>
+      validateDefinitionAt(branch, `${path}.anyOf[${index}]`, depth + 1, issues),
+    );
+    return;
+  }
   if (schema.type === 'string') {
     if (schema.minLength !== undefined && schema.minLength < 0) {
       issues.push(issue(path, 'SCHEMA_RANGE', 'minLength must be non-negative'));
@@ -121,6 +131,15 @@ const validateValueAt = (
 ): void => {
   if (depth > MAX_SCHEMA_DEPTH) {
     issues.push(issue(path, 'VALUE_DEPTH', 'value nesting is too deep'));
+    return;
+  }
+  if ('anyOf' in schema) {
+    const matched = schema.anyOf.some((branch) => {
+      const branchIssues: ValidationIssue[] = [];
+      validateValueAt(branch, value, path, depth + 1, branchIssues);
+      return branchIssues.length === 0;
+    });
+    if (!matched) issues.push(issue(path, 'UNION', 'value does not match any allowed schema'));
     return;
   }
   if (schema.type === 'null') {
