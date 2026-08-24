@@ -39,7 +39,8 @@
     "GOV-0026"
   ],
   "git": {
-    "committed_sha": "d9a700e70eac84344ff26fb6818d818a8e7dfc4b"
+    "committed_sha": "d9a700e70eac84344ff26fb6818d818a8e7dfc4b",
+    "merged_sha": "a8af84a777fc7d1f10d9c7c834c023d0f41093d6"
   },
   "history": [
     {
@@ -71,6 +72,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "allow only trusted reconciled GitHub events to run terminal task checks ephemerally",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T07:33:51+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #25 merged after Governance run 32701382744 passed on Ubuntu, macOS, and Windows",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T07:33:59+00:00",
+      "from": "MERGED",
+      "reason": "GOV-0027 repair merged with all three GitHub CI jobs successful",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -90,10 +105,10 @@
   },
   "schema_version": 1,
   "scope_version": 1,
-  "status": "COMMITTED",
+  "status": "DONE",
   "summary": "允许终态任务在已通过 reconcile 的可信 GitHub PR/main 事件中执行只读、无写回的 CI 受控验证，保持本地和持久化状态门禁不变。",
   "task_id": "GOV-0027",
-  "updated_at": "2026-08-24T07:24:01+00:00",
+  "updated_at": "2026-08-24T07:33:59+00:00",
   "validation": {
     "required": [
       {
