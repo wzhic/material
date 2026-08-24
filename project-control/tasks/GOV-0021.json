@@ -1,0 +1,249 @@
+{
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/taskctl.py begin GOV-0021",
+    "python3 tools/governance/taskctl.py run-required GOV-0021",
+    "python3 tools/governance/taskctl.py commit-task GOV-0021",
+    "python3 tools/governance/taskctl.py push-task GOV-0021",
+    "python3 tools/governance/taskctl.py open-pr GOV-0021"
+  ],
+  "allowed_paths": [
+    ".github/workflows/governance.yml",
+    "project-control/**",
+    "tools/governance/reconcile.py",
+    "tools/governance/tests/test_reconcile_ci_static.py"
+  ],
+  "allowed_tools": [
+    "apply_patch",
+    "ApplyPatch",
+    "Bash",
+    "Read",
+    "Glob",
+    "Grep",
+    "web__run"
+  ],
+  "assumptions": [
+    {
+      "id": "GOV-0021-ASM-001",
+      "source": "GitHub Actions run 32690080276 macOS job 97322070755",
+      "statement": "macOS 的桌面 lint 与 package 均因 CI 未安装锁定 npm 依赖而以 exit 127 失败。",
+      "status": "confirmed"
+    },
+    {
+      "id": "GOV-0021-ASM-002",
+      "source": "现有 apps/desktop/package-lock.json",
+      "statement": "使用 actions/setup-node 与 npm ci 是可逆的官方锁文件安装路径，不改变应用依赖声明。",
+      "status": "confirmed"
+    },
+    {
+      "id": "GOV-0021-ASM-003",
+      "source": "本地 taskctl push-task 失败关闭记录",
+      "statement": "GOV-0020 仅因本地提交编排顺序错误取消，未推送远端，也未创建 PR。",
+      "status": "confirmed"
+    }
+  ],
+  "base_branch": "codex/req-0002-app-0001-project-bootstrap",
+  "blockers": [],
+  "branch": "codex/req-0004-gov-0021-ci-desktop-dependency-install",
+  "ci_trust": {
+    "api_base": "https://api.github.com",
+    "api_version": "2026-03-10",
+    "ci_events": [
+      "pull_request",
+      "push"
+    ],
+    "post_merge_events": [
+      "push"
+    ],
+    "private": true,
+    "provider": "github_actions_rest_v1",
+    "repository": "wzhic/material",
+    "required_jobs": {
+      "pull_request": [
+        "Governance (ubuntu-latest)",
+        "Governance (macos-latest)",
+        "Governance (windows-latest)"
+      ],
+      "push": [
+        "Governance (ubuntu-latest)",
+        "Governance (macos-latest)",
+        "Governance (windows-latest)"
+      ]
+    },
+    "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "workflow_path": ".github/workflows/governance.yml"
+  },
+  "coordination": {
+    "compatibility_matrix_doc": "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md",
+    "coordinator_task": "GOV-0021",
+    "deployment_order": [
+      "backend",
+      "mac",
+      "win"
+    ],
+    "mode": "coordinated-multi",
+    "rollback_order": [
+      "win",
+      "mac",
+      "backend"
+    ],
+    "unit_rollback_checks": {
+      "backend": [
+        "governance_unit_tests"
+      ],
+      "mac": [
+        "hook_contract_tests"
+      ],
+      "win": [
+        "hook_contract_tests"
+      ]
+    },
+    "unit_tasks": {
+      "backend": "GOV-0021",
+      "mac": "GOV-0021",
+      "win": "GOV-0021"
+    },
+    "unit_validation_checks": {
+      "backend": [
+        "governance_unit_tests",
+        "hook_contract_tests",
+        "repository_reconcile"
+      ],
+      "mac": [
+        "governance_unit_tests",
+        "hook_contract_tests",
+        "repository_reconcile"
+      ],
+      "win": [
+        "governance_unit_tests",
+        "hook_contract_tests",
+        "repository_reconcile"
+      ]
+    }
+  },
+  "created_at": "2026-08-24T04:36:55+00:00",
+  "dependencies": [],
+  "history": [
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T04:37:07+00:00",
+      "base_branch": "codex/req-0002-app-0001-project-bootstrap",
+      "branch": "codex/req-0004-gov-0021-ci-desktop-dependency-install",
+      "event": "local_branch_started",
+      "reason": "repair PR #14 desktop CI dependency bootstrap from run 32690080276"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T04:37:07+00:00",
+      "event": "task_started",
+      "from": "DRAFT",
+      "reason": "repair PR #14 desktop CI dependency bootstrap from run 32690080276",
+      "to": "IN_PROGRESS"
+    }
+  ],
+  "open_questions": [],
+  "release_units": [
+    "mac",
+    "win",
+    "backend"
+  ],
+  "required_docs": [
+    "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md"
+  ],
+  "requirement": {
+    "id": "治理精简-REQ-0004",
+    "interaction_kind": "non_ui",
+    "name": "治理精简",
+    "version": "v1.0"
+  },
+  "review_authority": {
+    "identity": "material-project-owner",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E",
+    "namespace": "material-governance-review",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "scheme": "ssh-keygen-y-v1"
+  },
+  "schema_version": 1,
+  "scope_version": 1,
+  "status": "IN_PROGRESS",
+  "summary": "修复应用初始化 PR 的桌面 CI 依赖缺失：在 macOS 与 Windows 受控检查前按 package-lock.json 安装 npm 依赖，并以静态合同回归防止再次遗漏。",
+  "task_id": "GOV-0021",
+  "updated_at": "2026-08-24T04:37:07+00:00",
+  "validation": {
+    "required": [
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tools/governance/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "governance_unit_tests",
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "timeout_seconds": 1200
+      },
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          ".codex/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "hook_contract_tests",
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "timeout_seconds": 600
+      },
+      {
+        "argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "static",
+          "--json"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "repository_reconcile",
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "timeout_seconds": 120
+      }
+    ],
+    "results": []
+  }
+}
