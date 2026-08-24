@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0019",
-  "reason": "resume APP-0001 after merged GOV-0019 transport fix",
+  "previous_task_id": "APP-0001",
+  "reason": "select clean desktop CI dependency repair task while APP-0001 waits for CI",
   "schema_version": 1,
-  "selected_at": "2026-08-24T04:26:54+00:00",
+  "selected_at": "2026-08-24T04:36:56+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0001"
+  "task_id": "GOV-0021"
 }

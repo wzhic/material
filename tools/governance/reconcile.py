@@ -771,6 +771,13 @@ def _workflow_check(root: Path) -> Dict[str, Any]:
             "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9" in text
             and bool(re.search(r"(?m)^\s+version:\s*[\"']0\.12\.5[\"']\s*$", text))
         ),
+        "desktop lockfile dependencies installed": (
+            "uses: actions/setup-node@v4" in text
+            and bool(re.search(r"node-version:\s*[\"']24[\"']", text))
+            and "cache-dependency-path: apps/desktop/package-lock.json" in text
+            and "npm ci --prefix apps/desktop" in text
+            and text.count("if: matrix.release_unit != 'backend'") >= 2
+        ),
         "backend Linux release runner": "os: ubuntu-latest" in text and "release_unit: backend" in text,
         "mac macOS release runner": "os: macos-latest" in text and "release_unit: mac" in text,
         "win Windows release runner": "os: windows-latest" in text and "release_unit: win" in text,

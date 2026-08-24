@@ -461,6 +461,23 @@ class StaticProfileTests(AuthenticatedReceiptTestCase):
             contract = next(item for item in report["checks"] if item["id"] == "workflow_contract")
             self.assertIn("official pinned uv setup", contract["message"])
 
+    def test_workflow_contract_requires_locked_desktop_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = prepare_static_root(root)
+            workflow = root / ".github" / "workflows" / "governance.yml"
+            workflow.write_text(
+                workflow.read_text(encoding="utf-8").replace(
+                    "npm ci --prefix apps/desktop",
+                    "echo desktop dependencies omitted",
+                ),
+                encoding="utf-8",
+            )
+            report = run_reconcile(root, "workflow", git_branch=task["branch"], git_changes=[])
+            self.assertFalse(report["ok"])
+            contract = next(item for item in report["checks"] if item["id"] == "workflow_contract")
+            self.assertIn("desktop lockfile dependencies installed", contract["message"])
+
     def test_workflow_contract_requires_json_runner_diagnostics(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
