@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0023",
+  "base_head": "78a4e99c803dfa9fe6c4bedf87b4db8e0c926c72",
+  "paths": [
+    "project-control/proposals/GOV-0023.json",
+    "tools/governance/validation_runner.py",
+    "tools/governance/tests/test_validation_runner.py"
+  ]
+}

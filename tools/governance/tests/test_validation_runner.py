@@ -64,6 +64,38 @@ class ControlledValidationRunnerTests(unittest.TestCase):
             self.assertIn("started_at", result)
             self.assertIn("finished_at", result)
 
+    def test_windows_command_shim_is_resolved_without_changing_arguments(self) -> None:
+        npm_cmd = r"C:\Program Files\nodejs\npm.CMD"
+        with mock.patch.object(validation_runner.os, "name", "nt"), mock.patch.object(
+            validation_runner.shutil,
+            "which",
+            return_value=npm_cmd,
+        ) as which_mock:
+            resolved = validation_runner._resolve_argv([
+                "npm",
+                "--prefix",
+                "apps/desktop",
+                "run",
+                "lint",
+            ])
+
+        which_mock.assert_called_once_with("npm")
+        self.assertEqual(npm_cmd, resolved[0])
+        self.assertEqual(
+            ["--prefix", "apps/desktop", "run", "lint"],
+            resolved[1:],
+        )
+
+    def test_missing_windows_command_shim_keeps_reviewed_executable_token(self) -> None:
+        with mock.patch.object(validation_runner.os, "name", "nt"), mock.patch.object(
+            validation_runner.shutil,
+            "which",
+            return_value=None,
+        ):
+            resolved = validation_runner._resolve_argv(["missing-tool", "--version"])
+
+        self.assertEqual(["missing-tool", "--version"], resolved)
+
     def test_nonzero_exit_is_failed_without_caller_status(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

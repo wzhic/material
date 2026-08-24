@@ -12,6 +12,7 @@ import hashlib
 import math
 import os
 import platform
+import shutil
 import stat
 import subprocess
 import sys
@@ -365,6 +366,10 @@ def _resolve_argv(argv: Sequence[str]) -> List[str]:
     resolved = list(argv)
     if resolved[0] == "python3":
         resolved[0] = str(Path(sys.executable).resolve())
+    elif os.name == "nt":
+        executable = shutil.which(resolved[0])
+        if executable:
+            resolved[0] = executable
     return resolved
 
 
