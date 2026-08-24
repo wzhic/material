@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0016",
-  "reason": "恢复 APP-0001 并继续已授权的 PR 栈合并",
+  "previous_task_id": "APP-0001",
+  "reason": "APP-0001 已提交并等待独立 CI 前置修复",
   "schema_version": 1,
-  "selected_at": "2026-08-23T12:07:35+00:00",
+  "selected_at": "2026-08-23T12:27:42+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0001"
+  "task_id": "GOV-0018"
 }

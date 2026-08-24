@@ -444,6 +444,23 @@ class StaticProfileTests(AuthenticatedReceiptTestCase):
             contract = next(item for item in report["checks"] if item["id"] == "workflow_contract")
             self.assertIn("controlled required validation", contract["message"])
 
+    def test_workflow_contract_requires_official_pinned_uv_setup(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = prepare_static_root(root)
+            workflow = root / ".github" / "workflows" / "governance.yml"
+            workflow.write_text(
+                workflow.read_text(encoding="utf-8").replace(
+                    "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
+                    "astral-sh/setup-uv@v9",
+                ),
+                encoding="utf-8",
+            )
+            report = run_reconcile(root, "workflow", git_branch=task["branch"], git_changes=[])
+            self.assertFalse(report["ok"])
+            contract = next(item for item in report["checks"] if item["id"] == "workflow_contract")
+            self.assertIn("official pinned uv setup", contract["message"])
+
     def test_workflow_contract_requires_json_runner_diagnostics(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
