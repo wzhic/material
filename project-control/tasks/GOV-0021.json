@@ -126,7 +126,8 @@
   "created_at": "2026-08-24T04:36:55+00:00",
   "dependencies": [],
   "git": {
-    "committed_sha": "e40b888d234ff25f6b6d492501fdb2320bf4059f"
+    "committed_sha": "e40b888d234ff25f6b6d492501fdb2320bf4059f",
+    "merged_sha": "c09f47a21fa6d4a84dbf610d41f8fc325696e4e2"
   },
   "history": [
     {
@@ -158,6 +159,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "commit locked desktop dependency installation before controlled CI checks",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T04:51:34+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #18 merged after all three required GitHub Actions checks passed",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T04:51:40+00:00",
+      "from": "MERGED",
+      "reason": "PR #18 is merged and its required three-platform CI attempt is green with no skipped validation",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -184,10 +199,10 @@
   },
   "schema_version": 1,
   "scope_version": 1,
-  "status": "COMMITTED",
+  "status": "DONE",
   "summary": "修复应用初始化 PR 的桌面 CI 依赖缺失：在 macOS 与 Windows 受控检查前按 package-lock.json 安装 npm 依赖，并以静态合同回归防止再次遗漏。",
   "task_id": "GOV-0021",
-  "updated_at": "2026-08-24T04:39:47+00:00",
+  "updated_at": "2026-08-24T04:51:40+00:00",
   "validation": {
     "required": [
       {
