@@ -1,5 +1,4 @@
 import React, {
-  ChangeEvent,
   KeyboardEvent,
   PointerEvent as ReactPointerEvent,
   useCallback,
@@ -14,21 +13,16 @@ import {
   AnalysisDraft,
   formatFileSize,
   Industry,
-  MaterialSummary,
-  toMaterialSummary,
   validateDraft,
 } from '../analysis/draft';
+import { MaterialSession } from '../media/types';
 import { ProductListItem } from '../product/types';
 import { ProductLibraryPage } from './ProductLibraryPage';
 import { RecordsPage } from './RecordsPage';
 
 type AppPage = 'new-analysis' | 'products' | 'records' | 'workspace';
 
-interface SelectedMaterial {
-  file: File;
-  objectUrl: string;
-  summary: MaterialSummary;
-}
+type SelectedMaterial = MaterialSession;
 
 const clamp = (value: number, minimum: number, maximum: number): number =>
   Math.min(maximum, Math.max(minimum, value));
@@ -139,8 +133,8 @@ const NewAnalysisPage = ({
   onProductChange,
   onPreviewWorkspace,
 }: NewAnalysisPageProps): React.JSX.Element => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileError, setFileError] = useState('');
+  const [fileBusy, setFileBusy] = useState(false);
   const draft: AnalysisDraft = {
     industry,
     material: material?.summary ?? null,
@@ -150,25 +144,67 @@ const NewAnalysisPage = ({
   const compatibleProducts = products.filter((product) => product.industry === industry);
   const selectedProduct = products.find((product) => product.id === productId);
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>): void => {
-    const file = event.target.files?.item(0);
-    event.target.value = '';
-    if (!file) {
-      return;
-    }
-
-    const summary = toMaterialSummary(file);
-    if (!summary) {
-      setFileError('当前文件不是可识别的视频或图片，请重新选择。');
-      return;
-    }
-
+  const handleSelectMaterial = async (): Promise<void> => {
+    setFileBusy(true);
     setFileError('');
-    onMaterialChange({
-      file,
-      objectUrl: URL.createObjectURL(file),
-      summary,
-    });
+    const result = await window.materialApi.media.select();
+    setFileBusy(false);
+    if (!result.ok) {
+      setFileError(result.error.message);
+      return;
+    }
+    if (!result.data.cancelled) {
+      onMaterialChange(result.data.session);
+    }
+  };
+
+  const handleInspectMaterial = async (openWorkspace = false): Promise<void> => {
+    if (!material) {
+      return;
+    }
+    setFileBusy(true);
+    setFileError('');
+    const result = await window.materialApi.media.inspect(material.sessionId);
+    setFileBusy(false);
+    if (!result.ok) {
+      setFileError(result.error.message);
+      return;
+    }
+    onMaterialChange(result.data);
+    if (result.data.sourceStatus === 'available') {
+      if (openWorkspace) {
+        onPreviewWorkspace();
+      }
+      return;
+    }
+    setFileError(
+      result.data.sourceStatus === 'mismatch'
+        ? '素材内容已发生变化。请选择原文件，或移除后把新文件作为新素材。'
+        : '素材已移动、删除或权限失效，请重新定位同一个文件。',
+    );
+  };
+
+  const handleRelocateMaterial = async (): Promise<void> => {
+    if (!material) {
+      return;
+    }
+    setFileBusy(true);
+    setFileError('');
+    const result = await window.materialApi.media.relocate(material.sessionId);
+    setFileBusy(false);
+    if (!result.ok) {
+      setFileError(result.error.message);
+      return;
+    }
+    if (result.data.cancelled) {
+      return;
+    }
+    onMaterialChange(result.data.session);
+    if (result.data.mismatch) {
+      setFileError(
+        `所选文件与原素材不一致：需要 ${result.data.mismatch.expected.name}，当前选择 ${result.data.mismatch.candidate.name}。旧引用未被替换。`,
+      );
+    }
   };
 
   return (
@@ -192,23 +228,27 @@ const NewAnalysisPage = ({
               <p>单次仅选择一个文件；文件仍保存在原位置。</p>
             </div>
             {material ? (
-              <Button
-                onClick={() => fileInputRef.current?.click()}
-                size="small"
-                variant="outline"
-              >
-                重新选择
-              </Button>
+              <div className="material-actions">
+                <Button
+                  disabled={fileBusy}
+                  onClick={() => void handleInspectMaterial()}
+                  size="small"
+                  variant="text"
+                >
+                  检查素材
+                </Button>
+                <Button
+                  disabled={fileBusy}
+                  loading={fileBusy}
+                  onClick={() => void handleSelectMaterial()}
+                  size="small"
+                  variant="outline"
+                >
+                  重新选择
+                </Button>
+              </div>
             ) : null}
           </div>
-
-          <input
-            ref={fileInputRef}
-            accept="video/*,image/*,.mkv,.heic"
-            className="visually-hidden"
-            onChange={handleFileChange}
-            type="file"
-          />
 
           {material ? (
             <div className="material-preview-card">
@@ -218,12 +258,12 @@ const NewAnalysisPage = ({
                     aria-label={`视频预览：${material.summary.name}`}
                     controls
                     preload="metadata"
-                    src={material.objectUrl}
+                    src={material.previewUrl}
                   />
                 ) : (
                   <img
                     alt={`图片预览：${material.summary.name}`}
-                    src={material.objectUrl}
+                    src={material.previewUrl}
                   />
                 )}
               </div>
@@ -234,6 +274,19 @@ const NewAnalysisPage = ({
                 <strong title={material.summary.name}>{material.summary.name}</strong>
                 <span>{formatFileSize(material.summary.size)}</span>
                 <span>{material.summary.mimeType}</span>
+                <span title={material.summary.fingerprintSha256}>
+                  指纹 {material.summary.fingerprintSha256.slice(0, 12)}…
+                </span>
+                <Tag
+                  theme={material.sourceStatus === 'available' ? 'success' : 'warning'}
+                  variant="light"
+                >
+                  {material.sourceStatus === 'available'
+                    ? '本地可用'
+                    : material.sourceStatus === 'mismatch'
+                      ? '文件不匹配'
+                      : '需重新定位'}
+                </Tag>
               </div>
               <button
                 aria-label="移除已选择素材"
@@ -247,15 +300,31 @@ const NewAnalysisPage = ({
           ) : (
             <button
               className="file-dropzone"
-              onClick={() => fileInputRef.current?.click()}
+              disabled={fileBusy}
+              onClick={() => void handleSelectMaterial()}
               type="button"
             >
               <span className="upload-glyph">↑</span>
-              <strong>选择本地视频或图片</strong>
+              <strong>{fileBusy ? '正在读取并生成素材指纹…' : '选择本地视频或图片'}</strong>
               <span>支持常见视频、图片格式；暂不支持组图和批量导入</span>
-              <span className="choose-file-pill">浏览文件</span>
+              <span className="choose-file-pill">{fileBusy ? '请稍候' : '浏览文件'}</span>
             </button>
           )}
+
+          {material && material.sourceStatus !== 'available' ? (
+            <div className="material-recovery" role="status">
+              <span>分析配置已保留，重新定位同一素材后可继续。</span>
+              <Button
+                disabled={fileBusy}
+                loading={fileBusy}
+                onClick={() => void handleRelocateMaterial()}
+                size="small"
+                variant="outline"
+              >
+                重新定位
+              </Button>
+            </div>
+          ) : null}
 
           {fileError ? (
             <div className="inline-message is-error" role="alert">
@@ -383,8 +452,9 @@ const NewAnalysisPage = ({
           </Button>
           <Button
             block
-            disabled={!validation.canPreviewWorkspace}
-            onClick={onPreviewWorkspace}
+            disabled={!validation.canPreviewWorkspace || fileBusy}
+            loading={fileBusy}
+            onClick={() => void handleInspectMaterial(true)}
             variant="outline"
           >
             预览分析工作区
@@ -513,9 +583,9 @@ const WorkspacePage = ({
           </div>
           <div className="source-viewer">
             {material.summary.kind === 'video' ? (
-              <video controls preload="metadata" src={material.objectUrl} />
+              <video controls preload="metadata" src={material.previewUrl} />
             ) : (
-              <img alt={material.summary.name} src={material.objectUrl} />
+              <img alt={material.summary.name} src={material.previewUrl} />
             )}
           </div>
           <div className="viewer-meta">
@@ -669,13 +739,13 @@ export const App = (): React.JSX.Element => {
   }, [refreshProducts]);
 
   useEffect(() => {
-    const objectUrl = material?.objectUrl;
+    const sessionId = material?.sessionId;
     return () => {
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
+      if (sessionId) {
+        void window.materialApi.media.release(sessionId);
       }
     };
-  }, [material?.objectUrl]);
+  }, [material?.sessionId]);
 
   const content = useMemo(() => {
     if (page === 'workspace' && material) {

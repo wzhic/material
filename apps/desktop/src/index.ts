@@ -1,6 +1,9 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 
+import { registerMaterialIpc } from './media/ipc';
+import { registerMaterialProtocol } from './media/protocol';
+import { MaterialSessionService } from './media/session';
 import { registerProductIpc, registerUnavailableProductIpc } from './product/ipc';
 import { ProductRepository } from './product/repository';
 import { registerRecordIpc, registerUnavailableRecordIpc } from './record/ipc';
@@ -18,6 +21,7 @@ if (require('electron-squirrel-startup')) {
 
 let productRepository: ProductRepository | null = null;
 let recordRepository: RecordRepository | null = null;
+const materialSessionService = new MaterialSessionService();
 
 const createWindow = (): void => {
   const mainWindow = new BrowserWindow({
@@ -42,6 +46,8 @@ const createWindow = (): void => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
+  registerMaterialProtocol(materialSessionService);
+  registerMaterialIpc(materialSessionService);
   const databasePath = path.join(app.getPath('userData'), 'material-products.sqlite3');
   const backupDirectory = path.join(app.getPath('userData'), 'backups', 'products');
   try {
@@ -81,6 +87,7 @@ app.on('activate', () => {
 });
 
 app.on('before-quit', () => {
+  materialSessionService.clear();
   productRepository?.close();
   productRepository = null;
   recordRepository?.close();
