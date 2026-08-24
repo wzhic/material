@@ -45,7 +45,8 @@
     "GOV-0022"
   ],
   "git": {
-    "committed_sha": "604c7dc7fdae6d8d62e42f01fe507490228593e6"
+    "committed_sha": "604c7dc7fdae6d8d62e42f01fe507490228593e6",
+    "merged_sha": "5de60df790bcb7793cb1884619201787dc3e3ccd"
   },
   "history": [
     {
@@ -77,6 +78,20 @@
       "from": "LOCAL_VERIFIED",
       "reason": "commit the verified Windows command shim resolution and regressions",
       "to": "COMMITTED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T05:52:09+00:00",
+      "from": "COMMITTED",
+      "reason": "PR #20 merged after exact-head three-platform GitHub CI passed",
+      "to": "MERGED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T05:52:09+00:00",
+      "from": "MERGED",
+      "reason": "Windows shim repair is merged and its successor application CI can now resume",
+      "to": "DONE"
     }
   ],
   "open_questions": [],
@@ -96,10 +111,10 @@
   },
   "schema_version": 1,
   "scope_version": 1,
-  "status": "COMMITTED",
+  "status": "DONE",
   "summary": "修复 Windows 受控验证无法启动 npm.cmd：仅在 Windows 通过 PATH 解析受审命令 shim，继续使用精确 argv 与 shell=false。",
   "task_id": "GOV-0023",
-  "updated_at": "2026-08-24T05:36:35+00:00",
+  "updated_at": "2026-08-24T05:52:09+00:00",
   "validation": {
     "required": [
       {
