@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0001",
+  "base_head": "954af826e23104685fcb25d5f7099c5050939522",
+  "paths": [
+    "project-control/proposals/APP-0001-R008-scope.json",
+    "project-control/proposals/GOV-0003-task.json",
+    "tools/governance/taskctl.py",
+    "tools/governance/tests/test_cli.py"
+  ]
+}

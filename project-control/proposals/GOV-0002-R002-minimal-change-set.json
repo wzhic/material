@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0002",
+  "base_head": "891000e16eb65a0e633bc31a0aa5a5a6f0d30565",
+  "paths": [
+    "AGENTS.md",
+    "README.md",
+    "project-control/proposals/GOV-0002-task.json",
+    "tools/governance/projectctl.py",
+    "tools/governance/taskctl.py",
+    "tools/governance/tests/test_cli.py",
+    "tools/governance/tests/test_projectctl.py"
+  ]
+}

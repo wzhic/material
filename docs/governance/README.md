@@ -5,7 +5,8 @@
 - [治理总则-GOV-0001-v1.0](治理总则-GOV-0001-v1.0.md)
 - [假设和未决事项-GOV-0002-v1.0](假设和未决事项-GOV-0002-v1.0.md)
 - [验证与豁免-GOV-0003-v1.0](验证与豁免-GOV-0003-v1.0.md)
+- [治理精简-GOV-0004-v1.0](治理精简-GOV-0004-v1.0.md)
 
-治理规则的削弱、关闭或绕过属于高影响变更，必须由用户重新审核。
+治理规则的关闭或绕过属于高影响变更；减少重复审批但保留范围、受保护记录、不安全 Git 和真实验证，属于可回退的治理维护。现行边界以“普通工作自主完成、关键风险由用户决定”为准。
 
-`project-control/tasks/**`、`project-control/reviews/**` 和 `project-control/current-task.json` 均为受保护机器记录，不得直接编辑；使用对应 CLI 读取或变更。用户在当前 Codex 对话中明确决定后，Codex 只能通过窄口径 `reviewctl record-conversation` 自动绑定治理状态并追加回执；旧 `record` / `waive` 保持禁用。R003 是最后一份 OpenSSH 迁移回执，历史私钥不得进入仓库、Codex 或日志。
+`project-control/tasks/**`、`project-control/reviews/**` 和 `project-control/current-task.json` 均为受保护机器记录，不得直接编辑；使用对应 CLI 读取或变更。`reviewctl` 只记录验证豁免、破坏性/不可逆、高影响边界和最终动作决定。历史签名迁移与普通 scope/code 回执只作审计，不再是日常前置。

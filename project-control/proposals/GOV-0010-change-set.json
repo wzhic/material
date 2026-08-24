@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "task_id": "GOV-0010",
+  "base_head": "1655f3e34dddf28d01a40619545ffe1c81e748c8",
+  "paths": [
+    "tools/governance/validation_runner.py",
+    "tools/governance/tests/test_validation_runner.py"
+  ]
+}

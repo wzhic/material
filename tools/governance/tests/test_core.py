@@ -35,6 +35,12 @@ import taskctl  # noqa: E402
 
 
 class GitEncodingTests(unittest.TestCase):
+    def setUp(self) -> None:
+        core._WORKING_GIT_BY_CANDIDATES.clear()
+
+    def tearDown(self) -> None:
+        core._WORKING_GIT_BY_CANDIDATES.clear()
+
     def test_run_git_requests_utf8_instead_of_the_windows_locale(self) -> None:
         completed = mock.Mock(returncode=0, stdout="治理输出\n", stderr="")
         with mock.patch.object(core, "_git_candidates", return_value=["git"]), mock.patch.object(
@@ -53,6 +59,33 @@ class GitEncodingTests(unittest.TestCase):
             candidates = core._git_candidates()
         self.assertEqual("git", candidates[0])
 
+    def test_run_git_reuses_the_first_working_portable_candidate(self) -> None:
+        failed = mock.Mock(returncode=69, stdout="", stderr="license blocked")
+        passed = mock.Mock(returncode=0, stdout="ok\n", stderr="")
+        with mock.patch.object(
+            core, "_git_candidates", return_value=["/system/git", "/portable/git"]
+        ), mock.patch.object(
+            core.subprocess, "run", side_effect=[failed, passed, passed]
+        ) as run:
+            first, first_error = core.run_git(Path("."), ("status",))
+            second, second_error = core.run_git(Path("."), ("status",))
+
+        self.assertEqual(("ok", None), (first, first_error))
+        self.assertEqual(("ok", None), (second, second_error))
+        self.assertEqual(
+            ["/system/git", "/portable/git", "/portable/git"],
+            [call.args[0][0] for call in run.call_args_list],
+        )
+
+    def test_git_blob_paths_are_hashed_in_one_filtered_batch(self) -> None:
+        object_ids = "a" * 40 + "\n" + "b" * 40 + "\n"
+        with mock.patch.object(core, "run_git", return_value=(object_ids, None)) as run:
+            result = core._git_blob_oids(Path("."), ["a.txt", "dir/b.txt"])
+
+        self.assertEqual({"a.txt": "a" * 40, "dir/b.txt": "b" * 40}, result)
+        self.assertEqual(("hash-object", "--stdin-paths"), run.call_args.args[1])
+        self.assertEqual("a.txt\ndir/b.txt\n", run.call_args.kwargs["input_text"])
+
     def test_output_uses_utf8_bytes_when_console_text_encoding_is_cp1252(self) -> None:
         raw = io.BytesIO()
         stream = io.TextIOWrapper(raw, encoding="cp1252")
@@ -70,6 +103,33 @@ class GitEncodingTests(unittest.TestCase):
             (core.json_result({"message": "治理输出"}) + "\n").encode("utf-8"),
             raw.getvalue(),
         )
+
+
+class ManagedContentSubjectTests(unittest.TestCase):
+    def test_ignored_untracked_output_is_excluded_but_tracked_content_is_bound(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "generated").mkdir()
+            (root / ".gitignore").write_text("generated/\n", encoding="utf-8")
+            (root / "source.txt").write_text("source-v1\n", encoding="utf-8")
+            (root / "generated" / "tracked.txt").write_text("tracked-v1\n", encoding="utf-8")
+            for arguments in (
+                ("init",),
+                ("add", "--", ".gitignore", "source.txt"),
+                ("add", "-f", "--", "generated/tracked.txt"),
+            ):
+                _output, error = core.run_git(root, arguments)
+                self.assertIsNone(error)
+
+            task = base_task()
+            task["allowed_paths"] = [".gitignore", "source.txt", "generated/**"]
+            original = core.managed_content_subject(root, task)
+
+            (root / "generated" / "package.zip").write_bytes(b"generated-output")
+            self.assertEqual(original, core.managed_content_subject(root, task))
+
+            (root / "generated" / "tracked.txt").write_text("tracked-v2\n", encoding="utf-8")
+            self.assertNotEqual(original, core.managed_content_subject(root, task))
 
 
 class CanonicalScopeTests(unittest.TestCase):
@@ -245,19 +305,27 @@ class TaskSchemaTests(unittest.TestCase):
         with self.assertRaises(GovernanceError):
             validate_task(task)
 
-    def test_ready_validation_plan_is_nonempty_and_covers_all_gates(self) -> None:
+    def test_ready_validation_plan_is_nonempty_and_covers_local_gate(self) -> None:
         task = base_task(status="READY")
         task["validation"]["required"] = []
         with self.assertRaises(GovernanceError):
             validate_task(task)
 
-    def test_reviewed_scope_requires_fixed_authority_ci_and_coordination_contracts(self) -> None:
+        task = base_task(status="READY")
+        task["validation"]["required"][0]["gates"] = ["CI_VERIFIED"]
+        with self.assertRaises(GovernanceError):
+            validate_task(task)
+
+        task = base_task(status="READY")
+        task["validation"]["required"][0]["gates"] = ["LOCAL_VERIFIED"]
+        validate_task(task)
+
+    def test_historical_authority_ci_and_coordination_contracts_are_optional_but_validated(self) -> None:
         for field in ("review_authority", "ci_trust", "coordination"):
             with self.subTest(field=field):
                 task = base_task(status="REVIEW_PENDING")
                 del task[field]
-                with self.assertRaises(GovernanceError):
-                    validate_task(task)
+                validate_task(task)
 
         invalid_tasks = []
         wrong_namespace = base_task(status="REVIEW_PENDING")
@@ -272,6 +340,60 @@ class TaskSchemaTests(unittest.TestCase):
         for task in invalid_tasks:
             with self.assertRaises(GovernanceError):
                 validate_task(task)
+
+    def test_allowed_command_and_tool_hints_are_optional(self) -> None:
+        task = base_task(status="IN_PROGRESS")
+        del task["allowed_commands"]
+        del task["allowed_tools"]
+        validate_task(task)
+
+    def test_subtask_records_have_a_minimal_secret_free_shape(self) -> None:
+        task = base_task(status="IN_PROGRESS")
+        task["subtasks"] = [{
+            "id": "governance-cli",
+            "name": "治理命令",
+            "purpose": "精简普通工作门禁",
+            "status": "in_progress",
+            "started_at": "2026-08-21T00:00:00+00:00",
+            "finished_at": None,
+            "result": None,
+        }]
+        validate_task(task)
+
+        task["subtasks"][0]["prompt"] = "must never be persisted"
+        with self.assertRaises(GovernanceError):
+            validate_task(task)
+
+        for field, value in (
+            ("purpose", "password=correct-horse-battery-staple"),
+            ("purpose", "内部推理：逐步展示隐藏判断"),
+        ):
+            with self.subTest(field=field, value=value):
+                unsafe = base_task(status="IN_PROGRESS")
+                unsafe["subtasks"] = [{
+                    "id": "unsafe",
+                    "name": "不安全摘要",
+                    "purpose": value,
+                    "status": "in_progress",
+                    "started_at": "2026-08-21T00:00:00+00:00",
+                    "finished_at": None,
+                    "result": None,
+                }]
+                with self.assertRaises(GovernanceError):
+                    validate_task(unsafe)
+
+        unsafe_result = base_task(status="IN_PROGRESS")
+        unsafe_result["subtasks"] = [{
+            "id": "unsafe-result",
+            "name": "不安全结果",
+            "purpose": "核对结果摘要",
+            "status": "completed",
+            "started_at": "2026-08-21T00:00:00+00:00",
+            "finished_at": "2026-08-21T00:01:00+00:00",
+            "result": "-----BEGIN OPENSSH PRIVATE KEY-----",
+        }]
+        with self.assertRaises(GovernanceError):
+            validate_task(unsafe_result)
 
     def test_coordination_checks_must_be_reviewed_for_the_bound_unit(self) -> None:
         task = base_task(status="REVIEW_PENDING")
@@ -325,8 +447,7 @@ class TaskSchemaTests(unittest.TestCase):
 
         task = base_task(status="READY")
         task["validation"]["required"][0]["gates"] = ["LOCAL_VERIFIED", "CI_VERIFIED"]
-        with self.assertRaises(GovernanceError):
-            validate_task(task)
+        validate_task(task)
 
     def test_bootstrap_main_authority_is_hard_bound_to_gov_0001(self) -> None:
         for task_id in ("GOV-0001", "GOV-EVIL"):

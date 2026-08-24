@@ -1,0 +1,21 @@
+{
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "codex-conversation:2026-08-21:minimal-governance-subagents",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "目前的门禁过于严格了，需要进一步精简；允许任务生成子agent和子任务，但是子agent和子任务的记录都需要有记录",
+  "decided_at": "2026-08-21T10:49:37+00:00",
+  "decision": "approved",
+  "expires_at": null,
+  "kind": "scope",
+  "project_id": "material",
+  "reason": "user explicitly requested further governance simplification and allowed recorded subagents; this bounded scope only fixes the handoff commit needed to reach that task",
+  "recorded_by": "Codex",
+  "review_id": "APP-0001-R005",
+  "schema_version": 3,
+  "scope_hash": "sha256:d6f20852f5afcfa36abb8066dfb46de7fcbccc6d789dae29cf5ac81c2262e920",
+  "scope_version": 5,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "supersedes": null,
+  "task_id": "APP-0001"
+}

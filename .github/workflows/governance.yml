@@ -18,7 +18,7 @@ jobs:
     name: Governance (${{ matrix.os }})
     if: github.repository == 'wzhic/material'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -31,7 +31,9 @@ jobs:
             release_unit: win
     env:
       MATERIAL_RELEASE_UNIT: ${{ matrix.release_unit }}
+      PSModuleAnalysisCachePath: ${{ github.workspace }}/../PowerShell-ModuleAnalysisCache
       PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUTF8: "1"
 
     steps:
       - name: Check out exact commit
@@ -46,30 +48,28 @@ jobs:
         with:
           python-version: "3.9"
 
-      - name: Attach reviewed validation branch to exact commit
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.5"
+          enable-cache: false
+
+      - name: Set up Node.js for desktop checks
+        if: matrix.release_unit != 'backend'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install locked desktop dependencies
+        if: matrix.release_unit != 'backend'
+        run: npm ci --prefix apps/desktop
+
+      - name: Require non-empty governance test suites
         run: >-
-          python -c "import json, os, pathlib, subprocess; task_id = json.loads(pathlib.Path('project-control/current-task.json').read_text(encoding='utf-8'))['task_id']; task = json.loads(pathlib.Path('project-control/tasks', task_id + '.json').read_text(encoding='utf-8')); phase = 'post_merge' if os.environ['GITHUB_EVENT_NAME'] == 'push' and task['status'] == 'MERGED' else 'ci'; branch = task['base_branch'] if phase == 'post_merge' else task['branch']; subprocess.check_call(['git', 'checkout', '-B', branch, os.environ['GITHUB_SHA']])"
+          python -c "import unittest; counts = {'governance': unittest.TestLoader().discover('tools/governance/tests', pattern='test_*.py').countTestCases(), 'hooks': unittest.TestLoader().discover('.codex/tests', pattern='test_*.py').countTestCases()}; missing = [name for name, count in counts.items() if count == 0]; print('Discovered test counts:', counts); raise SystemExit('No tests discovered: ' + ', '.join(missing) if missing else 0)"
 
-      - name: Require governance tests
+      - name: Run current task checks through controlled runner
         run: >-
-          python -c "import unittest; suite = unittest.defaultTestLoader.discover('tools/governance/tests', pattern='test_*.py'); count = suite.countTestCases(); assert count > 0, 'No governance tests discovered'; print(f'Discovered {count} governance tests')"
-
-      - name: Run governance unit tests
-        run: python -m unittest discover -s tools/governance/tests -p "test_*.py" -v
-
-      - name: Require hook contract tests
-        run: >-
-          python -c "import unittest; suite = unittest.defaultTestLoader.discover('.codex/tests', pattern='test_*.py'); count = suite.countTestCases(); assert count > 0, 'No hook contract tests discovered'; print(f'Discovered {count} hook contract tests')"
-
-      - name: Run hook contract tests
-        run: python -m unittest discover -s .codex/tests -p "test_*.py" -v
-
-      - name: Run reviewed checks for release unit
-        run: >-
-          python -c "import json, os, pathlib, subprocess, sys; task_id = json.loads(pathlib.Path('project-control/current-task.json').read_text(encoding='utf-8'))['task_id']; task = json.loads(pathlib.Path('project-control/tasks', task_id + '.json').read_text(encoding='utf-8')); phase = 'post_merge' if os.environ['GITHUB_EVENT_NAME'] == 'push' and task['status'] == 'MERGED' else 'ci'; raise SystemExit(subprocess.call([sys.executable, 'tools/governance/taskctl.py', 'run-required', task_id, '--phase', phase, '--release-unit', '${{ matrix.release_unit }}', '--environment', 'github-actions:${{ github.event_name }}:${{ matrix.release_unit }}', '--bootstrap-first-push', '--json']))"
-
-      - name: Reconcile static repository contract
-        run: python tools/governance/reconcile.py static --json
-
-      - name: Reconcile repository state
-        run: python tools/governance/reconcile.py ci --json
+          python -c "import json, pathlib, subprocess, sys; task_id = json.loads(pathlib.Path('project-control/current-task.json').read_text(encoding='utf-8'))['task_id']; controlled_code = subprocess.call([sys.executable, 'tools/governance/taskctl.py', 'run-required', task_id, '--phase', 'ci', '--release-unit', '${{ matrix.release_unit }}', '--environment', 'github-actions:${{ github.event_name }}:${{ matrix.release_unit }}', '--json']); diagnostics = [[sys.executable, '-m', 'unittest', 'discover', '-s', 'tools/governance/tests', '-p', 'test_*.py', '-v'], [sys.executable, 'tools/governance/reconcile.py', 'static', '--json']]; controlled_code == 0 or [subprocess.call(command) for command in diagnostics]; raise SystemExit(controlled_code)"

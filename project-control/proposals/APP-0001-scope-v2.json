@@ -1,0 +1,73 @@
+{
+  "task_id": "APP-0001",
+  "allowed_paths": [
+    ".github/**",
+    ".gitignore",
+    "README.md",
+    "apps/**",
+    "docs/**",
+    "project-control/**",
+    "tools/governance/projectctl.py",
+    "tools/governance/reconcile.py",
+    "tools/governance/tests/test_projectctl.py",
+    "tools/governance/tests/test_reconcile_ci_static.py"
+  ],
+  "validation": {
+    "required": [
+      {
+        "id": "desktop_lint",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "lint"],
+        "timeout_seconds": 600,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_package",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "package"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "backend_import",
+        "argv": ["uv", "run", "--project", "apps/backend", "python", "-c", "import fastapi"],
+        "timeout_seconds": 600,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["backend"]
+      },
+      {
+        "id": "repository_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "static", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      },
+      {
+        "id": "governance_unit_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", "tools/governance/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      }
+    ],
+    "results": []
+  },
+  "coordination": {
+    "mode": "coordinated-multi",
+    "coordinator_task": "APP-0001",
+    "unit_tasks": {"mac": "APP-0001", "win": "APP-0001", "backend": "APP-0001"},
+    "compatibility_matrix_doc": "docs/requirements/项目初始化-REQ-0002/项目初始化-REQ-0002-v1.0.md",
+    "deployment_order": ["backend", "mac", "win"],
+    "rollback_order": ["win", "mac", "backend"],
+    "unit_validation_checks": {
+      "mac": ["desktop_lint", "desktop_package", "repository_reconcile", "governance_unit_tests"],
+      "win": ["desktop_lint", "desktop_package", "repository_reconcile", "governance_unit_tests"],
+      "backend": ["backend_import", "repository_reconcile", "governance_unit_tests"]
+    },
+    "unit_rollback_checks": {
+      "mac": ["desktop_package"],
+      "win": ["desktop_package"],
+      "backend": ["backend_import"]
+    }
+  }
+}

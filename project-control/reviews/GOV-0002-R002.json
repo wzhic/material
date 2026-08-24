@@ -1,0 +1,23 @@
+{
+  "action": "merge",
+  "approval_mode": "conversation-v1",
+  "approver": "user",
+  "confirmation_ref": "conversation:2026-08-24:merge-all-pr-stack",
+  "confirmation_source": "codex-conversation",
+  "confirmation_text": "允许继续访问 GitHub，核对 CI 并合并全部 PR 栈",
+  "decided_at": "2026-08-24T06:01:54+00:00",
+  "decision": "approved",
+  "expires_at": "2026-08-25T05:00:00+00:00",
+  "kind": "final_action",
+  "project_id": "material",
+  "reason": "user authorized merging the complete PR stack after CI verification",
+  "recorded_by": "Codex",
+  "review_id": "GOV-0002-R002",
+  "schema_version": 3,
+  "scope_hash": "sha256:519a1f8f90b9fc1134cd5e8144b32184bdd5f84b8e3e5af2bfad798debc52812",
+  "scope_version": 1,
+  "source_repository": "git@github.com:wzhic/material.git",
+  "subject": "commit:c6ca5f348276bc62492a7409657e3c8f7849cbfa",
+  "supersedes": null,
+  "task_id": "GOV-0002"
+}

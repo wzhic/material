@@ -832,18 +832,194 @@ def shell_words(command: str) -> Optional[List[str]]:
     return words
 
 
+def _looks_like_final_script(value: str) -> bool:
+    normalized = value.casefold().replace("_", "-")
+    return any(
+        normalized == marker
+        or normalized.startswith(marker + ":")
+        or normalized.startswith(marker + "-")
+        for marker in ("deploy", "merge", "publish", "release")
+    )
+
+
+def final_action_bash_reason(words: Sequence[str]) -> Optional[str]:
+    """Identify commands that cross the merge/deploy/release decision boundary."""
+
+    if not words:
+        return None
+    executable = Path(words[0]).name.casefold()
+    raw_arguments = words[1:]
+    arguments = [word.casefold() for word in raw_arguments]
+    final_flags = ("--deploy", "--merge", "--publish", "--release")
+    if any(
+        (argument == flag or argument.startswith(flag + "="))
+        and not (flag == "--release" and executable in {"cargo", "cargo.exe"})
+        for argument in arguments
+        for flag in final_flags
+    ):
+        return "merge, deploy, and release actions require an explicit final_action decision"
+    if executable in {"make", "gmake", "cmake", "ninja"} and any(
+        _looks_like_final_script(argument)
+        for argument in arguments
+        if not argument.startswith("-")
+    ):
+        return "make deploy/release targets require an explicit final_action decision"
+    if executable in {
+        "npm", "npm.cmd", "pnpm", "pnpm.cmd", "yarn", "yarn.cmd",
+    }:
+        if any(
+            argument in {"deploy", "merge", "publish", "release", "unpublish"}
+            for argument in arguments
+        ):
+            return "package publication requires an explicit final_action decision"
+        for marker in ("run", "run-script"):
+            if marker in arguments:
+                index = arguments.index(marker)
+                if index + 1 < len(arguments) and _looks_like_final_script(arguments[index + 1]):
+                    return "deploy/release scripts require an explicit final_action decision"
+    if executable == "git" and "merge" in arguments:
+        return "Git merge requires an explicit final_action decision"
+    delegated_arguments: Sequence[str] = ()
+    if executable in {"bunx", "npx", "npx.cmd"}:
+        delegated_arguments = arguments
+    elif executable in {"uv", "uv.exe"} and arguments[:1] == ["run"]:
+        delegated_arguments = arguments[1:]
+    if any(_looks_like_final_script(argument) for argument in delegated_arguments):
+        return "delegated deployment or release requires an explicit final_action decision"
+    if executable in {"gh", "gh.exe"}:
+        if "pr" in arguments and "merge" in arguments:
+            return "pull-request merge requires an explicit final_action decision"
+        if "release" in arguments:
+            return "GitHub release requires an explicit final_action decision"
+    external_actions = {
+        "aws": {"deploy", "publish"},
+        "docker": {"--push", "push"},
+        "firebase": {"deploy"},
+        "fly": {"deploy", "release"},
+        "flyctl": {"deploy", "release"},
+        "helm": {"install", "rollback", "uninstall", "upgrade"},
+        "kubectl": {"apply", "delete", "replace", "rollout"},
+        "netlify": {"deploy"},
+        "serverless": {"deploy", "remove"},
+        "sls": {"deploy", "remove"},
+        "terraform": {"apply", "destroy", "import"},
+        "vercel": {"deploy"},
+        "wrangler": {"deploy", "publish"},
+    }
+    if executable in external_actions and any(
+        argument in external_actions[executable] for argument in arguments
+    ):
+        return "external deployment or release requires an explicit final_action decision"
+    return None
+
+
+def _git_command_parts(words: Sequence[str]) -> Tuple[str, List[str]]:
+    """Find the Git subcommand without mistaking global-option values for it."""
+
+    arguments = list(words[1:])
+    value_options = {
+        "-c",
+        "-C",
+        "--config-env",
+        "--exec-path",
+        "--git-dir",
+        "--namespace",
+        "--super-prefix",
+        "--work-tree",
+    }
+    index = 0
+    while index < len(arguments):
+        argument = arguments[index]
+        if argument in value_options:
+            if index + 1 >= len(arguments):
+                return "", []
+            index += 2
+            continue
+        if any(
+            argument.startswith(option + "=")
+            for option in value_options
+            if option.startswith("--")
+        ) or (len(argument) > 2 and argument[:2] in {"-c", "-C"}):
+            index += 1
+            continue
+        if argument.startswith("-"):
+            index += 1
+            continue
+        return argument.casefold(), arguments[index + 1 :]
+    return "", []
+
+
+def _destructive_push_refspec(argument: str) -> bool:
+    lowered = argument.casefold()
+    if lowered.startswith(":") or lowered.startswith("+:"):
+        return True
+    target = lowered.rsplit(":", 1)[-1].lstrip("+")
+    return target in {"main", "master", "refs/heads/main", "refs/heads/master"}
+
+
 def prohibited_bash_reason(command: str) -> Optional[str]:
     words = shell_words(command)
     lowered = command.lower()
     if words is None:
         return "shell control operators, substitutions, redirections, or malformed quoting are blocked"
+    final_action_reason = final_action_bash_reason(words)
+    if final_action_reason is not None:
+        return final_action_reason
     executable = Path(words[0]).name.lower()
     if executable in {"rm", "rmdir", "shred", "sudo", "doas"}:
-        return f"destructive command {executable!r} is blocked during G0"
+        return f"destructive or elevated command {executable!r} is blocked"
     if executable == "git" and len(words) > 1:
-        git_words = [word.lower() for word in words[1:] if not word.startswith("-")]
-        if git_words and git_words[0] in {"commit", "push"}:
-            return f"git {git_words[0]} is not authorized during G0"
+        subcommand, raw_arguments = _git_command_parts(words)
+        arguments = [word.casefold() for word in raw_arguments]
+        if subcommand in {
+            "clean",
+            "commit",
+            "filter-branch",
+            "merge",
+            "rebase",
+            "reset",
+        }:
+            return f"dangerous or final-action Git command {subcommand!r} is blocked"
+        if subcommand in {"checkout", "restore"}:
+            return f"Git {subcommand} may discard task files and is blocked"
+        if subcommand == "switch" and any(
+            argument
+            in {"-C", "--discard-changes", "--force", "--force-create", "-f"}
+            for argument in raw_arguments
+        ):
+            return "Git switch may replace a branch or discard task files and is blocked"
+        if subcommand == "push":
+            force_options = {
+                "-f",
+                "--force",
+                "--force-if-includes",
+                "--force-with-lease",
+                "--mirror",
+                "--delete",
+                "--prune",
+            }
+            if any(
+                argument in force_options
+                or argument.startswith("--force-with-lease=")
+                or argument.startswith("--delete=")
+                or argument.startswith("+")
+                for argument in arguments
+            ):
+                return "force, delete, or mirror Git push is blocked"
+            if any(_destructive_push_refspec(argument) for argument in raw_arguments):
+                return "direct push to a protected main branch or deleting refspec is blocked"
+        if subcommand == "branch" and any(
+            argument in {"-d", "-D", "--delete"} for argument in raw_arguments
+        ):
+            return "Git branch deletion is blocked"
+        if subcommand == "stash" and any(
+            argument in {"drop", "clear"} for argument in arguments
+        ):
+            return "destructive Git stash operation is blocked"
+        if subcommand == "worktree" and any(
+            argument in {"remove", "prune"} for argument in arguments
+        ):
+            return "destructive Git worktree operation is blocked"
     blocked_fragments = (
         "--no-verify",
         "[skip ci]",
@@ -856,6 +1032,299 @@ def prohibited_bash_reason(command: str) -> Optional[str]:
         if fragment in lowered:
             return f"verification bypass marker {fragment!r} is blocked"
     return None
+
+
+_ORDINARY_PATH_OPTIONS = {
+    "--append-output",
+    "--basetemp",
+    "--cache-dir",
+    "--config",
+    "--cwd",
+    "--directory",
+    "--directory-prefix",
+    "--dir",
+    "--junitxml",
+    "--manifest-path",
+    "--output",
+    "--output-document",
+    "--output-file",
+    "--prefix",
+    "--project",
+    "--rootdir",
+    "--start-directory",
+    "-B",
+    "-C",
+    "-O",
+    "-P",
+    "-S",
+    "-o",
+    "-s",
+}
+_ORDINARY_JOINED_PATH_OPTIONS = {"-B", "-C", "-O", "-P", "-S", "-o", "-s"}
+
+
+def _ordinary_argument_paths(words: Sequence[str]) -> List[str]:
+    """Extract explicit path operands, including option=value output paths."""
+
+    values: List[str] = []
+    index = 1
+    while index < len(words):
+        argument = words[index]
+        if argument in _ORDINARY_PATH_OPTIONS:
+            if index + 1 < len(words):
+                values.append(words[index + 1])
+            index += 2
+            continue
+        long_option = next(
+            (
+                option
+                for option in _ORDINARY_PATH_OPTIONS
+                if option.startswith("--") and argument.startswith(option + "=")
+            ),
+            None,
+        )
+        if long_option is not None:
+            values.append(argument.split("=", 1)[1])
+            index += 1
+            continue
+        short_option = next(
+            (
+                option
+                for option in _ORDINARY_JOINED_PATH_OPTIONS
+                if argument.startswith(option) and len(argument) > len(option)
+            ),
+            None,
+        )
+        if short_option is not None:
+            values.append(argument[len(short_option) :])
+            index += 1
+            continue
+        if not argument.startswith("-"):
+            lowered = argument.casefold()
+            possible = Path(argument)
+            if (
+                not argument.startswith("@")
+                and not lowered.startswith(("http://", "https://", "ssh://", "git@"))
+                and (
+                    argument.startswith((".", "~", "/", "\\"))
+                    or "/" in argument
+                    or "\\" in argument
+                    or possible.exists()
+                )
+            ):
+                values.append(argument)
+        index += 1
+    return list(dict.fromkeys(values))
+
+
+def _ordinary_scoped_path_reason(
+    raw_value: str,
+    repo_root: Path,
+    cwd: Path,
+    allowed_paths: Sequence[Any],
+) -> Optional[str]:
+    if raw_value in {"", "-"}:
+        return None
+    normalized = raw_value.replace("\\", "/")
+    if normalized.startswith("~") or re.match(r"^[A-Za-z]:/", normalized):
+        return f"ordinary Bash path is outside the repository: {raw_value!r}"
+    candidate = Path(raw_value)
+    possible = candidate if candidate.is_absolute() else cwd / candidate
+    try:
+        relative = possible.resolve(strict=False).relative_to(
+            repo_root.resolve()
+        ).as_posix()
+    except (OSError, RuntimeError, ValueError):
+        return f"ordinary Bash path is outside the repository: {raw_value!r}"
+    if direct_governance_mutation_reason(relative) is not None:
+        return f"ordinary Bash targets protected governance path {relative!r}"
+    if not path_is_allowed(relative, allowed_paths):
+        return f"ordinary Bash path is outside task.allowed_paths: {relative!r}"
+    return None
+
+
+def ordinary_bash_scope_reason(
+    command: str,
+    repo_root: Path,
+    cwd: Path,
+    allowed_paths: Sequence[Any],
+) -> Optional[str]:
+    """Reject obvious direct protected-state or out-of-repository mutations.
+
+    Ordinary development commands are no longer individually approved.  This
+    conservative lexical check complements the filesystem sandbox: it catches
+    the protected machine records and explicit path escapes while leaving
+    package managers, test runners, formatters and network clients usable.
+    """
+
+    words = shell_words(command)
+    if words is None:
+        return "ordinary command could not be parsed safely"
+    if not isinstance(allowed_paths, Sequence) or isinstance(allowed_paths, (str, bytes)):
+        return "task.allowed_paths is missing or invalid"
+    executable = Path(words[0]).name.casefold()
+    normalized = command.replace("\\", "/").casefold()
+    if any(
+        protected in normalized
+        for protected in (
+            "project-control/tasks",
+            "project-control/reviews",
+            "project-control/current-task.json",
+        )
+    ):
+        return "ordinary Bash may not directly modify protected governance records"
+    explicit_values = _ordinary_argument_paths(words)
+    checked_paths = []
+    for argument in explicit_values:
+        if argument in {"", "-"} or argument.startswith(
+            ("http://", "https://", "ssh://", "git@")
+        ):
+            continue
+        reason = _ordinary_scoped_path_reason(argument, repo_root, cwd, allowed_paths)
+        if reason is not None:
+            return reason
+        checked_paths.append(argument)
+
+    wget_stdout_only = executable in {"wget", "wget.exe"} and (
+        "--spider" in words[1:]
+        or "--output-document=-" in words[1:]
+        or "-O-" in words[1:]
+        or any(
+            words[index] in {"-O", "--output-document"}
+            and index + 1 < len(words)
+            and words[index + 1] == "-"
+            for index in range(1, len(words))
+        )
+    )
+    writes_by_default = not wget_stdout_only and executable in {
+        "cargo", "cargo.exe", "cmake", "go", "go.exe", "gmake", "make", "ninja",
+        "npm", "npm.cmd", "pnpm", "pnpm.cmd", "uv", "uv.exe", "wget", "wget.exe",
+        "yarn", "yarn.cmd",
+    }
+    if writes_by_default and not checked_paths:
+        try:
+            cwd_relative = cwd.resolve().relative_to(repo_root.resolve()).as_posix()
+        except (OSError, RuntimeError, ValueError):
+            return "ordinary Bash working directory is outside the repository"
+        if not path_is_allowed(cwd_relative, allowed_paths):
+            return (
+                "ordinary Bash write location is not explicit and cwd is outside "
+                "task.allowed_paths; use a scoped --prefix/--dir/--cwd option"
+            )
+    return None
+
+
+def is_ordinary_development_bash(
+    command: str,
+    repo_root: Path,
+    cwd: Path,
+    allowed_paths: Sequence[Any],
+) -> bool:
+    """Allow common reversible development work without per-task command lists."""
+
+    if prohibited_bash_reason(command) is not None:
+        return False
+    if ordinary_bash_scope_reason(command, repo_root, cwd, allowed_paths) is not None:
+        return False
+    words = shell_words(command)
+    if not words:
+        return False
+    executable = Path(words[0]).name.casefold()
+    raw_arguments = list(words[1:])
+    arguments = [word.casefold() for word in words[1:]]
+    if executable in {"python", "python3", "py", "python.exe", "python3.exe"}:
+        return len(arguments) >= 2 and arguments[0] == "-m" and arguments[1] in {
+            "compileall",
+            "pytest",
+            "unittest",
+        }
+    if executable in {"pytest", "ruff"}:
+        return True
+    if executable in {"npm", "npm.cmd"}:
+        npm_args = [argument for argument in arguments if not argument.startswith("--prefix")]
+        blocked = {
+            "access", "adduser", "deprecate", "dist-tag", "exec", "login",
+            "logout", "owner", "profile", "publish", "star", "token", "unpublish",
+        }
+        return bool(npm_args) and not any(argument in blocked for argument in npm_args)
+    if executable in {"pnpm", "pnpm.cmd", "yarn", "yarn.cmd"}:
+        blocked = {"dlx", "exec", "npm", "publish", "unpublish"}
+        return bool(arguments) and not any(argument in blocked for argument in arguments)
+    if executable in {"uv", "uv.exe"}:
+        return bool(arguments) and arguments[0] in {
+            "add",
+            "build",
+            "lock",
+            "remove",
+            "run",
+            "sync",
+            "tree",
+        }
+    if executable in {"cargo", "cargo.exe"}:
+        return bool(arguments) and arguments[0] in {
+            "build",
+            "check",
+            "clippy",
+            "fetch",
+            "fmt",
+            "test",
+        }
+    if executable in {"go", "go.exe"}:
+        return bool(arguments) and arguments[0] in {
+            "build",
+            "fmt",
+            "mod",
+            "test",
+            "vet",
+        }
+    if executable in {"make", "gmake", "cmake", "ninja"}:
+        return True
+    if executable in {"curl", "curl.exe", "wget", "wget.exe"}:
+        mutating_network_options = {
+            "--data",
+            "--data-ascii",
+            "--data-binary",
+            "--data-raw",
+            "--data-urlencode",
+            "--form",
+            "--form-string",
+            "--json",
+            "--method",
+            "--post-file",
+            "--post-data",
+            "--request",
+            "--upload-file",
+            "--body-data",
+            "--body-file",
+        }
+        if any(
+            argument in mutating_network_options
+            or any(argument.startswith(option + "=") for option in mutating_network_options)
+            for argument in arguments
+        ):
+            return False
+        if any(
+            argument == option or argument.startswith(option)
+            for argument in raw_arguments
+            for option in ("-F", "-T", "-X", "-d")
+        ):
+            return False
+        if any(
+            argument in {"--config", "-K"} or argument.startswith("-K")
+            for argument in raw_arguments
+        ):
+            return False
+        if executable in {"wget", "wget.exe"}:
+            return "--spider" in arguments or any(
+                argument in {"-O", "--output-document"}
+                or argument.startswith(("-O", "--output-document="))
+                for argument in raw_arguments
+            )
+        return not any(
+            argument in {"-O", "--remote-header-name", "--remote-name"}
+            for argument in raw_arguments
+        )
+    return False
 
 
 def _path_arg_inside_repo(repo_root: Path, cwd: Path, raw: str) -> bool:
@@ -897,6 +1366,25 @@ def _safe_git_read(words: Sequence[str]) -> bool:
     return False
 
 
+def _safe_sed_read(
+    words: Sequence[str],
+    repo_root: Path,
+    cwd: Path,
+) -> bool:
+    """Recognize only quiet line-range printing, never sed write modes."""
+
+    if len(words) < 4 or words[1] not in {"-n", "--quiet", "--silent"}:
+        return False
+    expression = words[2]
+    if re.fullmatch(r"(?:[0-9]+|\$)(?:,(?:[0-9]+|\$))?p", expression) is None:
+        return False
+    files = list(words[3:])
+    return bool(files) and all(
+        not value.startswith("-") and _path_arg_inside_repo(repo_root, cwd, value)
+        for value in files
+    )
+
+
 def is_strict_readonly_bash(command: str, repo_root: Path, cwd: Path) -> bool:
     if prohibited_bash_reason(command) is not None:
         return False
@@ -916,6 +1404,8 @@ def is_strict_readonly_bash(command: str, repo_root: Path, cwd: Path) -> bool:
             or word.startswith("--generate")
             for word in words[1:]
         )
+    if executable == "sed":
+        return _safe_sed_read(words, repo_root, cwd)
     if executable in {"ls", "cat", "head", "tail", "wc", "stat", "file", "readlink", "realpath"}:
         if executable == "tail" and any(word in {"-f", "--follow"} or word.startswith("--follow=") for word in words[1:]):
             return False
@@ -1045,6 +1535,65 @@ def _taskctl_controlled_shape(
     arguments: Sequence[str],
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     common_optional = ("--environment", "--release-unit", "--root")
+    if subcommand == "begin":
+        parsed, error = _exact_cli_shape(
+            arguments,
+            positional_count=1,
+            required_value_options=("--actor", "--reason"),
+            optional_value_options=("--root",),
+        )
+        if error is not None or parsed is None:
+            return parsed, error
+        if TASK_ID_RE.fullmatch(parsed["positionals"][0]) is None:
+            return None, "task_id is invalid"
+        if parsed["values"]["--actor"] != "Codex":
+            return None, "--actor must be Codex exactly"
+        return parsed, None
+    if subcommand == "subtask-start":
+        parsed, error = _exact_cli_shape(
+            arguments,
+            positional_count=1,
+            required_value_options=("--id", "--name", "--purpose", "--actor"),
+            optional_value_options=("--root",),
+        )
+        if error is not None or parsed is None:
+            return parsed, error
+        values = parsed["values"]
+        if TASK_ID_RE.fullmatch(parsed["positionals"][0]) is None:
+            return None, "task_id is invalid"
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", values["--id"]) is None:
+            return None, "--id contains unsupported characters"
+        if any(
+            not values[option].strip()
+            or len(values[option]) > 512
+            or "\x00" in values[option]
+            for option in ("--name", "--purpose")
+        ):
+            return None, "--name and --purpose must be non-empty bounded text"
+        if values["--actor"] != "Codex":
+            return None, "--actor must be Codex exactly"
+        return parsed, None
+    if subcommand == "subtask-finish":
+        parsed, error = _exact_cli_shape(
+            arguments,
+            positional_count=1,
+            required_value_options=("--id", "--status", "--result", "--actor"),
+            optional_value_options=("--root",),
+        )
+        if error is not None or parsed is None:
+            return parsed, error
+        values = parsed["values"]
+        if TASK_ID_RE.fullmatch(parsed["positionals"][0]) is None:
+            return None, "task_id is invalid"
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", values["--id"]) is None:
+            return None, "--id contains unsupported characters"
+        if values["--status"] not in {"completed", "failed", "cancelled"}:
+            return None, "--status must be completed, failed, or cancelled"
+        if not values["--result"].strip() or len(values["--result"]) > 4096:
+            return None, "--result must be non-empty bounded text"
+        if values["--actor"] != "Codex":
+            return None, "--actor must be Codex exactly"
+        return parsed, None
     if subcommand == "run-validation":
         parsed, error = _exact_cli_shape(
             arguments,
@@ -1131,6 +1680,38 @@ def _taskctl_controlled_shape(
             return parsed, error
         if parsed["positionals"] != ["GOV-0001"]:
             return None, "bootstrap recovery is limited to GOV-0001"
+        if parsed["values"]["--actor"] != "Codex":
+            return None, "--actor must be Codex exactly"
+        return parsed, None
+    if subcommand == "commit-task":
+        parsed, error = _exact_cli_shape(
+            arguments,
+            positional_count=1,
+            required_value_options=("--manifest", "--actor", "--reason"),
+            optional_value_options=("--root",),
+        )
+        if error is not None or parsed is None:
+            return parsed, error
+        task_id = parsed["positionals"][0]
+        if TASK_ID_RE.fullmatch(task_id) is None:
+            return None, "task_id is invalid"
+        if parsed["values"]["--actor"] != "Codex":
+            return None, "--actor must be Codex exactly"
+        manifest = parsed["values"]["--manifest"]
+        if not manifest.startswith("project-control/proposals/%s-" % task_id) or not manifest.endswith(".json"):
+            return None, "--manifest must name a current-task proposal JSON file"
+        return parsed, None
+    if subcommand in {"start-branch", "push-task", "recover-blocked"}:
+        parsed, error = _exact_cli_shape(
+            arguments,
+            positional_count=1,
+            required_value_options=("--actor", "--reason"),
+            optional_value_options=("--root",),
+        )
+        if error is not None or parsed is None:
+            return parsed, error
+        if TASK_ID_RE.fullmatch(parsed["positionals"][0]) is None:
+            return None, "task_id is invalid"
         if parsed["values"]["--actor"] != "Codex":
             return None, "--actor must be Codex exactly"
         return parsed, None
@@ -1260,7 +1841,7 @@ def governance_cli_policy(
 
     script_text = words[1]
     script_name = script_text.replace("\\", "/").rsplit("/", 1)[-1].lower()
-    if script_name not in {"taskctl.py", "reviewctl.py"}:
+    if script_name not in {"taskctl.py", "reviewctl.py", "reconcile.py"}:
         return None
     actual_script = _resolved_argument_path(script_text, cwd, strict=True)
     expected_script = (
@@ -1281,6 +1862,18 @@ def governance_cli_policy(
             return False, "governance CLI --root must be the current repository"
 
     subcommand = arguments[0]
+    if script_name == "reconcile.py":
+        if subcommand not in {"session", "docs", "workflow", "static", "precommit", "ci"}:
+            return False, f"reconcile profile is not permitted through Codex: {subcommand}"
+        _parsed, error = _exact_cli_shape(
+            arguments,
+            positional_count=0,
+            required_value_options=(),
+            optional_value_options=("--root",),
+        )
+        if error is not None:
+            return False, f"reconcile arguments are invalid: {error}"
+        return True, "reconcile profile is read-only and lifecycle-safe"
     if script_name == "reviewctl.py":
         if subcommand in {"record", "waive"}:
             return False, (
@@ -1317,11 +1910,26 @@ def governance_cli_policy(
             return True, "read-only review query"
         return False, f"reviewctl subcommand is not permitted through Codex: {subcommand}"
 
-    read_subcommands = {"current", "show", "list", "scope-hash"}
+    read_subcommands = {
+        "current", "show", "list", "scope-hash", "prepare-recovery", "open-pr",
+    }
     if subcommand in read_subcommands:
         return True, "read-only task query"
+    if subcommand == "subtask-list":
+        parsed, error = _exact_cli_shape(
+            arguments,
+            positional_count=1,
+            required_value_options=(),
+            optional_value_options=("--root",),
+        )
+        if error is not None or parsed is None:
+            return False, f"taskctl subtask-list arguments are invalid: {error}"
+        if TASK_ID_RE.fullmatch(parsed["positionals"][0]) is None:
+            return False, "taskctl subtask-list task_id is invalid"
+        return True, "read-only subtask query"
     write_subcommands = {
         "create",
+        "begin",
         "set-current",
         "reopen",
         "revise-scope",
@@ -1334,14 +1942,23 @@ def governance_cli_policy(
         "bootstrap-push",
         "recover-committed",
         "recover-pending-content",
+        "start-branch",
+        "commit-task",
+        "push-task",
+        "recover-blocked",
+        "subtask-start",
+        "subtask-finish",
     }
     if subcommand not in write_subcommands:
         return False, f"taskctl subcommand is not lifecycle-approved: {subcommand}"
 
     if subcommand in {
-        "run-validation", "run-required", "sync-github-run",
+        "begin", "run-validation", "run-required", "sync-github-run",
         "bootstrap-commit", "bootstrap-push", "recover-committed",
         "recover-pending-content",
+        "start-branch",
+        "commit-task", "push-task", "recover-blocked",
+        "subtask-start", "subtask-finish",
     }:
         parsed, error = _taskctl_controlled_shape(subcommand, arguments)
         if error is not None:
@@ -1364,6 +1981,18 @@ def governance_cli_policy(
             )
         if subcommand.startswith("bootstrap-"):
             return True, f"taskctl {subcommand} uses the exact GOV-0001 Git transport path"
+        if subcommand == "start-branch":
+            return True, "taskctl start-branch creates only the reviewed local task branch"
+        if subcommand == "commit-task":
+            return True, "taskctl commit-task creates only reviewed content and protected control commits"
+        if subcommand == "push-task":
+            return True, "taskctl push-task permits only a non-force feature-branch fast-forward"
+        if subcommand == "recover-blocked":
+            return True, "taskctl recover-blocked invalidates evidence for append-only same-scope rework"
+        if subcommand == "begin":
+            return True, "taskctl begin creates the task branch and enters scoped work"
+        if subcommand.startswith("subtask-"):
+            return True, "taskctl records a bounded subtask lifecycle entry"
         return True, f"taskctl {subcommand} uses the controlled validation evidence path"
 
     if subcommand in {"create", "revise-scope"}:
@@ -1402,11 +2031,35 @@ def safe_local_read_tool(
     repo_root: Path,
     cwd: Optional[Path] = None,
 ) -> bool:
+    normalized_tool = "".join(
+        character for character in tool_name.casefold() if character.isalnum()
+    )
+    if normalized_tool in {"mcpwebrun", "webrun"}:
+        read_only_web_keys = {
+            "click",
+            "finance",
+            "find",
+            "image_query",
+            "open",
+            "response_length",
+            "screenshot",
+            "search_query",
+            "sports",
+            "time",
+            "weather",
+        }
+        return (
+            isinstance(tool_input, dict)
+            and bool(tool_input)
+            and set(tool_input).issubset(read_only_web_keys)
+            and any(key != "response_length" for key in tool_input)
+        )
     exact_without_paths = {
         "codex_app__read_thread_terminal",
         "get_goal",
         "Glob",
         "Grep",
+        "update_plan",
     }
     if tool_name in exact_without_paths:
         return True

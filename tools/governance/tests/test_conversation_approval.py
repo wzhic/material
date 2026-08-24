@@ -20,6 +20,7 @@ import core  # noqa: E402
 from core import (  # noqa: E402
     canonical_scope_hash,
     find_effective_code_review,
+    find_effective_final_action_review,
     find_effective_review,
     managed_content_subject,
     read_json,
@@ -147,6 +148,37 @@ class ConversationReceiptTests(unittest.TestCase):
             self.assertEqual(VERIFIED_COMMIT, receipt["commit"])
             self.assertIsNone(find_effective_code_review(root, task, "d" * 40)[0])
 
+    def test_final_merge_conversation_receipt_allows_only_the_bound_task(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = base_task(status="COMMITTED")
+            task["git"] = {"committed_sha": VERIFIED_COMMIT}
+            initialize_root(root, task, approved=False)
+            task["validation"]["results"] = [valid_local_pass(root, task)]
+            write_json(root / "project-control" / "tasks" / "GOV-TEST.json", task)
+            self.assertEqual(
+                0,
+                self._record(
+                    root,
+                    task["task_id"],
+                    "--kind", "final_action",
+                    "--action", "merge",
+                    "--expires-at", "2099-01-01T00:00:00+00:00",
+                ),
+            )
+            receipt, reason = find_effective_final_action_review(root, task, "merge")
+            self.assertIsNotNone(receipt, reason)
+            with (
+                mock.patch("taskctl._require_merged_commit_relation"),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                result = taskctl.main([
+                    "transition", task["task_id"], "MERGED", "--actor", "Codex",
+                    "--reason", "user approved final merge", "--commit", "d" * 40,
+                    "--root", str(root),
+                ])
+            self.assertEqual(0, result)
+
     def test_actor_and_state_cannot_be_self_selected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -213,8 +245,10 @@ class ControlledReworkTests(AuthenticatedReceiptTestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             task = self._verified_task(root)
-            self._write_rework_receipt(root, task)
-            with contextlib.redirect_stdout(io.StringIO()):
+            with (
+                mock.patch("taskctl._require_merged_commit_relation"),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
                 result = taskctl.main([
                     "reopen",
                     task["task_id"],
@@ -229,13 +263,16 @@ class ControlledReworkTests(AuthenticatedReceiptTestCase):
             stored = read_json(root / "project-control" / "tasks" / "GOV-TEST.json")
             self.assertEqual("IN_PROGRESS", stored["status"])
             self.assertEqual([], stored["validation"]["results"])
-            self.assertEqual("REV-REWORK", stored["rework_history"][-1]["review_id"])
+            self.assertNotIn("review_id", stored["rework_history"][-1])
             self.assertEqual(1, len(stored["rework_history"][-1]["archived_validation_results"]))
 
-    def test_reopen_without_rework_receipt_fails_closed(self) -> None:
+    def test_reopen_after_frozen_subject_drift_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             task = self._verified_task(root)
+            changed = root / "tools" / "governance" / "changed.txt"
+            changed.parent.mkdir(parents=True, exist_ok=True)
+            changed.write_text("changed after verification\n", encoding="utf-8")
             with contextlib.redirect_stderr(io.StringIO()):
                 result = taskctl.main([
                     "reopen",
@@ -243,7 +280,7 @@ class ControlledReworkTests(AuthenticatedReceiptTestCase):
                     "--actor",
                     "Codex",
                     "--reason",
-                    "unapproved rework",
+                    "attempt rework after content drift",
                     "--root",
                     str(root),
                 ])
