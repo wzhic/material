@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0001",
-  "reason": "APP-0001 已提交并等待独立 CI 前置修复",
+  "previous_task_id": "GOV-0018",
+  "reason": "GOV-0018 已合并并闭环，恢复项目脚手架任务以继续 PR #14",
   "schema_version": 1,
-  "selected_at": "2026-08-23T12:27:42+00:00",
+  "selected_at": "2026-08-24T03:36:21+00:00",
   "selected_by": "Codex",
-  "task_id": "GOV-0018"
+  "task_id": "APP-0001"
 }
