@@ -1,8 +1,8 @@
 {
   "name": "desktop",
-  "productName": "desktop",
+  "productName": "Material 素材分析",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "本地优先的广告素材分析桌面客户端",
   "main": ".webpack/main",
   "private": true,
   "scripts": {
@@ -10,7 +10,9 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx ."
+    "lint": "eslint --ext .ts,.tsx .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "wzhic",
@@ -25,6 +27,8 @@
     "@electron-forge/plugin-fuses": "^7.11.2",
     "@electron-forge/plugin-webpack": "^7.11.2",
     "@electron/fuses": "^1.8.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "@vercel/webpack-asset-relocator-loader": "^1.7.3",
@@ -36,9 +40,13 @@
     "node-loader": "^2.1.0",
     "style-loader": "^3.3.4",
     "ts-loader": "^9.6.2",
-    "typescript": "~4.5.4"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
   },
   "dependencies": {
-    "electron-squirrel-startup": "^1.0.1"
+    "electron-squirrel-startup": "^1.0.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tdesign-react": "^1.18.2"
   }
 }

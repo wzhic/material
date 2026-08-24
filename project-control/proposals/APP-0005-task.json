@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0005",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "requirement": {
+    "id": "单素材分析-REQ-0005",
+    "name": "单素材分析桌面端基础纵向切片",
+    "version": "v1.0",
+    "interaction_kind": "ui"
+  },
+  "summary": "实现单素材分析 V1 的首个独立工程工作包：在现有 Electron Forge 官方脚手架中建立 React + TDesign 风格渲染层，实现新建分析入口、本地单视频或单图片选择、行业下拉、可选产品与模型状态、素材预览、开始前校验以及可进入的分析工作区骨架，并提供自动测试和开发说明。目标是交付可运行、可继续扩展的客户端基础，不在本任务伪装或实现真实 AI 分析、视频脚本拆解、模型 API Key、安全存储、SQLite 正式分析记录、PDF 导出、产品库业务或安装发布。失败时可通过撤销本任务提交恢复到现有 Electron Forge 初始页面，不迁移或删除任何用户数据。",
+  "release_units": ["mac", "win"],
+  "branch": "codex/req-0005-app-0005-analysis-desktop-foundation",
+  "base_branch": "codex/req-0005-app-0004-single-material-analysis-prd",
+  "allowed_paths": [
+    "apps/desktop/**",
+    "docs/development/单素材分析客户端-DEV-0003-v1.0.md",
+    "docs/development/README.md",
+    "project-control/**"
+  ],
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py docs --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/reconcile.py precommit --json",
+    "python3 tools/governance/taskctl.py begin APP-0005",
+    "python3 tools/governance/taskctl.py run-validation APP-0005",
+    "python3 tools/governance/taskctl.py run-required APP-0005",
+    "python3 tools/governance/taskctl.py commit-task APP-0005",
+    "python3 tools/governance/taskctl.py push-task APP-0005",
+    "python3 tools/governance/taskctl.py open-pr APP-0005",
+    "npm --prefix apps/desktop install",
+    "npm --prefix apps/desktop run lint",
+    "npm --prefix apps/desktop run typecheck",
+    "npm --prefix apps/desktop run test",
+    "npm --prefix apps/desktop run package"
+  ],
+  "allowed_tools": [
+    "apply_patch", "ApplyPatch", "Bash", "Read", "Glob", "Grep", "view_image",
+    "codex_app__read_thread_terminal", "request_plugin_install"
+  ],
+  "dependencies": [],
+  "required_docs": [
+    "docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md"
+  ],
+  "validation": {
+    "required": [
+      {
+        "id": "docs_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "docs", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "repository_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "static", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_lint",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "lint"],
+        "timeout_seconds": 300,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_typecheck",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "typecheck"],
+        "timeout_seconds": 300,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_tests",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "test"],
+        "timeout_seconds": 600,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_package",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "package"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "governance_unit_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", "tools/governance/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      }
+    ],
+    "results": []
+  },
+  "assumptions": [
+    {
+      "id": "APP-0005-ASM-001",
+      "statement": "首个工程工作包先建立可运行客户端基础和新建分析入口，真实分析引擎、模型、工具、持久化及导出按独立工作包接入，避免把全部 V1 做成不可验证的大任务。",
+      "status": "confirmed",
+      "source": "用户要求开始对应开发，并此前明确产品需求与具体工作需要拆分"
+    },
+    {
+      "id": "APP-0005-ASM-002",
+      "statement": "复用现有 Electron Forge + TypeScript 官方脚手架，渲染层采用 React，并使用 TDesign React 组件与设计变量实现用户已确认的视觉方向。",
+      "status": "confirmed",
+      "source": "用户要求参考 TDesign 设计风格，仓库架构记录推荐 Electron + React/TypeScript"
+    },
+    {
+      "id": "APP-0005-ASM-003",
+      "statement": "本任务中的分析工作区只呈现明确标注的待接入状态，不生成、保存或展示伪造的 AI 报告与分析记录。",
+      "status": "confirmed",
+      "source": "V1 PRD 要求正式记录必须来自真实运行后的待确认报告并由用户确认保存"
+    },
+    {
+      "id": "APP-0005-ASM-004",
+      "statement": "源素材继续位于用户选择的位置；本任务只在页面会话中读取浏览器 File 对象和对象 URL，不复制到应用数据目录，不新增数据迁移。",
+      "status": "confirmed",
+      "source": "用户明确素材不保存到应用，仅保存在本地电脑原位置"
+    }
+  ],
+  "open_questions": [],
+  "blockers": [],
+  "review_authority": {
+    "scheme": "ssh-keygen-y-v1",
+    "identity": "material-project-owner",
+    "namespace": "material-governance-review",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E"
+  },
+  "ci_trust": {
+    "provider": "github_actions_rest_v1",
+    "repository": "wzhic/material",
+    "workflow_path": ".github/workflows/governance.yml",
+    "api_base": "https://api.github.com",
+    "api_version": "2026-03-10",
+    "private": true,
+    "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "ci_events": ["pull_request", "push"],
+    "post_merge_events": ["push"],
+    "required_jobs": {
+      "pull_request": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"],
+      "push": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"]
+    }
+  },
+  "coordination": {
+    "mode": "coordinated-multi",
+    "coordinator_task": "APP-0005",
+    "unit_tasks": {"mac": "APP-0005", "win": "APP-0005"},
+    "compatibility_matrix_doc": "docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md",
+    "deployment_order": ["mac", "win"],
+    "rollback_order": ["win", "mac"],
+    "unit_validation_checks": {
+      "mac": ["desktop_lint", "desktop_typecheck", "desktop_tests", "desktop_package"],
+      "win": ["desktop_lint", "desktop_typecheck", "desktop_tests", "desktop_package"]
+    },
+    "unit_rollback_checks": {"mac": ["desktop_package"], "win": ["desktop_package"]}
+  }
+}

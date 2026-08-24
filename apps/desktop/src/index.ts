@@ -11,20 +11,22 @@ if (require('electron-squirrel-startup')) {
 }
 
 const createWindow = (): void => {
-  // Create the browser window.
   const mainWindow = new BrowserWindow({
-    height: 600,
-    width: 800,
+    backgroundColor: '#f3f6fb',
+    height: 900,
+    minHeight: 720,
+    minWidth: 1120,
+    title: 'Material 素材分析',
+    width: 1440,
     webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      sandbox: true,
     },
   });
 
-  // and load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
-
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
 };
 
 // This method will be called when Electron has finished
