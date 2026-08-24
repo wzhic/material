@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0009",
-  "reason": "开始工具执行底座 T01-T06 开发",
+  "previous_task_id": "APP-0010",
+  "reason": "切换到用户要求的 M01-M08 独立开发任务",
   "schema_version": 1,
-  "selected_at": "2026-08-24T07:44:59+00:00",
+  "selected_at": "2026-08-24T08:29:32+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0010"
+  "task_id": "APP-0011"
 }
