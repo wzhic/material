@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0022",
-  "reason": "resume APP-0001 after GOV-0022 CI integrity repair merged and closed",
+  "previous_task_id": "APP-0001",
+  "reason": "start bounded PR #14 Windows command shim repair while APP-0001 waits for CI",
   "schema_version": 1,
-  "selected_at": "2026-08-24T05:22:54+00:00",
+  "selected_at": "2026-08-24T05:34:53+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0001"
+  "task_id": "GOV-0023"
 }
