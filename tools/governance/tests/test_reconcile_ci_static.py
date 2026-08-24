@@ -876,6 +876,30 @@ class TrustedCiContextTests(AuthenticatedReceiptTestCase):
             static_branch = next(item for item in static_report["checks"] if item["id"] == "branch")
             self.assertEqual("trusted_github_event", static_branch["details"]["source"])
 
+    def test_terminal_task_pr_still_uses_trusted_event_head_branch(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task, base_sha, content_sha, _control_sha = self.prepare_two_layer_commits(root)
+            task["status"] = "DONE"
+            task["git"] = {
+                "committed_sha": content_sha,
+                "merged_sha": "b" * 40,
+            }
+            task_file = root / "project-control" / "tasks" / (task["task_id"] + ".json")
+            write_json(task_file, task)
+            control_sha = commit_all(root, "terminal task control metadata")
+            git(root, "checkout", "--detach", control_sha)
+            environment = github_pull_request_environment(
+                root, base_sha, control_sha, "main", task["branch"]
+            )
+            with mock.patch.dict(os.environ, environment, clear=False):
+                report = run_reconcile(root, "static", git_changes=[])
+            self.assertTrue(report["ok"], report)
+            branch = next(item for item in report["checks"] if item["id"] == "branch")
+            self.assertEqual(task["branch"], branch["details"]["expected"])
+            self.assertEqual(task["branch"], branch["details"]["actual"])
+            self.assertEqual("trusted_github_event", branch["details"]["source"])
+
     def test_taskctl_ci_branch_gate_accepts_only_a_reconciled_detached_pr_head(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

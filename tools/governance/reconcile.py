@@ -1936,9 +1936,13 @@ def run_reconcile(
         and os.environ.get("GITHUB_EVENT_NAME") == "push"
         and branch_input == "main"
     )
+    trusted_pull_request = (
+        branch_source == "trusted_github_event"
+        and os.environ.get("GITHUB_EVENT_NAME") == "pull_request"
+    )
     if trusted_main_push:
         expected_for_phase = "main"
-    elif post_merge_phase:
+    elif post_merge_phase and not trusted_pull_request:
         expected_for_phase = str(task.get("base_branch", ""))
     if trusted_main_push:
         actual_branch = branch_input
@@ -1949,7 +1953,7 @@ def run_reconcile(
             if branch_ok else
             "trusted GitHub main push branch mismatch: found %s" % actual_branch
         )
-    elif post_merge_phase:
+    elif post_merge_phase and not trusted_pull_request:
         _work_ok, _work_message, actual_branch, _work_bootstrap = branch_validity(
             root, task, branch_input
         )
