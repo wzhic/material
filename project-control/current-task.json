@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0006",
-  "reason": "APP-0006 已本地提交，继续产品库持久化治理工作包",
+  "previous_task_id": "APP-0007",
+  "reason": "切换到下一独立的分析记录本地核心任务",
   "schema_version": 1,
-  "selected_at": "2026-08-24T05:45:39+00:00",
+  "selected_at": "2026-08-24T06:09:09+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0007"
+  "task_id": "APP-0008"
 }
