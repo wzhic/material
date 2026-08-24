@@ -2,6 +2,7 @@ import React, {
   ChangeEvent,
   KeyboardEvent,
   PointerEvent as ReactPointerEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -17,8 +18,10 @@ import {
   toMaterialSummary,
   validateDraft,
 } from '../analysis/draft';
+import { ProductListItem } from '../product/types';
+import { ProductLibraryPage } from './ProductLibraryPage';
 
-type AppPage = 'new-analysis' | 'records' | 'workspace';
+type AppPage = 'new-analysis' | 'products' | 'records' | 'workspace';
 
 interface SelectedMaterial {
   file: File;
@@ -80,10 +83,13 @@ const Sidebar = ({ onNavigate, page }: SidebarProps): React.JSX.Element => {
           <span className="nav-icon">▤</span>
           <span>分析记录</span>
         </button>
-        <button className="nav-item is-disabled" disabled type="button">
+        <button
+          className={`nav-item ${currentSection === 'products' ? 'is-active' : ''}`}
+          onClick={() => onNavigate('products')}
+          type="button"
+        >
           <span className="nav-icon">◇</span>
           <span>产品库</span>
-          <small>待接入</small>
         </button>
       </nav>
 
@@ -108,10 +114,13 @@ interface NewAnalysisPageProps {
   industry: Industry;
   material: SelectedMaterial | null;
   modelId: string;
+  productId: string;
+  products: ProductListItem[];
   onConversionContextChange: (value: string) => void;
   onIndustryChange: (value: Industry) => void;
   onMaterialChange: (value: SelectedMaterial | null) => void;
   onModelChange: (value: string) => void;
+  onProductChange: (value: string) => void;
   onPreviewWorkspace: () => void;
 }
 
@@ -120,10 +129,13 @@ const NewAnalysisPage = ({
   industry,
   material,
   modelId,
+  productId,
+  products,
   onConversionContextChange,
   onIndustryChange,
   onMaterialChange,
   onModelChange,
+  onProductChange,
   onPreviewWorkspace,
 }: NewAnalysisPageProps): React.JSX.Element => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -134,6 +146,8 @@ const NewAnalysisPage = ({
     modelId,
   };
   const validation = validateDraft(draft);
+  const compatibleProducts = products.filter((product) => product.industry === industry);
+  const selectedProduct = products.find((product) => product.id === productId);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>): void => {
     const file = event.target.files?.item(0);
@@ -271,10 +285,24 @@ const NewAnalysisPage = ({
 
             <label className="form-field">
               <span className="field-label">关联产品</span>
-              <select aria-label="关联产品" disabled value="">
+              <select
+                aria-label="关联产品"
+                disabled={!industry}
+                onChange={(event) => onProductChange(event.target.value)}
+                value={productId}
+              >
                 <option value="">不绑定产品</option>
+                {compatibleProducts.map((product) => (
+                  <option key={product.id} value={product.id}>{product.name}</option>
+                ))}
               </select>
-              <small>产品库接入后仍可保持不绑定。</small>
+              <small>
+                {!industry
+                  ? '请先选择行业。'
+                  : compatibleProducts.length
+                    ? '绑定始终可选，一次最多选择一个产品。'
+                    : '当前行业还没有产品，可前往产品库创建。'}
+              </small>
             </label>
 
             <label className="form-field">
@@ -332,7 +360,7 @@ const NewAnalysisPage = ({
             </div>
             <div>
               <dt>产品</dt>
-              <dd>不绑定产品</dd>
+              <dd>{selectedProduct?.name ?? '不绑定产品'}</dd>
             </div>
             <div>
               <dt>模型</dt>
@@ -374,6 +402,7 @@ interface WorkspacePageProps {
   industry: Industry;
   material: SelectedMaterial;
   onBack: () => void;
+  productName: string | null;
 }
 
 const WorkspacePage = ({
@@ -381,6 +410,7 @@ const WorkspacePage = ({
   industry,
   material,
   onBack,
+  productName,
 }: WorkspacePageProps): React.JSX.Element => {
   const stageRef = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<HTMLElement>(null);
@@ -473,6 +503,7 @@ const WorkspacePage = ({
               <span>
                 {industryLabel(industry)} ·{' '}
                 {material.summary.kind === 'video' ? '视频' : '图片'}
+                {productName ? ` · ${productName}` : ''}
               </span>
             </div>
             <Tag theme="warning" variant="light">
@@ -652,6 +683,22 @@ export const App = (): React.JSX.Element => {
   const [industry, setIndustry] = useState<Industry>('');
   const [modelId, setModelId] = useState('');
   const [conversionContext, setConversionContext] = useState('');
+  const [products, setProducts] = useState<ProductListItem[]>([]);
+  const [productId, setProductId] = useState('');
+
+  const refreshProducts = useCallback(async (): Promise<void> => {
+    const result = await window.materialApi.products.list();
+    if (result.ok) {
+      setProducts(result.data);
+      setProductId((current) =>
+        current && result.data.some((product) => product.id === current) ? current : '',
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshProducts();
+  }, [refreshProducts]);
 
   useEffect(() => {
     const objectUrl = material?.objectUrl;
@@ -670,11 +717,15 @@ export const App = (): React.JSX.Element => {
           industry={industry}
           material={material}
           onBack={() => setPage('new-analysis')}
+          productName={products.find((product) => product.id === productId)?.name ?? null}
         />
       );
     }
     if (page === 'records') {
       return <RecordsPage onCreate={() => setPage('new-analysis')} />;
+    }
+    if (page === 'products') {
+      return <ProductLibraryPage onProductsChanged={() => void refreshProducts()} />;
     }
     return (
       <NewAnalysisPage
@@ -682,14 +733,24 @@ export const App = (): React.JSX.Element => {
         industry={industry}
         material={material}
         modelId={modelId}
+        productId={productId}
+        products={products}
         onConversionContextChange={setConversionContext}
-        onIndustryChange={setIndustry}
+        onIndustryChange={(value) => {
+          setIndustry(value);
+          setProductId((current) =>
+            products.some((product) => product.id === current && product.industry === value)
+              ? current
+              : '',
+          );
+        }}
         onMaterialChange={setMaterial}
         onModelChange={setModelId}
+        onProductChange={setProductId}
         onPreviewWorkspace={() => setPage('workspace')}
       />
     );
-  }, [conversionContext, industry, material, modelId, page]);
+  }, [conversionContext, industry, material, modelId, page, productId, products, refreshProducts]);
 
   return (
     <div className="app-frame">
