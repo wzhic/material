@@ -1,0 +1,243 @@
+{
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/taskctl.py begin GOV-0019",
+    "python3 tools/governance/taskctl.py run-required GOV-0019",
+    "python3 tools/governance/taskctl.py commit-task GOV-0019",
+    "python3 tools/governance/taskctl.py push-task GOV-0019",
+    "python3 tools/governance/taskctl.py open-pr GOV-0019"
+  ],
+  "allowed_paths": [
+    "project-control/**",
+    "tools/governance/taskctl.py",
+    "tools/governance/tests/test_git_transport.py",
+    "tools/governance/tests/test_stack_merge_evidence.py"
+  ],
+  "allowed_tools": [
+    "apply_patch",
+    "ApplyPatch",
+    "Bash",
+    "Read",
+    "Glob",
+    "Grep",
+    "web__run"
+  ],
+  "assumptions": [
+    {
+      "id": "GOV-0019-ASM-001",
+      "source": "tools/governance/reconcile.py 与 test_stack_merge_evidence.py",
+      "statement": "现有 reconcile 已能以 DONE 后继任务、merged_sha、第一父链和精确 clean merge tree 归因可信栈合并。",
+      "status": "confirmed"
+    },
+    {
+      "id": "GOV-0019-ASM-002",
+      "source": "最小安全收口",
+      "statement": "本修复不允许普通非合并提交、未完成任务、范围外路径、冲突改写或非快进推送。",
+      "status": "confirmed"
+    }
+  ],
+  "base_branch": "codex/req-0002-app-0001-project-bootstrap",
+  "blockers": [],
+  "branch": "codex/req-0004-gov-0019-stack-push-coverage",
+  "ci_trust": {
+    "api_base": "https://api.github.com",
+    "api_version": "2026-03-10",
+    "ci_events": [
+      "pull_request",
+      "push"
+    ],
+    "post_merge_events": [
+      "push"
+    ],
+    "private": true,
+    "provider": "github_actions_rest_v1",
+    "repository": "wzhic/material",
+    "required_jobs": {
+      "pull_request": [
+        "Governance (ubuntu-latest)",
+        "Governance (macos-latest)",
+        "Governance (windows-latest)"
+      ],
+      "push": [
+        "Governance (ubuntu-latest)",
+        "Governance (macos-latest)",
+        "Governance (windows-latest)"
+      ]
+    },
+    "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "workflow_path": ".github/workflows/governance.yml"
+  },
+  "coordination": {
+    "compatibility_matrix_doc": "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md",
+    "coordinator_task": "GOV-0019",
+    "deployment_order": [
+      "backend",
+      "mac",
+      "win"
+    ],
+    "mode": "coordinated-multi",
+    "rollback_order": [
+      "win",
+      "mac",
+      "backend"
+    ],
+    "unit_rollback_checks": {
+      "backend": [
+        "governance_unit_tests"
+      ],
+      "mac": [
+        "hook_contract_tests"
+      ],
+      "win": [
+        "hook_contract_tests"
+      ]
+    },
+    "unit_tasks": {
+      "backend": "GOV-0019",
+      "mac": "GOV-0019",
+      "win": "GOV-0019"
+    },
+    "unit_validation_checks": {
+      "backend": [
+        "governance_unit_tests",
+        "hook_contract_tests",
+        "repository_reconcile"
+      ],
+      "mac": [
+        "governance_unit_tests",
+        "hook_contract_tests",
+        "repository_reconcile"
+      ],
+      "win": [
+        "governance_unit_tests",
+        "hook_contract_tests",
+        "repository_reconcile"
+      ]
+    }
+  },
+  "created_at": "2026-08-24T03:41:40+00:00",
+  "dependencies": [],
+  "history": [
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T03:41:58+00:00",
+      "base_branch": "codex/req-0002-app-0001-project-bootstrap",
+      "branch": "codex/req-0004-gov-0019-stack-push-coverage",
+      "event": "local_branch_started",
+      "reason": "修复受控 push-task 的可信 PR 栈归因缺口"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-24T03:41:58+00:00",
+      "event": "task_started",
+      "from": "DRAFT",
+      "reason": "修复受控 push-task 的可信 PR 栈归因缺口",
+      "to": "IN_PROGRESS"
+    }
+  ],
+  "open_questions": [],
+  "release_units": [
+    "mac",
+    "win",
+    "backend"
+  ],
+  "required_docs": [
+    "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md"
+  ],
+  "requirement": {
+    "id": "治理精简-REQ-0004",
+    "interaction_kind": "non_ui",
+    "name": "治理精简",
+    "version": "v1.0"
+  },
+  "review_authority": {
+    "identity": "material-project-owner",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E",
+    "namespace": "material-governance-review",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "scheme": "ssh-keygen-y-v1"
+  },
+  "schema_version": 1,
+  "scope_version": 1,
+  "status": "IN_PROGRESS",
+  "summary": "修复父任务吸收已完成后继 PR 后，push-task 仍把可信栈合并误判为普通内容越界的问题；复用现有 CI 栈归因并保持非强制、已完成任务和精确合并树约束。",
+  "task_id": "GOV-0019",
+  "updated_at": "2026-08-24T03:41:58+00:00",
+  "validation": {
+    "required": [
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tools/governance/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "governance_unit_tests",
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "timeout_seconds": 1200
+      },
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          ".codex/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "hook_contract_tests",
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "timeout_seconds": 600
+      },
+      {
+        "argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "static",
+          "--json"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "repository_reconcile",
+        "release_units": [
+          "mac",
+          "win",
+          "backend"
+        ],
+        "timeout_seconds": 120
+      }
+    ],
+    "results": []
+  }
+}

@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0018",
-  "reason": "GOV-0018 已合并并闭环，恢复项目脚手架任务以继续 PR #14",
+  "previous_task_id": "APP-0001",
+  "reason": "修复 push-task 对已完成后继 PR 栈归因缺口",
   "schema_version": 1,
-  "selected_at": "2026-08-24T03:36:21+00:00",
+  "selected_at": "2026-08-24T03:41:47+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0001"
+  "task_id": "GOV-0019"
 }
