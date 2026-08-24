@@ -16,11 +16,13 @@ import {
   validateDraft,
 } from '../analysis/draft';
 import { MaterialSession } from '../media/types';
+import { ModelConfigurationSummary } from '../model/types';
 import { ProductListItem } from '../product/types';
+import { ModelSettingsPage } from './ModelSettingsPage';
 import { ProductLibraryPage } from './ProductLibraryPage';
 import { RecordsPage } from './RecordsPage';
 
-type AppPage = 'new-analysis' | 'products' | 'records' | 'workspace';
+type AppPage = 'new-analysis' | 'products' | 'records' | 'settings' | 'workspace';
 
 type SelectedMaterial = MaterialSession;
 
@@ -96,19 +98,29 @@ const Sidebar = ({ onNavigate, page }: SidebarProps): React.JSX.Element => {
           <span>素材不会复制到应用目录</span>
         </div>
       </div>
-      <button className="settings-entry" disabled type="button">
+      <button
+        className={`settings-entry ${currentSection === 'settings' ? 'is-active' : ''}`}
+        onClick={() => onNavigate('settings')}
+        type="button"
+      >
         模型与工具设置
-        <span>后续接入</span>
+        <span>BYOK</span>
       </button>
     </aside>
   );
 };
+
+interface ModelSelectionOption {
+  label: string;
+  value: string;
+}
 
 interface NewAnalysisPageProps {
   conversionContext: string;
   industry: Industry;
   material: SelectedMaterial | null;
   modelId: string;
+  modelOptions: ModelSelectionOption[];
   productId: string;
   products: ProductListItem[];
   onConversionContextChange: (value: string) => void;
@@ -124,6 +136,7 @@ const NewAnalysisPage = ({
   industry,
   material,
   modelId,
+  modelOptions,
   productId,
   products,
   onConversionContextChange,
@@ -143,6 +156,7 @@ const NewAnalysisPage = ({
   const validation = validateDraft(draft);
   const compatibleProducts = products.filter((product) => product.industry === industry);
   const selectedProduct = products.find((product) => product.id === productId);
+  const selectedModel = modelOptions.find((option) => option.value === modelId);
 
   const handleSelectMaterial = async (): Promise<void> => {
     setFileBusy(true);
@@ -384,9 +398,18 @@ const NewAnalysisPage = ({
                 onChange={(event) => onModelChange(event.target.value)}
                 value={modelId}
               >
-                <option value="">暂无已配置模型</option>
+                <option value="">
+                  {modelOptions.length ? '请选择分析模型' : '暂无可用模型'}
+                </option>
+                {modelOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
-              <small>用户自带 Key 与安全存储将在后续工作包接入。</small>
+              <small>
+                {modelOptions.length
+                  ? '模型由你显式选择；同一任务不会静默切换。'
+                  : '请前往“模型与工具设置”保存并验证用户自有 Key。'}
+              </small>
             </label>
 
             <label className="form-field field-span-two">
@@ -434,20 +457,23 @@ const NewAnalysisPage = ({
             </div>
             <div>
               <dt>模型</dt>
-              <dd>{modelId || '尚未配置'}</dd>
+              <dd>{selectedModel?.label ?? '尚未配置'}</dd>
             </div>
           </dl>
 
           <div className="readiness-panel">
-            <strong>真实分析尚不可开始</strong>
+            <strong>{validation.errors.length ? '开始前还需完成' : '分析上下文已就绪'}</strong>
             <ul>
               {validation.errors.map((error) => (
                 <li key={error}>{error}</li>
               ))}
+              {validation.errors.length === 0 ? (
+                <li>模型接入已就绪；分析编排和报告生成仍在后续工作包接入。</li>
+              ) : null}
             </ul>
           </div>
 
-          <Button block disabled={!validation.canStartAnalysis} theme="primary">
+          <Button block disabled theme="primary">
             开始分析
           </Button>
           <Button
@@ -721,6 +747,7 @@ export const App = (): React.JSX.Element => {
   const [industry, setIndustry] = useState<Industry>('');
   const [modelId, setModelId] = useState('');
   const [conversionContext, setConversionContext] = useState('');
+  const [modelConfigurations, setModelConfigurations] = useState<ModelConfigurationSummary[]>([]);
   const [products, setProducts] = useState<ProductListItem[]>([]);
   const [productId, setProductId] = useState('');
 
@@ -734,9 +761,29 @@ export const App = (): React.JSX.Element => {
     }
   }, []);
 
+  const refreshModelConfigurations = useCallback(async (): Promise<void> => {
+    const result = await window.materialApi.models.getSettings();
+    if (result.ok) {
+      setModelConfigurations(result.data.configurations);
+    }
+  }, []);
+
   useEffect(() => {
     void refreshProducts();
-  }, [refreshProducts]);
+    void refreshModelConfigurations();
+  }, [refreshModelConfigurations, refreshProducts]);
+
+  const modelOptions = useMemo<ModelSelectionOption[]>(() =>
+    modelConfigurations.flatMap((configuration) =>
+      configuration.availableModels.map((model) => ({
+        label: `${configuration.displayName} · ${model.id}`,
+        value: `${configuration.id}::${model.id}`,
+      }))), [modelConfigurations]);
+
+  useEffect(() => {
+    setModelId((current) =>
+      current && modelOptions.some((option) => option.value === current) ? current : '');
+  }, [modelOptions]);
 
   useEffect(() => {
     const sessionId = material?.sessionId;
@@ -765,12 +812,20 @@ export const App = (): React.JSX.Element => {
     if (page === 'products') {
       return <ProductLibraryPage onProductsChanged={() => void refreshProducts()} />;
     }
+    if (page === 'settings') {
+      return (
+        <ModelSettingsPage
+          onChanged={() => void refreshModelConfigurations()}
+        />
+      );
+    }
     return (
       <NewAnalysisPage
         conversionContext={conversionContext}
         industry={industry}
         material={material}
         modelId={modelId}
+        modelOptions={modelOptions}
         productId={productId}
         products={products}
         onConversionContextChange={setConversionContext}
@@ -788,7 +843,18 @@ export const App = (): React.JSX.Element => {
         onPreviewWorkspace={() => setPage('workspace')}
       />
     );
-  }, [conversionContext, industry, material, modelId, page, productId, products, refreshProducts]);
+  }, [
+    conversionContext,
+    industry,
+    material,
+    modelId,
+    modelOptions,
+    page,
+    productId,
+    products,
+    refreshModelConfigurations,
+    refreshProducts,
+  ]);
 
   return (
     <div className="app-frame">

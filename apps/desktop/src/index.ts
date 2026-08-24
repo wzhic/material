@@ -4,6 +4,11 @@ import path from 'node:path';
 import { registerMaterialIpc } from './media/ipc';
 import { registerMaterialProtocol } from './media/protocol';
 import { MaterialSessionService } from './media/session';
+import { registerModelIpc } from './model/ipc';
+import { createDeepSeekProvider } from './model/provider';
+import { ModelProviderRegistry } from './model/registry';
+import { ModelService } from './model/service';
+import { ElectronSafeStorageCipher, ModelCredentialVault } from './model/vault';
 import { registerProductIpc, registerUnavailableProductIpc } from './product/ipc';
 import { ProductRepository } from './product/repository';
 import { registerRecordIpc, registerUnavailableRecordIpc } from './record/ipc';
@@ -48,6 +53,13 @@ const createWindow = (): void => {
 app.whenReady().then(() => {
   registerMaterialProtocol(materialSessionService);
   registerMaterialIpc(materialSessionService);
+  const modelRegistry = new ModelProviderRegistry();
+  modelRegistry.register(createDeepSeekProvider());
+  const modelVault = new ModelCredentialVault(
+    path.join(app.getPath('userData'), 'model-credentials.secure.json'),
+    new ElectronSafeStorageCipher(),
+  );
+  const modelService = new ModelService(modelRegistry, modelVault);
   const databasePath = path.join(app.getPath('userData'), 'material-products.sqlite3');
   const backupDirectory = path.join(app.getPath('userData'), 'backups', 'products');
   try {
@@ -66,6 +78,12 @@ app.whenReady().then(() => {
   } catch {
     registerUnavailableRecordIpc('分析记录无法打开，请检查应用数据目录权限或数据库版本');
   }
+  registerModelIpc(
+    modelService,
+    (webContentsId) => BrowserWindow.getAllWindows().some(
+      (window) => window.webContents.id === webContentsId,
+    ),
+  );
   createWindow();
 });
 

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 import { MATERIAL_IPC_CHANNELS, MaterialApi } from './media/types';
+import { MODEL_IPC_CHANNELS, ModelApi } from './model/types';
 import { PRODUCT_IPC_CHANNELS, ProductApi } from './product/types';
 import { RECORD_IPC_CHANNELS, RecordApi } from './record/types';
 
@@ -39,8 +40,23 @@ const materialApi: MaterialApi = {
   release: (sessionId) => ipcRenderer.invoke(MATERIAL_IPC_CHANNELS.release, sessionId),
 };
 
+const modelApi: ModelApi = {
+  getSettings: () => ipcRenderer.invoke(MODEL_IPC_CHANNELS.getSettings),
+  saveConfiguration: (input) =>
+    ipcRenderer.invoke(MODEL_IPC_CHANNELS.saveConfiguration, input),
+  refreshModels: (id) =>
+    ipcRenderer.invoke(MODEL_IPC_CHANNELS.refreshModels, id),
+  removeConfiguration: (id, expectedWriteVersion) =>
+    ipcRenderer.invoke(
+      MODEL_IPC_CHANNELS.removeConfiguration,
+      id,
+      expectedWriteVersion,
+    ),
+};
+
 contextBridge.exposeInMainWorld('materialApi', {
   media: materialApi,
+  models: modelApi,
   products: productApi,
   records: recordApi,
 });
