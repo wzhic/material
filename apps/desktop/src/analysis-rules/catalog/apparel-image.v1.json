@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "packageId": "analysis.apparel.image",
+  "packageVersion": "1.0.0",
+  "template": {
+    "id": "template.apparel.image",
+    "version": "1.0.0",
+    "industry": "apparel",
+    "mediaKind": "image",
+    "goal": "purchase_conversion",
+    "sections": [
+      { "id": "context", "label": "分析上下文", "required": true },
+      { "id": "overview", "label": "整体结论", "required": true },
+      { "id": "structure", "label": "信息结构", "required": true },
+      { "id": "visuals", "label": "画面内容", "required": true },
+      { "id": "product_or_gameplay", "label": "商品呈现", "required": true },
+      { "id": "selling_points", "label": "卖点", "required": true },
+      { "id": "emotion", "label": "情绪表达", "required": true },
+      { "id": "cta", "label": "转化引导", "required": true },
+      { "id": "evidence", "label": "证据", "required": true },
+      { "id": "tags", "label": "素材标签", "required": true },
+      { "id": "diagnosis", "label": "问题诊断", "required": true },
+      { "id": "recommendations", "label": "优化建议", "required": true },
+      { "id": "limitations", "label": "局限说明", "required": true }
+    ]
+  },
+  "tags": {
+    "id": "tags.apparel.image",
+    "version": "1.0.0",
+    "fixedTags": [
+      { "id": "apparel.product_showcase", "label": "商品展示", "facet": "content", "description": "图片直接呈现服饰商品、上身效果或细节。" },
+      { "id": "apparel.fit_cut", "label": "版型剪裁", "facet": "selling_point", "description": "图片强调版型、剪裁或轮廓表现。" },
+      { "id": "apparel.fabric", "label": "面料信息", "facet": "selling_point", "description": "图片展示或说明面料、质感或工艺。" },
+      { "id": "apparel.audience", "label": "适用人群", "facet": "audience", "description": "图片明确表达适合的人群或身形。" },
+      { "id": "apparel.styling_scene", "label": "穿搭场景", "facet": "scene", "description": "图片呈现明确穿搭方式或使用场景。" },
+      { "id": "apparel.price_offer", "label": "价格信息", "facet": "conversion", "description": "图片出现价格、优惠或购买利益点；仅按可见证据标记。" },
+      { "id": "apparel.visual_hierarchy", "label": "视觉层级", "facet": "presentation", "description": "图片通过构图与文字层级组织信息。" },
+      { "id": "apparel.emotion_drive", "label": "情绪推动", "facet": "emotion", "description": "图片使用人物、场景或文案推动购买动机。" },
+      { "id": "apparel.call_to_action", "label": "行动引导", "facet": "conversion", "description": "图片包含明确的下单或进一步了解引导。" }
+    ]
+  },
+  "scoring": {
+    "id": "scoring.apparel.image",
+    "version": "1.0.0",
+    "minimumCoverage": 0.6,
+    "missingEvidencePolicy": "renormalize_scored",
+    "dimensions": [
+      { "id": "visual_attraction", "label": "视觉吸引力", "description": "主体与构图是否能快速吸引注意。", "evidenceKinds": ["visual", "region"], "weight": 0.18 },
+      { "id": "visual_hierarchy", "label": "视觉层级", "description": "商品、卖点和辅助信息的阅读顺序是否清晰。", "evidenceKinds": ["visual", "ocr", "region"], "weight": 0.15 },
+      { "id": "product_presentation", "label": "商品呈现", "description": "上身、细节和场景是否充分支撑商品理解。", "evidenceKinds": ["visual", "product", "region"], "weight": 0.2 },
+      { "id": "selling_point_credibility", "label": "卖点可信度", "description": "卖点是否明确，并有画面或文字证据支撑。", "evidenceKinds": ["visual", "ocr", "product"], "weight": 0.18 },
+      { "id": "audience_scene_fit", "label": "人群场景匹配", "description": "人物、穿搭和场景是否匹配目标购买情境。", "evidenceKinds": ["visual", "context", "region"], "weight": 0.12 },
+      { "id": "text_clarity", "label": "文字清晰度", "description": "文案是否可读、精简并与画面信息一致。", "evidenceKinds": ["ocr", "region"], "weight": 0.08 },
+      { "id": "cta_conversion", "label": "转化引导", "description": "CTA 是否明确且指向下单转化。", "evidenceKinds": ["cta", "ocr", "region"], "weight": 0.09 }
+    ]
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "packageId": "analysis.apparel.video",
+  "packageVersion": "1.0.0",
+  "template": {
+    "id": "template.apparel.video",
+    "version": "1.0.0",
+    "industry": "apparel",
+    "mediaKind": "video",
+    "goal": "purchase_conversion",
+    "sections": [
+      { "id": "context", "label": "分析上下文", "required": true },
+      { "id": "overview", "label": "整体结论", "required": true },
+      { "id": "structure", "label": "脚本结构", "required": true },
+      { "id": "visuals", "label": "镜头与画面", "required": true },
+      { "id": "voice_and_sound", "label": "字幕口播与声音", "required": true },
+      { "id": "product_or_gameplay", "label": "商品呈现", "required": true },
+      { "id": "selling_points", "label": "卖点", "required": true },
+      { "id": "emotion", "label": "情绪变化", "required": true },
+      { "id": "cta", "label": "转化引导", "required": true },
+      { "id": "evidence", "label": "证据", "required": true },
+      { "id": "timeline", "label": "时间轴", "required": true },
+      { "id": "tags", "label": "素材标签", "required": true },
+      { "id": "diagnosis", "label": "问题诊断", "required": true },
+      { "id": "recommendations", "label": "优化建议", "required": true },
+      { "id": "limitations", "label": "局限说明", "required": true }
+    ]
+  },
+  "tags": {
+    "id": "tags.apparel.video",
+    "version": "1.0.0",
+    "fixedTags": [
+      { "id": "apparel.product_showcase", "label": "商品展示", "facet": "content", "description": "素材直接呈现服饰商品、上身效果或细节。" },
+      { "id": "apparel.fit_cut", "label": "版型剪裁", "facet": "selling_point", "description": "素材强调版型、剪裁或轮廓表现。" },
+      { "id": "apparel.fabric", "label": "面料信息", "facet": "selling_point", "description": "素材展示或说明面料、质感或工艺。" },
+      { "id": "apparel.audience", "label": "适用人群", "facet": "audience", "description": "素材明确表达适合的人群或身形。" },
+      { "id": "apparel.styling_scene", "label": "穿搭场景", "facet": "scene", "description": "素材呈现明确穿搭方式或使用场景。" },
+      { "id": "apparel.price_offer", "label": "价格信息", "facet": "conversion", "description": "素材出现价格、优惠或购买利益点；仅按可见证据标记。" },
+      { "id": "apparel.emotion_drive", "label": "情绪推动", "facet": "emotion", "description": "素材使用情绪节奏推动购买动机。" },
+      { "id": "apparel.call_to_action", "label": "行动引导", "facet": "conversion", "description": "素材包含明确的下单或进一步了解引导。" },
+      { "id": "apparel.subtitle_voice", "label": "字幕口播", "facet": "presentation", "description": "素材使用字幕或口播承载关键信息。" }
+    ]
+  },
+  "scoring": {
+    "id": "scoring.apparel.video",
+    "version": "1.0.0",
+    "minimumCoverage": 0.6,
+    "missingEvidencePolicy": "renormalize_scored",
+    "dimensions": [
+      { "id": "visual_hook", "label": "视觉开场", "description": "开场是否快速建立商品与观看动机。", "evidenceKinds": ["shot", "visual", "timeline"], "weight": 0.15 },
+      { "id": "information_clarity", "label": "信息清晰度", "description": "脚本、字幕和口播是否易于理解且相互一致。", "evidenceKinds": ["ocr", "speech", "timeline"], "weight": 0.13 },
+      { "id": "product_presentation", "label": "商品呈现", "description": "上身、细节和使用场景是否充分支撑商品理解。", "evidenceKinds": ["shot", "visual", "product"], "weight": 0.18 },
+      { "id": "selling_point_credibility", "label": "卖点可信度", "description": "卖点是否明确，并有画面、字幕或口播证据支撑。", "evidenceKinds": ["visual", "ocr", "speech", "product"], "weight": 0.17 },
+      { "id": "emotion_motivation", "label": "情绪与动机", "description": "情绪变化是否服务于目标人群的购买动机。", "evidenceKinds": ["emotion", "audio", "timeline"], "weight": 0.12 },
+      { "id": "cta_conversion", "label": "转化引导", "description": "CTA 是否明确、适时且指向下单转化。", "evidenceKinds": ["cta", "ocr", "speech", "timeline"], "weight": 0.15 },
+      { "id": "audio_text_coordination", "label": "声画协同", "description": "声音、字幕、口播与画面节奏是否协同。", "evidenceKinds": ["audio", "ocr", "speech", "timeline"], "weight": 0.1 }
+    ]
+  }
+}
