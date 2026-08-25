@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+import {
+  CODEX_SUBSCRIPTION_IPC_CHANNELS,
+  CodexLoginCompletedEvent,
+  CodexRateLimitsSummary,
+  CodexSubscriptionApi,
+  CodexSubscriptionState,
+} from './codex-subscription/types';
 import { MATERIAL_IPC_CHANNELS, MaterialApi } from './media/types';
 import { MODEL_IPC_CHANNELS, ModelApi } from './model/types';
 import { PRODUCT_IPC_CHANNELS, ProductApi } from './product/types';
@@ -56,7 +63,49 @@ const modelApi: ModelApi = {
     ),
 };
 
+const subscribe = <T>(channel: string, listener: (payload: T) => void): (() => void) => {
+  const handler = (_event: Electron.IpcRendererEvent, payload: T): void => listener(payload);
+  ipcRenderer.on(channel, handler);
+  return () => ipcRenderer.removeListener(channel, handler);
+};
+
+const codexSubscriptionApi: CodexSubscriptionApi = {
+  cancelLogin: (loginId) =>
+    ipcRenderer.invoke(CODEX_SUBSCRIPTION_IPC_CHANNELS.cancelLogin, loginId),
+  getRateLimits: () =>
+    ipcRenderer.invoke(CODEX_SUBSCRIPTION_IPC_CHANNELS.getRateLimits),
+  getState: () => ipcRenderer.invoke(CODEX_SUBSCRIPTION_IPC_CHANNELS.getState),
+  logout: () => ipcRenderer.invoke(CODEX_SUBSCRIPTION_IPC_CHANNELS.logout),
+  onLoginCompleted: (listener) => subscribe<CodexLoginCompletedEvent>(
+    CODEX_SUBSCRIPTION_IPC_CHANNELS.loginCompleted,
+    listener,
+  ),
+  onRateLimitsChanged: (listener) => subscribe<CodexRateLimitsSummary>(
+    CODEX_SUBSCRIPTION_IPC_CHANNELS.rateLimitsChanged,
+    listener,
+  ),
+  onStateChanged: (listener) => subscribe<CodexSubscriptionState>(
+    CODEX_SUBSCRIPTION_IPC_CHANNELS.stateChanged,
+    listener,
+  ),
+  openDeviceVerificationPage: () =>
+    ipcRenderer.invoke(CODEX_SUBSCRIPTION_IPC_CHANNELS.openDeviceVerificationPage),
+  refreshAccount: () =>
+    ipcRenderer.invoke(CODEX_SUBSCRIPTION_IPC_CHANNELS.refreshAccount),
+  refreshModels: () =>
+    ipcRenderer.invoke(CODEX_SUBSCRIPTION_IPC_CHANNELS.refreshModels),
+  selectModel: (modelId) =>
+    ipcRenderer.invoke(CODEX_SUBSCRIPTION_IPC_CHANNELS.selectModel, modelId),
+  startBrowserLogin: () =>
+    ipcRenderer.invoke(CODEX_SUBSCRIPTION_IPC_CHANNELS.startBrowserLogin),
+  startDeviceLogin: () =>
+    ipcRenderer.invoke(CODEX_SUBSCRIPTION_IPC_CHANNELS.startDeviceLogin),
+  testSelectedModel: () =>
+    ipcRenderer.invoke(CODEX_SUBSCRIPTION_IPC_CHANNELS.testSelectedModel),
+};
+
 contextBridge.exposeInMainWorld('materialApi', {
+  codexSubscription: codexSubscriptionApi,
   media: materialApi,
   models: modelApi,
   products: productApi,

@@ -312,6 +312,304 @@ textarea:focus-visible,
   margin: 0;
 }
 
+.settings-section-heading-actions,
+.codex-section-title,
+.codex-account-heading,
+.codex-rate-bucket-title,
+.codex-rate-window-heading,
+.codex-rate-limits-heading,
+.codex-card-actions {
+  align-items: center;
+  display: flex;
+}
+
+.settings-section-heading-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-left: 18px;
+}
+
+.codex-subscription-section {
+  margin-bottom: 18px;
+}
+
+.codex-section-title {
+  gap: 8px;
+}
+
+.codex-section-title h2 {
+  margin-bottom: 0;
+}
+
+.codex-subscription-card,
+.codex-subscription-loading {
+  background: #f8fafc;
+  border: 1px solid #e0e6ef;
+  border-radius: 9px;
+  color: #526078;
+  min-width: 0;
+  padding: 17px 18px;
+}
+
+.codex-subscription-loading {
+  align-items: center;
+  display: flex;
+  font-size: 12px;
+  gap: 12px;
+  justify-content: center;
+  min-height: 132px;
+}
+
+.codex-subscription-loading .model-loading-indicator {
+  flex: none;
+  height: 20px;
+  margin: 0;
+  width: 20px;
+}
+
+.codex-subscription-card.is-warning {
+  background: #fffaf0;
+  border-color: #efd89c;
+}
+
+.codex-subscription-card > strong,
+.codex-account-heading strong {
+  color: #2c3c56;
+  font-size: 13px;
+}
+
+.codex-subscription-card > p,
+.codex-account-heading p,
+.codex-dialog-copy p {
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 5px 0 0;
+}
+
+.codex-account-heading,
+.codex-rate-bucket-title,
+.codex-rate-limits-heading,
+.codex-rate-window-heading {
+  justify-content: space-between;
+}
+
+.codex-account-heading {
+  gap: 16px;
+}
+
+.codex-account-source {
+  background: #eaf2ff;
+  border-radius: 999px;
+  color: #3568a8;
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 4px 9px;
+}
+
+.codex-inline-error,
+.codex-limit-warning {
+  border-radius: 7px;
+  font-size: 11px;
+  line-height: 1.5;
+  margin-top: 13px;
+  padding: 9px 11px;
+}
+
+.codex-inline-error {
+  background: #fff0ed;
+  border: 1px solid #f4c3bd;
+  color: #b52b24;
+}
+
+.codex-limit-warning {
+  background: #fff7df;
+  border: 1px solid #efd28c;
+  color: #825a08;
+}
+
+.codex-rate-limits {
+  background: white;
+  border: 1px solid #e6eaf0;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  margin-top: 15px;
+  padding: 13px;
+}
+
+.codex-rate-limits-heading {
+  gap: 12px;
+}
+
+.codex-rate-limits-heading strong,
+.codex-rate-bucket-title strong,
+.codex-rate-window-heading strong {
+  color: #34445e;
+}
+
+.codex-rate-limits-heading strong {
+  font-size: 12px;
+}
+
+.codex-rate-limits-heading > span,
+.codex-muted-copy {
+  color: #8793a4;
+  font-size: 10px;
+}
+
+.codex-rate-bucket {
+  border-top: 1px solid #edf0f4;
+  display: grid;
+  gap: 9px;
+  padding-top: 10px;
+}
+
+.codex-rate-bucket-title {
+  gap: 10px;
+}
+
+.codex-rate-bucket-title strong {
+  font-size: 11px;
+}
+
+.codex-rate-window {
+  display: grid;
+  gap: 5px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.codex-rate-window-heading {
+  color: #6f7d91;
+  font-size: 10px;
+}
+
+.codex-rate-window progress {
+  accent-color: var(--app-blue);
+  height: 7px;
+  width: 100%;
+}
+
+.codex-rate-window > span {
+  color: #8b96a6;
+  font-size: 9px;
+}
+
+.codex-model-select {
+  margin-top: 15px;
+}
+
+.codex-card-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 15px;
+}
+
+.codex-disabled-reason {
+  color: #7b6370;
+  font-size: 10px;
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+
+.codex-data-notice {
+  background: #f1f6ff;
+  border-left: 3px solid #8db5ec;
+  border-radius: 5px;
+  color: #5c7191;
+  font-size: 10px;
+  line-height: 1.55;
+  margin-top: 14px;
+  padding: 8px 10px;
+}
+
+.codex-dialog-body {
+  overflow-y: auto;
+  padding: 18px 20px 4px;
+}
+
+.codex-dialog-actions {
+  border-top: 1px solid #edf0f4;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding: 14px 20px 18px;
+}
+
+.codex-dialog-copy strong {
+  color: #2c3c56;
+  font-size: 13px;
+}
+
+.codex-device-steps {
+  color: #536177;
+  display: grid;
+  font-size: 11px;
+  gap: 7px;
+  line-height: 1.5;
+  margin: 0 0 16px;
+  padding-left: 20px;
+}
+
+.codex-device-code {
+  display: grid;
+  gap: 7px;
+}
+
+.codex-device-code span {
+  color: #33435d;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.codex-device-code input {
+  background: #f5f8fc;
+  border: 1px solid #c8d3e2;
+  border-radius: 6px;
+  color: #17233d;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  min-width: 0;
+  padding: 12px;
+  text-align: center;
+  width: 100%;
+}
+
+.codex-confirm-summary {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+}
+
+.codex-confirm-summary > div {
+  background: #f7f9fc;
+  display: grid;
+  font-size: 11px;
+  gap: 12px;
+  grid-template-columns: 82px minmax(0, 1fr);
+  line-height: 1.5;
+  padding: 10px 11px;
+}
+
+.codex-confirm-summary > div:first-child {
+  border-radius: 7px 7px 0 0;
+}
+
+.codex-confirm-summary > div:last-child {
+  border-radius: 0 0 7px 7px;
+}
+
+.codex-confirm-summary dt {
+  color: #7e8a9a;
+}
+
+.codex-confirm-summary dd {
+  color: #34445e;
+  margin: 0;
+}
+
 .model-settings-empty {
   align-items: center;
   background: #f8fafc;
@@ -2424,9 +2722,32 @@ textarea:focus-visible,
     flex-direction: column;
   }
 
-  .model-settings-header-actions {
+  .model-settings-header-actions,
+  .settings-section-heading-actions {
     justify-content: space-between;
     max-width: none;
+  }
+
+  .settings-section-heading {
+    gap: 12px;
+  }
+
+  .settings-section-heading-actions {
+    margin-left: 0;
+  }
+
+  .codex-account-heading,
+  .codex-rate-limits-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .codex-dialog-actions {
+    justify-content: stretch;
+  }
+
+  .codex-dialog-actions .t-button {
+    flex: 1 1 auto;
   }
 
   .model-config-meta {

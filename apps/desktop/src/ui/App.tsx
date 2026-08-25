@@ -104,7 +104,7 @@ const Sidebar = ({ onNavigate, page }: SidebarProps): React.JSX.Element => {
         type="button"
       >
         模型管理
-        <span>BYOK</span>
+        <span>订阅 / BYOK</span>
       </button>
     </aside>
   );

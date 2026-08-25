@@ -8,13 +8,16 @@ import React, {
 } from 'react';
 import { Button, Tag } from 'tdesign-react';
 
+import { CodexSubscriptionApi } from '../codex-subscription/types';
 import {
   ModelConfigurationSummary,
   ModelProviderInfo,
   ModelSettingsSnapshot,
 } from '../model/types';
+import { CodexSubscriptionPanel } from './CodexSubscriptionPanel';
 
 interface ModelSettingsPageProps {
+  codexSubscriptionApi?: CodexSubscriptionApi;
   onChanged: () => void;
 }
 
@@ -57,6 +60,7 @@ const focusableSelector = [
 ].join(',');
 
 export const ModelSettingsPage = ({
+  codexSubscriptionApi,
   onChanged,
 }: ModelSettingsPageProps): React.JSX.Element => {
   const [snapshot, setSnapshot] = useState<ModelSettingsSnapshot | null>(null);
@@ -337,32 +341,17 @@ export const ModelSettingsPage = ({
     <main className="page-shell model-settings-page">
       <header className="page-header model-settings-header">
         <div>
-          <span className="eyebrow">BYOK · 用户自有 Key</span>
+          <span className="eyebrow">模型接入 · 订阅与 API Key</span>
           <h1>模型管理</h1>
-          <p>添加并管理模型配置；每次分析仍由你明确选择，不会静默切换。</p>
-        </div>
-        <div className="model-settings-header-actions">
-          <Tag
-            theme={secureStorageReady ? 'success' : 'danger'}
-            variant="light"
-          >
-            {snapshot?.secureStorage.message ?? '正在检查系统安全存储'}
-          </Tag>
-          <Button
-            disabled={loading || !snapshot?.providers.length || anyActionBusy}
-            onClick={openAddDialog}
-            theme="primary"
-          >
-            ＋ 添加模型
-          </Button>
+          <p>分别管理 Codex 订阅与 API Key 模型；两种额度和凭据互不替代。</p>
         </div>
       </header>
 
       <div className="model-validation-boundary">
-        <strong>验证边界</strong>
+        <strong>接入边界</strong>
         <span>
-          保存和“刷新模型”只请求供应商的 /models；只有明确点击“测试调用”并确认后，
-          才发送固定测试文本且可能产生少量费用。测试不会发送用户素材、生成分析或切换模型。
+          Codex 登录使用 ChatGPT 订阅额度或 credits；API Key 使用对应平台账号计费。
+          两者不会自动切换。当前仅完成订阅登录、模型发现和连通测试，完整素材分析尚未接线。
         </span>
       </div>
 
@@ -377,13 +366,31 @@ export const ModelSettingsPage = ({
         </div>
       ) : null}
 
-      <section className="model-config-list" aria-labelledby="saved-models-heading">
+      <CodexSubscriptionPanel api={codexSubscriptionApi} />
+
+      <section className="model-config-list" aria-labelledby="api-key-models-heading">
         <div className="settings-section-heading">
           <div>
-            <h2 id="saved-models-heading">已保存模型</h2>
-            <p>页面只显示配置摘要，API Key 不会从安全存储回传。</p>
+            <h2 id="api-key-models-heading">API Key 模型</h2>
+            <p>按 API 或第三方账号规则计费；页面不会从安全存储回传 Key。</p>
           </div>
-          <Tag variant="light">{snapshot?.configurations.length ?? 0} 个配置</Tag>
+          <div className="settings-section-heading-actions">
+            <Tag
+              theme={secureStorageReady ? 'success' : 'danger'}
+              variant="light"
+            >
+              {snapshot?.secureStorage.message ?? '正在检查系统安全存储'}
+            </Tag>
+            <Tag variant="light">{snapshot?.configurations.length ?? 0} 个配置</Tag>
+            <Button
+              disabled={loading || !snapshot?.providers.length || anyActionBusy}
+              onClick={openAddDialog}
+              size="small"
+              theme="primary"
+            >
+              ＋ 添加 API Key 模型
+            </Button>
+          </div>
         </div>
 
         {loading && !snapshot ? (
@@ -400,7 +407,7 @@ export const ModelSettingsPage = ({
           </div>
         ) : snapshot.configurations.length === 0 ? (
           <div className="model-settings-empty">
-            <strong>还没有模型配置</strong>
+            <strong>还没有 API Key 模型配置</strong>
             <span>添加用户自有 API Key，通过 /models 验证后即可用于分析。</span>
             <Button
               disabled={!snapshot.providers.length}
@@ -408,7 +415,7 @@ export const ModelSettingsPage = ({
               size="small"
               theme="primary"
             >
-              添加第一个模型
+              添加第一个 API Key 模型
             </Button>
           </div>
         ) : (
@@ -549,7 +556,9 @@ export const ModelSettingsPage = ({
           >
             <div className="model-dialog-header">
               <div>
-                <h2 id="model-dialog-title">{form.id ? '编辑模型' : '添加模型'}</h2>
+                <h2 id="model-dialog-title">
+                  {form.id ? '编辑 API Key 模型' : '添加 API Key 模型'}
+                </h2>
                 <p id="model-dialog-description">支持当前列出的 OpenAI 及兼容接入方式。</p>
               </div>
               <button

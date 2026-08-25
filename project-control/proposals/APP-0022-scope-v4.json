@@ -1,0 +1,12 @@
+{
+  "allowed_paths": [
+    "apps/desktop/**",
+    "docs/requirements/Codex订阅接入-REQ-0007/**",
+    "docs/requirements/README.md",
+    "docs/development/Codex-SDK订阅接入-DEV-0013-v1.0.md",
+    "docs/development/README.md",
+    "docs/troubleshooting/Codex订阅登录与调用-TRB-0010-v1.0.md",
+    "docs/troubleshooting/README.md",
+    "project-control/**"
+  ]
+}

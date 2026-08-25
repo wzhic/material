@@ -1,0 +1,228 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0022",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "requirement": {
+    "id": "Codex订阅接入-REQ-0007",
+    "name": "Codex SDK 与 ChatGPT 订阅接入",
+    "version": "v1.0",
+    "interaction_kind": "mixed"
+  },
+  "summary": "在模型管理中新增独立的 Codex 订阅来源：使用官方 Codex SDK 与托管 ChatGPT 登录，不读取或复制全局 Codex 凭据；支持登录状态、套餐与额度摘要、可用模型发现、显式模型选择、固定文本测试调用和退出登录。认证与执行仅位于 Electron 主进程，使用应用隔离的 CODEX_HOME 和空白工作目录，不接入完整素材分析、不上传原始素材，也不把订阅冒充 API Key 或无限额度。",
+  "release_units": ["mac", "win"],
+  "branch": "codex/req-0007-app-0022-codex-subscription",
+  "base_branch": "codex/req-0006-app-0020-openai-model-connectivity",
+  "allowed_paths": [
+    "apps/desktop/**",
+    "docs/requirements/Codex订阅接入-REQ-0007/**",
+    "docs/requirements/README.md",
+    "docs/development/Codex-SDK订阅接入-DEV-0011-v1.0.md",
+    "docs/troubleshooting/Codex订阅登录与调用-TRB-0008-v1.0.md",
+    "project-control/**"
+  ],
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py docs --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/reconcile.py precommit --json",
+    "python3 tools/governance/taskctl.py begin APP-0022",
+    "python3 tools/governance/taskctl.py subtask-start APP-0022",
+    "python3 tools/governance/taskctl.py subtask-finish APP-0022",
+    "python3 tools/governance/taskctl.py run-validation APP-0022",
+    "python3 tools/governance/taskctl.py run-required APP-0022",
+    "python3 tools/governance/taskctl.py commit-task APP-0022",
+    "python3 tools/governance/taskctl.py push-task APP-0022",
+    "python3 tools/governance/taskctl.py open-pr APP-0022",
+    "npm --prefix apps/desktop install",
+    "npm --prefix apps/desktop run lint",
+    "npm --prefix apps/desktop run typecheck",
+    "npm --prefix apps/desktop run test",
+    "npm --prefix apps/desktop run test:model-runtime",
+    "npm --prefix apps/desktop run test:codex-runtime",
+    "npm --prefix apps/desktop run package"
+  ],
+  "allowed_tools": [
+    "apply_patch",
+    "ApplyPatch",
+    "Bash",
+    "Read",
+    "Glob",
+    "Grep",
+    "view_image",
+    "codex_app__read_thread_terminal",
+    "collaborationspawn_agent",
+    "collaborationsend_message",
+    "collaborationfollowup_task",
+    "collaborationwait_agent",
+    "collaborationinterrupt_agent",
+    "collaborationlist_agents"
+  ],
+  "dependencies": ["APP-0020"],
+  "required_docs": [
+    "docs/requirements/Codex订阅接入-REQ-0007/Codex订阅接入-REQ-0007-v1.0.md",
+    "docs/development/Codex-SDK订阅接入-DEV-0011-v1.0.md"
+  ],
+  "validation": {
+    "required": [
+      {
+        "id": "docs_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "docs", "--json"],
+        "timeout_seconds": 180,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_lint",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "lint"],
+        "timeout_seconds": 600,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_typecheck",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "typecheck"],
+        "timeout_seconds": 600,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_tests",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "test"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_model_runtime_tests",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "test:model-runtime"],
+        "timeout_seconds": 300,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_codex_runtime_tests",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "test:codex-runtime"],
+        "timeout_seconds": 600,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_package",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "package"],
+        "timeout_seconds": 1800,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "repository_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "static", "--json"],
+        "timeout_seconds": 180,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      }
+    ],
+    "results": []
+  },
+  "assumptions": [
+    {
+      "id": "APP-0022-ASM-001",
+      "source": "用户明确要求接入 Codex SDK 并直接使用其 Codex 订阅",
+      "statement": "本任务使用官方 @openai/codex-sdk，并以 Sign in with ChatGPT 作为订阅认证方式；API Key 与 ChatGPT 订阅是两个独立来源，不互相回退或静默切换。",
+      "status": "confirmed"
+    },
+    {
+      "id": "APP-0022-ASM-002",
+      "source": "OpenAI 官方 Codex Auth 与 App Server 文档",
+      "statement": "ChatGPT 托管认证由 Codex 运行时持久化并刷新令牌；Material 不读取、复制、回传或记录原始令牌，只消费非秘密账号、套餐、登录状态和限额摘要。",
+      "status": "confirmed"
+    },
+    {
+      "id": "APP-0022-ASM-003",
+      "source": "安全隔离与共享登录副作用评估",
+      "statement": "生产实现使用 app userData 下的隔离 CODEX_HOME，不自动复用 ~/.codex/auth.json，也不继承全局 config、AGENTS、MCP 或技能；因此首次使用需要在应用内完成一次 ChatGPT 登录，退出只影响 Material 的隔离会话。",
+      "status": "confirmed"
+    },
+    {
+      "id": "APP-0022-ASM-004",
+      "source": "现有 APP-0020 模型测试与分析接线边界",
+      "statement": "本任务提供模型发现、选择和显式固定文本测试，测试前提示会消耗 Codex 订阅额度且不发送素材；完整素材分析、报告生成和历史记录接线继续作为独立后续任务。",
+      "status": "confirmed"
+    },
+    {
+      "id": "APP-0022-ASM-005",
+      "source": "OpenAI 官方定价与订阅说明",
+      "statement": "界面只显示 Codex 返回的套餐与限额信息，不承诺无限用量；ChatGPT 订阅用量与 API Key 按量计费必须明确区分。",
+      "status": "confirmed"
+    },
+    {
+      "id": "APP-0022-ASM-006",
+      "source": "测试数据外发和当前本机登录状态",
+      "statement": "自动化用受控假 App Server/SDK 适配器验证协议和状态机；除非用户在应用内明确确认测试，本任务不会自动使用其现有全局 Codex 登录或消耗真实订阅额度。",
+      "status": "confirmed"
+    }
+  ],
+  "open_questions": [],
+  "blockers": [],
+  "review_authority": {
+    "scheme": "ssh-keygen-y-v1",
+    "identity": "material-project-owner",
+    "namespace": "material-governance-review",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E"
+  },
+  "ci_trust": {
+    "provider": "github_actions_rest_v1",
+    "repository": "wzhic/material",
+    "workflow_path": ".github/workflows/governance.yml",
+    "api_base": "https://api.github.com",
+    "api_version": "2026-03-10",
+    "private": true,
+    "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "ci_events": ["pull_request", "push"],
+    "post_merge_events": ["push"],
+    "required_jobs": {
+      "pull_request": [
+        "Governance (ubuntu-latest)",
+        "Governance (macos-latest)",
+        "Governance (windows-latest)"
+      ],
+      "push": [
+        "Governance (ubuntu-latest)",
+        "Governance (macos-latest)",
+        "Governance (windows-latest)"
+      ]
+    }
+  },
+  "coordination": {
+    "mode": "coordinated-multi",
+    "coordinator_task": "APP-0022",
+    "unit_tasks": {"mac": "APP-0022", "win": "APP-0022"},
+    "compatibility_matrix_doc": "docs/requirements/Codex订阅接入-REQ-0007/Codex订阅接入-REQ-0007-v1.0.md",
+    "deployment_order": ["mac", "win"],
+    "rollback_order": ["win", "mac"],
+    "unit_validation_checks": {
+      "mac": [
+        "desktop_lint",
+        "desktop_typecheck",
+        "desktop_tests",
+        "desktop_model_runtime_tests",
+        "desktop_codex_runtime_tests",
+        "desktop_package"
+      ],
+      "win": [
+        "desktop_lint",
+        "desktop_typecheck",
+        "desktop_tests",
+        "desktop_model_runtime_tests",
+        "desktop_codex_runtime_tests",
+        "desktop_package"
+      ]
+    },
+    "unit_rollback_checks": {
+      "mac": ["desktop_tests", "desktop_package"],
+      "win": ["desktop_tests", "desktop_package"]
+    }
+  }
+}

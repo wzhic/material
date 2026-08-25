@@ -1,6 +1,15 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, shell } from 'electron';
 import path from 'node:path';
 
+import { CodexAppServerClient } from './codex-subscription/client';
+import { registerCodexSubscriptionIpc } from './codex-subscription/ipc';
+import {
+  buildCodexEnvironment,
+  prepareCodexHome,
+  resolveCodexRuntimePath,
+  verifyCodexRuntimeVersion,
+} from './codex-subscription/runtime';
+import { CodexSubscriptionService } from './codex-subscription/service';
 import { registerMaterialIpc } from './media/ipc';
 import { registerMaterialProtocol } from './media/protocol';
 import { MaterialSessionService } from './media/session';
@@ -30,10 +39,13 @@ if (require('electron-squirrel-startup')) {
 
 let productRepository: ProductRepository | null = null;
 let recordRepository: RecordRepository | null = null;
+let codexSubscriptionService: CodexSubscriptionService | null = null;
+let unregisterCodexSubscriptionIpc: (() => void) | null = null;
+let mainWindow: BrowserWindow | null = null;
 const materialSessionService = new MaterialSessionService();
 
 const createWindow = (): void => {
-  const mainWindow = new BrowserWindow({
+  const window = new BrowserWindow({
     backgroundColor: '#f3f6fb',
     height: 900,
     minHeight: 720,
@@ -48,13 +60,17 @@ const createWindow = (): void => {
     },
   });
 
-  mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+  mainWindow = window;
+  window.on('closed', () => {
+    if (mainWindow === window) mainWindow = null;
+  });
+  window.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 };
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   registerMaterialProtocol(materialSessionService);
   registerMaterialIpc(materialSessionService);
   const modelRegistry = new ModelProviderRegistry();
@@ -90,6 +106,41 @@ app.whenReady().then(() => {
       (window) => window.webContents.id === webContentsId,
     ),
   );
+  const codexDataDirectory = path.join(app.getPath('userData'), 'codex-subscription');
+  const createCodexClient = async (): Promise<CodexAppServerClient> => {
+    const command = await resolveCodexRuntimePath({
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    });
+    const codexHome = await prepareCodexHome(
+      path.join(codexDataDirectory, 'codex-home'),
+    );
+    const environment = buildCodexEnvironment(codexHome);
+    await verifyCodexRuntimeVersion({ codexHome, command, environment });
+    return new CodexAppServerClient({
+      appVersion: app.getVersion(),
+      codexHome,
+      command,
+      environment,
+    });
+  };
+  codexSubscriptionService = new CodexSubscriptionService({
+    client: null,
+    clientFactory: createCodexClient,
+    openExternal: (url) => shell.openExternal(url),
+    settingsPath: path.join(codexDataDirectory, 'settings.json'),
+  });
+  unregisterCodexSubscriptionIpc = registerCodexSubscriptionIpc(
+    codexSubscriptionService,
+    (webContentsId) => mainWindow !== null
+      && !mainWindow.isDestroyed()
+      && mainWindow.webContents.id === webContentsId,
+    (channel, payload) => {
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send(channel, payload);
+      }
+    },
+  );
   createWindow();
 });
 
@@ -105,12 +156,16 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
-  if (BrowserWindow.getAllWindows().length === 0) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
     createWindow();
   }
 });
 
 app.on('before-quit', () => {
+  unregisterCodexSubscriptionIpc?.();
+  unregisterCodexSubscriptionIpc = null;
+  codexSubscriptionService?.stop();
+  codexSubscriptionService = null;
   materialSessionService.clear();
   productRepository?.close();
   productRepository = null;

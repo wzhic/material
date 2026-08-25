@@ -13,6 +13,7 @@
     "lint": "eslint --ext .ts,.tsx .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --exclude '**/*.runtime.test.ts' --reporter=verbose",
+    "test:codex-runtime": "vitest run src/codex-subscription/codex.runtime.test.ts --reporter=verbose",
     "test:media-runtime": "vitest run src/media-tools/media.runtime.test.ts --reporter=verbose",
     "test:model-runtime": "vitest run src/model/model.runtime.test.ts --reporter=verbose"
   },
@@ -46,6 +47,7 @@
     "vitest": "^4.1.11"
   },
   "dependencies": {
+    "@openai/codex-sdk": "0.149.1",
     "electron-squirrel-startup": "^1.0.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

@@ -18,4 +18,6 @@ FFmpeg / ffprobe、取帧、镜头候选、OCR、音频基础特征、ASR、声�
 
 单次分析运行、证据包裁剪、版本化 Prompt、严格模型输出、模型失败 / 取消和待确认融合报告见 [分析运行与融合报告-TRB-0009-v1.0](分析运行与融合报告-TRB-0009-v1.0.md)。
 
+Codex 订阅的固定 runtime、App Server JSONL、浏览器 / 设备码登录、app-scoped `CODEX_HOME`、keyring、套餐 / 限额 / credits、模型目录、固定测试和退出隔离见 [Codex订阅登录与调用-TRB-0010-v1.0](Codex订阅登录与调用-TRB-0010-v1.0.md)。
+
 不得用删除状态、关闭 Hook、跳过测试、直接修改受保护记录或改写 Git 历史作为排障手段。普通网络重试和范围内可逆修复不需要逐项确认。
