@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0014",
-  "reason": "隔离开发用户自定义模型管理，保留并发 APP-0015 工作",
+  "previous_task_id": "APP-0016",
+  "reason": "用户要求补充模型管理原型图和查看入口，使用隔离分支避免影响其他任务",
   "schema_version": 1,
-  "selected_at": "2026-08-25T03:57:50+00:00",
+  "selected_at": "2026-08-25T05:05:32+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0016"
+  "task_id": "APP-0017"
 }
