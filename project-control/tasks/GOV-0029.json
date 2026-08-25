@@ -1,0 +1,1272 @@
+{
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py workflow --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/reconcile.py precommit --json",
+    "python3 tools/governance/taskctl.py begin GOV-0029",
+    "python3 tools/governance/taskctl.py subtask-start GOV-0029",
+    "python3 tools/governance/taskctl.py subtask-finish GOV-0029",
+    "python3 tools/governance/taskctl.py run-validation GOV-0029",
+    "python3 tools/governance/taskctl.py run-required GOV-0029",
+    "python3 tools/governance/taskctl.py commit-task GOV-0029",
+    "python3 tools/governance/taskctl.py push-task GOV-0029",
+    "python3 tools/governance/taskctl.py open-pr GOV-0029",
+    "python3 -m unittest discover -s tools/governance/tests -p test_*.py -v",
+    "python3 -m unittest discover -s .codex/tests -p test_*.py -v"
+  ],
+  "allowed_paths": [
+    ".github/workflows/governance.yml",
+    "tools/governance/core.py",
+    "tools/governance/reconcile.py",
+    "tools/governance/taskctl.py",
+    "tools/governance/validation_runner.py",
+    "tools/governance/tests/test_controlled_taskctl.py",
+    "tools/governance/tests/test_core.py",
+    "tools/governance/tests/test_projectctl.py",
+    "tools/governance/tests/test_reconcile_ci_static.py",
+    "tools/governance/tests/test_validation_runner.py",
+    "project-control/**"
+  ],
+  "allowed_tools": [
+    "apply_patch",
+    "ApplyPatch",
+    "Bash",
+    "Read",
+    "Glob",
+    "Grep",
+    "codex_app__read_thread_terminal",
+    "collaborationspawn_agent",
+    "collaborationsend_message",
+    "collaborationfollowup_task",
+    "collaborationwait_agent",
+    "collaborationinterrupt_agent",
+    "collaborationlist_agents"
+  ],
+  "assumptions": [
+    {
+      "id": "GOV-0029-ASM-001",
+      "source": "GitHub Actions run 32863694411 jobs 97853623832, 97853624201, 97853624269",
+      "statement": "APP-0022 的 Ubuntu、macOS、Windows jobs 均在 Require non-empty governance test suites 以同一 Python 3.9 TestLoader 路径断言失败，后续受控验证没有执行。",
+      "status": "confirmed"
+    },
+    {
+      "id": "GOV-0029-ASM-002",
+      "source": "main 4c20426a、post-merge run 32704841284 与提交 c2c3447/5ace6c7/3efb089/e0f2000/604c7dc",
+      "statement": "独立 TestLoader、固定 uv、Node 24/npm ci、Windows runner 隔离与 shim、忽略未跟踪构建输出及 not_applicable 是模型栈三平台 CI 进入并完成受控验证所需的已验证耦合能力。",
+      "status": "confirmed"
+    },
+    {
+      "id": "GOV-0029-ASM-003",
+      "source": "用户确认独立治理同步任务",
+      "statement": "本任务只同步当前 CI 执行链所需治理能力和回归，不把修复直接夹带进 APP-0022 功能提交；治理 PR 合并仍由用户决定。",
+      "status": "confirmed"
+    },
+    {
+      "id": "GOV-0029-ASM-004",
+      "source": "堆叠治理 merge-tree 只读审计",
+      "statement": "GOV-0029 合入 APP-0020 后，APP-0020 与 APP-0022 对 project-control/current-task.json 的双边变更无法按现有 clean base-sync 合同直接传播；后续必须新建独立受控栈交接任务，本任务不承诺更新或重跑 PR #29。",
+      "status": "confirmed"
+    },
+    {
+      "id": "GOV-0029-ASM-005",
+      "source": "本任务两次独立只读审计",
+      "statement": "GOV-0024 至 GOV-0028 的终态 PR/main 修复与当前模型栈初始 CI 执行无直接依赖，clean base-sync 能力也属于后续栈交接功能，均不纳入本任务。",
+      "status": "confirmed"
+    }
+  ],
+  "base_branch": "codex/req-0006-app-0020-openai-model-connectivity",
+  "blockers": [],
+  "branch": "codex/req-0004-gov-0029-model-stack-ci-bootstrap-sync",
+  "ci_trust": {
+    "api_base": "https://api.github.com",
+    "api_version": "2026-03-10",
+    "ci_events": [
+      "pull_request",
+      "push"
+    ],
+    "post_merge_events": [
+      "push"
+    ],
+    "private": true,
+    "provider": "github_actions_rest_v1",
+    "repository": "wzhic/material",
+    "required_jobs": {
+      "pull_request": [
+        "Governance (ubuntu-latest)",
+        "Governance (macos-latest)",
+        "Governance (windows-latest)"
+      ],
+      "push": [
+        "Governance (ubuntu-latest)",
+        "Governance (macos-latest)",
+        "Governance (windows-latest)"
+      ]
+    },
+    "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "workflow_path": ".github/workflows/governance.yml"
+  },
+  "coordination": {
+    "compatibility_matrix_doc": "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md",
+    "coordinator_task": "GOV-0029",
+    "deployment_order": [
+      "backend",
+      "mac",
+      "win"
+    ],
+    "mode": "coordinated-multi",
+    "rollback_order": [
+      "win",
+      "mac",
+      "backend"
+    ],
+    "unit_rollback_checks": {
+      "backend": [
+        "governance_unit_tests"
+      ],
+      "mac": [
+        "hook_contract_tests"
+      ],
+      "win": [
+        "hook_contract_tests"
+      ]
+    },
+    "unit_tasks": {
+      "backend": "GOV-0029",
+      "mac": "GOV-0029",
+      "win": "GOV-0029"
+    },
+    "unit_validation_checks": {
+      "backend": [
+        "governance_unit_tests",
+        "hook_contract_tests",
+        "workflow_reconcile",
+        "repository_reconcile"
+      ],
+      "mac": [
+        "governance_unit_tests",
+        "hook_contract_tests",
+        "workflow_reconcile",
+        "repository_reconcile"
+      ],
+      "win": [
+        "governance_unit_tests",
+        "hook_contract_tests",
+        "workflow_reconcile",
+        "repository_reconcile"
+      ]
+    }
+  },
+  "created_at": "2026-08-25T15:16:41+00:00",
+  "dependencies": [],
+  "git": {
+    "committed_sha": "0895f206177d33c2eaf762b9540d1c4dd8e828fe"
+  },
+  "history": [
+    {
+      "actor": "Codex",
+      "at": "2026-08-25T15:17:00+00:00",
+      "base_branch": "codex/req-0006-app-0020-openai-model-connectivity",
+      "branch": "codex/req-0004-gov-0029-model-stack-ci-bootstrap-sync",
+      "event": "local_branch_started",
+      "reason": "用户确认创建独立治理同步任务，将已验证的 CI 启动修复同步到 APP-0020 模型栈基线"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-25T15:17:00+00:00",
+      "event": "task_started",
+      "from": "DRAFT",
+      "reason": "用户确认创建独立治理同步任务，将已验证的 CI 启动修复同步到 APP-0020 模型栈基线",
+      "to": "IN_PROGRESS"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-25T15:29:54+00:00",
+      "event": "scope_revision",
+      "from": "IN_PROGRESS",
+      "from_scope_version": 1,
+      "reason": "只同步 workflow 会在首个根因之后继续确定性失败；按最新 main 已验证耦合边界纳入 not_applicable、Windows runner、生成输出与 clean base-sync 支撑及回归",
+      "to": "REVIEW_PENDING",
+      "to_scope_version": 2
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-25T15:30:08+00:00",
+      "from": "REVIEW_PENDING",
+      "reason": "用户已确认独立治理恢复任务；scope v2 仅补齐同一 CI 恢复链中经只读审计证实的耦合运行时和回归",
+      "to": "APPROVED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-25T15:30:13+00:00",
+      "from": "APPROVED",
+      "reason": "scope v2 已记录并获用户既有确认，分支和基线保持不变",
+      "to": "READY"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-25T15:30:13+00:00",
+      "from": "READY",
+      "reason": "开始同步并验证最新 main 的耦合治理运行时",
+      "to": "IN_PROGRESS"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-25T15:33:32+00:00",
+      "event": "scope_revision",
+      "from": "IN_PROGRESS",
+      "from_scope_version": 2,
+      "reason": "终审将当前 CI 执行修复与后续受保护 current-task 栈交接拆为两个独立功能点；收窄为本次三平台 CI 的精确必要文件",
+      "to": "REVIEW_PENDING",
+      "to_scope_version": 3
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-25T15:33:39+00:00",
+      "from": "REVIEW_PENDING",
+      "reason": "用户已确认独立治理修复；scope v3 按终审收窄为同一 CI 执行功能点",
+      "to": "APPROVED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-25T15:33:39+00:00",
+      "from": "APPROVED",
+      "reason": "scope v3 的基线、分支、文件与验证计划均已记录",
+      "to": "READY"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-25T15:33:39+00:00",
+      "from": "READY",
+      "reason": "实施并验证当前模型栈三平台 CI 必要治理修复",
+      "to": "IN_PROGRESS"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-25T15:38:16+00:00",
+      "from": "IN_PROGRESS",
+      "reason": "scope v3 的四项受控本地验证全部由 controlled-validation-runner 实际执行并通过",
+      "to": "LOCAL_VERIFIED"
+    },
+    {
+      "actor": "Codex",
+      "at": "2026-08-25T15:38:22+00:00",
+      "from": "LOCAL_VERIFIED",
+      "reason": "提交已通过 scope v3 四项受控本地验证的模型栈三平台 CI 治理启动修复",
+      "to": "COMMITTED"
+    }
+  ],
+  "open_questions": [],
+  "release_units": [
+    "backend",
+    "mac",
+    "win"
+  ],
+  "required_docs": [
+    "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md"
+  ],
+  "requirement": {
+    "id": "治理精简-REQ-0004",
+    "interaction_kind": "non_ui",
+    "name": "治理精简",
+    "version": "v1.0"
+  },
+  "review_authority": {
+    "identity": "material-project-owner",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E",
+    "namespace": "material-governance-review",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "scheme": "ssh-keygen-y-v1"
+  },
+  "schema_version": 1,
+  "scope_revisions": [
+    {
+      "actor": "Codex",
+      "archived_validation_results": [],
+      "at": "2026-08-25T15:29:54+00:00",
+      "changed_fields": [
+        "summary",
+        "allowed_paths",
+        "assumptions"
+      ],
+      "from_scope_hash": "sha256:f50ab7cb0843c4b27e7344f4114b0c2157f5e442675fb6ee51da929f42c98839",
+      "from_scope_version": 1,
+      "previous_scope": {
+        "allowed_commands": [
+          "python3 tools/governance/taskctl.py current --json",
+          "python3 tools/governance/reconcile.py session --json",
+          "python3 tools/governance/reconcile.py workflow --json",
+          "python3 tools/governance/reconcile.py static --json",
+          "python3 tools/governance/reconcile.py precommit --json",
+          "python3 tools/governance/taskctl.py begin GOV-0029",
+          "python3 tools/governance/taskctl.py subtask-start GOV-0029",
+          "python3 tools/governance/taskctl.py subtask-finish GOV-0029",
+          "python3 tools/governance/taskctl.py run-validation GOV-0029",
+          "python3 tools/governance/taskctl.py run-required GOV-0029",
+          "python3 tools/governance/taskctl.py commit-task GOV-0029",
+          "python3 tools/governance/taskctl.py push-task GOV-0029",
+          "python3 tools/governance/taskctl.py open-pr GOV-0029",
+          "python3 -m unittest discover -s tools/governance/tests -p test_*.py -v",
+          "python3 -m unittest discover -s .codex/tests -p test_*.py -v"
+        ],
+        "allowed_paths": [
+          ".github/workflows/governance.yml",
+          "tools/governance/tests/test_reconcile_ci_static.py",
+          "project-control/**"
+        ],
+        "allowed_tools": [
+          "apply_patch",
+          "ApplyPatch",
+          "Bash",
+          "Read",
+          "Glob",
+          "Grep",
+          "codex_app__read_thread_terminal",
+          "collaborationspawn_agent",
+          "collaborationsend_message",
+          "collaborationfollowup_task",
+          "collaborationwait_agent",
+          "collaborationinterrupt_agent",
+          "collaborationlist_agents"
+        ],
+        "assumptions": [
+          {
+            "id": "GOV-0029-ASM-001",
+            "source": "GitHub Actions run 32863694411 jobs 97853623832, 97853624201, 97853624269",
+            "statement": "APP-0022 的 Ubuntu、macOS、Windows jobs 均在 Require non-empty governance test suites 以同一 Python 3.9 TestLoader 路径断言失败，后续受控验证没有执行。",
+            "status": "confirmed"
+          },
+          {
+            "id": "GOV-0029-ASM-002",
+            "source": "main 4c20426a 与 post-merge run 32704841284",
+            "statement": "最新 main 的治理工作流已使用独立 TestLoader、固定 uv、Node 24、npm ci、失败诊断和 Windows 缓存隔离，并在 Ubuntu、macOS、Windows 三平台通过。",
+            "status": "confirmed"
+          },
+          {
+            "id": "GOV-0029-ASM-003",
+            "source": "用户确认独立治理同步任务",
+            "statement": "本任务只同步已验证的 CI 启动能力和回归测试，不把治理修复直接夹带进 APP-0022 功能提交；治理 PR 合并仍由用户决定。",
+            "status": "confirmed"
+          },
+          {
+            "id": "GOV-0029-ASM-004",
+            "source": "堆叠分支关系审计",
+            "statement": "GOV-0029 以 APP-0020 为基线；合并后还需将更新后的基线同步到 APP-0022 并重新运行 PR #29 CI，本任务本身不执行该合并。",
+            "status": "confirmed"
+          }
+        ],
+        "base_branch": "codex/req-0006-app-0020-openai-model-connectivity",
+        "branch": "codex/req-0004-gov-0029-model-stack-ci-bootstrap-sync",
+        "ci_trust": {
+          "api_base": "https://api.github.com",
+          "api_version": "2026-03-10",
+          "ci_events": [
+            "pull_request",
+            "push"
+          ],
+          "post_merge_events": [
+            "push"
+          ],
+          "private": true,
+          "provider": "github_actions_rest_v1",
+          "repository": "wzhic/material",
+          "required_jobs": {
+            "pull_request": [
+              "Governance (ubuntu-latest)",
+              "Governance (macos-latest)",
+              "Governance (windows-latest)"
+            ],
+            "push": [
+              "Governance (ubuntu-latest)",
+              "Governance (macos-latest)",
+              "Governance (windows-latest)"
+            ]
+          },
+          "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+          "workflow_path": ".github/workflows/governance.yml"
+        },
+        "coordination": {
+          "compatibility_matrix_doc": "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md",
+          "coordinator_task": "GOV-0029",
+          "deployment_order": [
+            "backend",
+            "mac",
+            "win"
+          ],
+          "mode": "coordinated-multi",
+          "rollback_order": [
+            "win",
+            "mac",
+            "backend"
+          ],
+          "unit_rollback_checks": {
+            "backend": [
+              "governance_unit_tests"
+            ],
+            "mac": [
+              "hook_contract_tests"
+            ],
+            "win": [
+              "hook_contract_tests"
+            ]
+          },
+          "unit_tasks": {
+            "backend": "GOV-0029",
+            "mac": "GOV-0029",
+            "win": "GOV-0029"
+          },
+          "unit_validation_checks": {
+            "backend": [
+              "governance_unit_tests",
+              "hook_contract_tests",
+              "workflow_reconcile",
+              "repository_reconcile"
+            ],
+            "mac": [
+              "governance_unit_tests",
+              "hook_contract_tests",
+              "workflow_reconcile",
+              "repository_reconcile"
+            ],
+            "win": [
+              "governance_unit_tests",
+              "hook_contract_tests",
+              "workflow_reconcile",
+              "repository_reconcile"
+            ]
+          }
+        },
+        "dependencies": [],
+        "open_questions": [],
+        "release_units": [
+          "backend",
+          "mac",
+          "win"
+        ],
+        "required_docs": [
+          "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md"
+        ],
+        "requirement": {
+          "id": "治理精简-REQ-0004",
+          "interaction_kind": "non_ui",
+          "name": "治理精简",
+          "version": "v1.0"
+        },
+        "review_authority": {
+          "identity": "material-project-owner",
+          "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E",
+          "namespace": "material-governance-review",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+          "scheme": "ssh-keygen-y-v1"
+        },
+        "scope_version": 1,
+        "summary": "将最新 main 已通过三平台验证的 CI 启动能力最小同步到 APP-0020 模型栈基线：为两个 unittest 目录使用独立 TestLoader，固定安装 uv，并在 macOS/Windows 受控桌面检查前使用 Node 24 和 package-lock.json 执行 npm ci；保留失败诊断与 Windows 缓存隔离。仅修改治理工作流及其静态回归，不修改 APP-0022 功能代码，不合并或发布。",
+        "task_id": "GOV-0029",
+        "validation_required": [
+          {
+            "argv": [
+              "python3",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tools/governance/tests",
+              "-p",
+              "test_*.py",
+              "-v"
+            ],
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED",
+              "POST_MERGE_VERIFIED"
+            ],
+            "id": "governance_unit_tests",
+            "release_units": [
+              "backend",
+              "mac",
+              "win"
+            ],
+            "timeout_seconds": 1200
+          },
+          {
+            "argv": [
+              "python3",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              ".codex/tests",
+              "-p",
+              "test_*.py",
+              "-v"
+            ],
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED",
+              "POST_MERGE_VERIFIED"
+            ],
+            "id": "hook_contract_tests",
+            "release_units": [
+              "backend",
+              "mac",
+              "win"
+            ],
+            "timeout_seconds": 600
+          },
+          {
+            "argv": [
+              "python3",
+              "tools/governance/reconcile.py",
+              "workflow",
+              "--json"
+            ],
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED",
+              "POST_MERGE_VERIFIED"
+            ],
+            "id": "workflow_reconcile",
+            "release_units": [
+              "backend",
+              "mac",
+              "win"
+            ],
+            "timeout_seconds": 180
+          },
+          {
+            "argv": [
+              "python3",
+              "tools/governance/reconcile.py",
+              "static",
+              "--json"
+            ],
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED",
+              "POST_MERGE_VERIFIED"
+            ],
+            "id": "repository_reconcile",
+            "release_units": [
+              "backend",
+              "mac",
+              "win"
+            ],
+            "timeout_seconds": 180
+          }
+        ]
+      },
+      "reason": "只同步 workflow 会在首个根因之后继续确定性失败；按最新 main 已验证耦合边界纳入 not_applicable、Windows runner、生成输出与 clean base-sync 支撑及回归",
+      "to_scope_hash": "sha256:7b2ccd566156673f6509d93f95f3db301bd07a0c15adf736e45dcfe617f263cf",
+      "to_scope_version": 2
+    },
+    {
+      "actor": "Codex",
+      "archived_validation_results": [],
+      "at": "2026-08-25T15:33:32+00:00",
+      "changed_fields": [
+        "summary",
+        "allowed_paths",
+        "assumptions"
+      ],
+      "from_scope_hash": "sha256:7b2ccd566156673f6509d93f95f3db301bd07a0c15adf736e45dcfe617f263cf",
+      "from_scope_version": 2,
+      "previous_scope": {
+        "allowed_commands": [
+          "python3 tools/governance/taskctl.py current --json",
+          "python3 tools/governance/reconcile.py session --json",
+          "python3 tools/governance/reconcile.py workflow --json",
+          "python3 tools/governance/reconcile.py static --json",
+          "python3 tools/governance/reconcile.py precommit --json",
+          "python3 tools/governance/taskctl.py begin GOV-0029",
+          "python3 tools/governance/taskctl.py subtask-start GOV-0029",
+          "python3 tools/governance/taskctl.py subtask-finish GOV-0029",
+          "python3 tools/governance/taskctl.py run-validation GOV-0029",
+          "python3 tools/governance/taskctl.py run-required GOV-0029",
+          "python3 tools/governance/taskctl.py commit-task GOV-0029",
+          "python3 tools/governance/taskctl.py push-task GOV-0029",
+          "python3 tools/governance/taskctl.py open-pr GOV-0029",
+          "python3 -m unittest discover -s tools/governance/tests -p test_*.py -v",
+          "python3 -m unittest discover -s .codex/tests -p test_*.py -v"
+        ],
+        "allowed_paths": [
+          ".github/workflows/governance.yml",
+          "tools/governance/core.py",
+          "tools/governance/reconcile.py",
+          "tools/governance/taskctl.py",
+          "tools/governance/validation_runner.py",
+          "tools/governance/tests/test_cli.py",
+          "tools/governance/tests/test_controlled_taskctl.py",
+          "tools/governance/tests/test_core.py",
+          "tools/governance/tests/test_projectctl.py",
+          "tools/governance/tests/test_reconcile_ci_static.py",
+          "tools/governance/tests/test_stack_merge_evidence.py",
+          "tools/governance/tests/test_validation_runner.py",
+          "project-control/**"
+        ],
+        "allowed_tools": [
+          "apply_patch",
+          "ApplyPatch",
+          "Bash",
+          "Read",
+          "Glob",
+          "Grep",
+          "codex_app__read_thread_terminal",
+          "collaborationspawn_agent",
+          "collaborationsend_message",
+          "collaborationfollowup_task",
+          "collaborationwait_agent",
+          "collaborationinterrupt_agent",
+          "collaborationlist_agents"
+        ],
+        "assumptions": [
+          {
+            "id": "GOV-0029-ASM-001",
+            "source": "GitHub Actions run 32863694411 jobs 97853623832, 97853624201, 97853624269",
+            "statement": "APP-0022 的 Ubuntu、macOS、Windows jobs 均在 Require non-empty governance test suites 以同一 Python 3.9 TestLoader 路径断言失败，后续受控验证没有执行。",
+            "status": "confirmed"
+          },
+          {
+            "id": "GOV-0029-ASM-002",
+            "source": "main 4c20426a 与 post-merge run 32704841284",
+            "statement": "最新 main 的治理工作流及其耦合运行时已经包含独立 TestLoader、固定 uv、Node 24/npm ci、Windows 隔离、生成输出排除、not_applicable 和堆叠 PR 基线同步支持，并在 Ubuntu、macOS、Windows 三平台通过。",
+            "status": "confirmed"
+          },
+          {
+            "id": "GOV-0029-ASM-003",
+            "source": "用户确认独立治理同步任务",
+            "statement": "本任务同步最新 main 的已验证治理运行时与回归，不把修复直接夹带进 APP-0022 功能提交；治理 PR 合并仍由用户决定。",
+            "status": "confirmed"
+          },
+          {
+            "id": "GOV-0029-ASM-004",
+            "source": "堆叠分支关系与工作流耦合审计",
+            "statement": "GOV-0029 以 APP-0020 为基线；用户合并并完成基线任务指针恢复后，才可把更新后的 APP-0020 作为 clean base-sync 同步到 APP-0022，并必须触发绑定新 head 的全新 PR CI run。",
+            "status": "confirmed"
+          },
+          {
+            "id": "GOV-0029-ASM-005",
+            "source": "本任务独立只读审计",
+            "statement": "仅复制 governance.yml 会在 TestLoader 之后继续暴露未受影响 backend matrix、Windows npm 命令解析、npm ci 生成输出完整性与 stacked base move 等已知失败；因此这些同一 CI 恢复链的耦合治理文件属于必要范围。",
+            "status": "confirmed"
+          }
+        ],
+        "base_branch": "codex/req-0006-app-0020-openai-model-connectivity",
+        "branch": "codex/req-0004-gov-0029-model-stack-ci-bootstrap-sync",
+        "ci_trust": {
+          "api_base": "https://api.github.com",
+          "api_version": "2026-03-10",
+          "ci_events": [
+            "pull_request",
+            "push"
+          ],
+          "post_merge_events": [
+            "push"
+          ],
+          "private": true,
+          "provider": "github_actions_rest_v1",
+          "repository": "wzhic/material",
+          "required_jobs": {
+            "pull_request": [
+              "Governance (ubuntu-latest)",
+              "Governance (macos-latest)",
+              "Governance (windows-latest)"
+            ],
+            "push": [
+              "Governance (ubuntu-latest)",
+              "Governance (macos-latest)",
+              "Governance (windows-latest)"
+            ]
+          },
+          "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+          "workflow_path": ".github/workflows/governance.yml"
+        },
+        "coordination": {
+          "compatibility_matrix_doc": "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md",
+          "coordinator_task": "GOV-0029",
+          "deployment_order": [
+            "backend",
+            "mac",
+            "win"
+          ],
+          "mode": "coordinated-multi",
+          "rollback_order": [
+            "win",
+            "mac",
+            "backend"
+          ],
+          "unit_rollback_checks": {
+            "backend": [
+              "governance_unit_tests"
+            ],
+            "mac": [
+              "hook_contract_tests"
+            ],
+            "win": [
+              "hook_contract_tests"
+            ]
+          },
+          "unit_tasks": {
+            "backend": "GOV-0029",
+            "mac": "GOV-0029",
+            "win": "GOV-0029"
+          },
+          "unit_validation_checks": {
+            "backend": [
+              "governance_unit_tests",
+              "hook_contract_tests",
+              "workflow_reconcile",
+              "repository_reconcile"
+            ],
+            "mac": [
+              "governance_unit_tests",
+              "hook_contract_tests",
+              "workflow_reconcile",
+              "repository_reconcile"
+            ],
+            "win": [
+              "governance_unit_tests",
+              "hook_contract_tests",
+              "workflow_reconcile",
+              "repository_reconcile"
+            ]
+          }
+        },
+        "dependencies": [],
+        "open_questions": [],
+        "release_units": [
+          "backend",
+          "mac",
+          "win"
+        ],
+        "required_docs": [
+          "docs/requirements/治理精简-REQ-0004/治理精简-REQ-0004-v1.0.md"
+        ],
+        "requirement": {
+          "id": "治理精简-REQ-0004",
+          "interaction_kind": "non_ui",
+          "name": "治理精简",
+          "version": "v1.0"
+        },
+        "review_authority": {
+          "identity": "material-project-owner",
+          "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E",
+          "namespace": "material-governance-review",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+          "scheme": "ssh-keygen-y-v1"
+        },
+        "scope_version": 2,
+        "summary": "将最新 main 已通过三平台验证、且与当前治理工作流耦合的 CI 运行时最小同步到 APP-0020 模型栈基线：同步工作流、受控验证与 reconcile/taskctl/core 支撑，以及对应回归；修复独立 TestLoader、固定 uv、Node 24/npm ci、Windows 受控环境与命令解析、忽略未跟踪构建输出、未受影响 release unit 的 not_applicable 语义和堆叠 PR clean base-sync 识别。仅修改治理运行时及测试，不修改 APP-0022 功能代码，不合并或发布。",
+        "task_id": "GOV-0029",
+        "validation_required": [
+          {
+            "argv": [
+              "python3",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tools/governance/tests",
+              "-p",
+              "test_*.py",
+              "-v"
+            ],
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED",
+              "POST_MERGE_VERIFIED"
+            ],
+            "id": "governance_unit_tests",
+            "release_units": [
+              "backend",
+              "mac",
+              "win"
+            ],
+            "timeout_seconds": 1200
+          },
+          {
+            "argv": [
+              "python3",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              ".codex/tests",
+              "-p",
+              "test_*.py",
+              "-v"
+            ],
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED",
+              "POST_MERGE_VERIFIED"
+            ],
+            "id": "hook_contract_tests",
+            "release_units": [
+              "backend",
+              "mac",
+              "win"
+            ],
+            "timeout_seconds": 600
+          },
+          {
+            "argv": [
+              "python3",
+              "tools/governance/reconcile.py",
+              "workflow",
+              "--json"
+            ],
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED",
+              "POST_MERGE_VERIFIED"
+            ],
+            "id": "workflow_reconcile",
+            "release_units": [
+              "backend",
+              "mac",
+              "win"
+            ],
+            "timeout_seconds": 180
+          },
+          {
+            "argv": [
+              "python3",
+              "tools/governance/reconcile.py",
+              "static",
+              "--json"
+            ],
+            "gates": [
+              "LOCAL_VERIFIED",
+              "CI_VERIFIED",
+              "POST_MERGE_VERIFIED"
+            ],
+            "id": "repository_reconcile",
+            "release_units": [
+              "backend",
+              "mac",
+              "win"
+            ],
+            "timeout_seconds": 180
+          }
+        ]
+      },
+      "reason": "终审将当前 CI 执行修复与后续受保护 current-task 栈交接拆为两个独立功能点；收窄为本次三平台 CI 的精确必要文件",
+      "to_scope_hash": "sha256:149407e6ee5bd1959541669610e111a96a9a766961dc0895f39cbd1925bb012a",
+      "to_scope_version": 3
+    }
+  ],
+  "scope_version": 3,
+  "status": "COMMITTED",
+  "subtasks": [
+    {
+      "finished_at": "2026-08-25T15:37:24+00:00",
+      "id": "workflow_parity_audit",
+      "name": "工作流同步审计",
+      "purpose": "只读核对最新 main 已验证工作流与 APP-0020 基线差异，确认最小必要同步项和回归边界",
+      "result": "最终 PASS：workflow 与 main@4c20426a 一致；c2c3447、5ace6c7、3efb089、e0f2000、604c7dc 的当前 CI 必要运行时与回归完整，未夹带 base-sync；增强测试覆盖独立 TestLoader 与 uv/Node/npm 顺序，预检 governance 197/197、hooks 70/70、workflow/static PASS。",
+      "started_at": "2026-08-25T15:17:12+00:00",
+      "status": "completed"
+    },
+    {
+      "finished_at": "2026-08-25T15:33:55+00:00",
+      "id": "stack_governance_audit",
+      "name": "堆叠治理审计",
+      "purpose": "只读核对 GOV-0029 范围、任务合同、提交清单和 APP-0022 后续基线同步顺序",
+      "result": "确认当前 CI 最小前置为 c2c3447、5ace6c7、3efb089、e0f2000、604c7dc 对应运行时与回归；GOV-0024～0028 非必要。发现 current-task 双边变更使 APP-0020→APP-0022 clean base-sync 独立阻断，已据此收窄 scope v3，并登记后续需独立受控栈 handoff。",
+      "started_at": "2026-08-25T15:17:17+00:00",
+      "status": "completed"
+    }
+  ],
+  "summary": "将最新 main 已通过三平台验证、且为模型栈 CI 当前执行所必需的治理启动能力同步到 APP-0020 基线：独立 TestLoader、固定 uv、Node 24/npm ci、Windows 临时环境与命令 shim、忽略 npm 生成输出、未受影响 release unit 的 not_applicable 语义及对应回归。仅修改治理运行时与测试，不修改 APP-0022 功能代码；不在本任务内解决 APP-0020 到 APP-0022 的受保护 current-task 栈交接，也不合并或发布。",
+  "task_id": "GOV-0029",
+  "updated_at": "2026-08-25T15:38:22+00:00",
+  "validation": {
+    "required": [
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tools/governance/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "governance_unit_tests",
+        "release_units": [
+          "backend",
+          "mac",
+          "win"
+        ],
+        "timeout_seconds": 1200
+      },
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          ".codex/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "hook_contract_tests",
+        "release_units": [
+          "backend",
+          "mac",
+          "win"
+        ],
+        "timeout_seconds": 600
+      },
+      {
+        "argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "workflow",
+          "--json"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "workflow_reconcile",
+        "release_units": [
+          "backend",
+          "mac",
+          "win"
+        ],
+        "timeout_seconds": 180
+      },
+      {
+        "argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "static",
+          "--json"
+        ],
+        "gates": [
+          "LOCAL_VERIFIED",
+          "CI_VERIFIED",
+          "POST_MERGE_VERIFIED"
+        ],
+        "id": "repository_reconcile",
+        "release_units": [
+          "backend",
+          "mac",
+          "win"
+        ],
+        "timeout_seconds": 180
+      }
+    ],
+    "results": [
+      {
+        "actor": "controlled-validation-runner",
+        "argv_sha256": "sha256:172ff3eebf492131e51dd423cf1ebcc69cfde1f90cf059130087556fbca2dd1c",
+        "check_id": "governance_unit_tests",
+        "declared_argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tools/governance/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "duration_ms": 22946,
+        "environment": "controlled-local-macos-arm64-model-stack-ci-bootstrap-sync",
+        "evidence": "controlled-validation-runner-v1 derived status from process execution",
+        "executed_argv": [
+          "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tools/governance/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "exit_code": 0,
+        "finished_at": "2026-08-25T15:37:54+00:00",
+        "integrity": {
+          "issues": [],
+          "managed_content_subject_after": "workspace:sha256:5f55352b3063d30a2e14a672019d63e7152a717be73935b37323a2588b22d955",
+          "managed_content_subject_before": "workspace:sha256:5f55352b3063d30a2e14a672019d63e7152a717be73935b37323a2588b22d955",
+          "protected_state_digest_after": "protected-state:sha256:d98af43dfebd6412a2cefd3346fd1b14cfe51092f1a0e9ed747da6f41a15f648",
+          "protected_state_digest_before": "protected-state:sha256:d98af43dfebd6412a2cefd3346fd1b14cfe51092f1a0e9ed747da6f41a15f648",
+          "scope_hash_after": "sha256:149407e6ee5bd1959541669610e111a96a9a766961dc0895f39cbd1925bb012a",
+          "scope_hash_before": "sha256:149407e6ee5bd1959541669610e111a96a9a766961dc0895f39cbd1925bb012a",
+          "unchanged": true
+        },
+        "launch_error": null,
+        "phase": "local",
+        "plan_sha256": "sha256:ac07614184d390df858c7d29db679504cb84b0beeb35b0ad3cb01c2129eeeea0",
+        "platform": {
+          "machine": "arm64",
+          "release": "25.5.0",
+          "system": "Darwin"
+        },
+        "python": {
+          "executable": "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9",
+          "implementation": "CPython",
+          "version": "3.9.6"
+        },
+        "recorded_at": "2026-08-25T15:37:54+00:00",
+        "release_unit": null,
+        "release_units": [
+          "backend",
+          "mac",
+          "win"
+        ],
+        "runner_version": "controlled-validation-runner-v1",
+        "scope_hash": "sha256:149407e6ee5bd1959541669610e111a96a9a766961dc0895f39cbd1925bb012a",
+        "source": "controlled-validation-runner-v1",
+        "started_at": "2026-08-25T15:37:31+00:00",
+        "status": "passed",
+        "stderr": {
+          "byte_count": 20937,
+          "sha256": "66e30a7c1f52df5f1b632fea36a77d63939a7f37eea8c6b750828b722f17f052"
+        },
+        "stdout": {
+          "byte_count": 139521,
+          "sha256": "ea7305ff058da9a03b5857c7b06b95b2dbd24b6746fda95ab8ddcb25e77b241b"
+        },
+        "subject": "workspace:sha256:5f55352b3063d30a2e14a672019d63e7152a717be73935b37323a2588b22d955",
+        "timed_out": false,
+        "timeout_seconds": 1200.0
+      },
+      {
+        "actor": "controlled-validation-runner",
+        "argv_sha256": "sha256:7719b97ada74195e7b4d5aa7aa09200c6a2ab70d1d4969be668ffc26d7f8a146",
+        "check_id": "hook_contract_tests",
+        "declared_argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          ".codex/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "duration_ms": 2915,
+        "environment": "controlled-local-macos-arm64-model-stack-ci-bootstrap-sync",
+        "evidence": "controlled-validation-runner-v1 derived status from process execution",
+        "executed_argv": [
+          "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          ".codex/tests",
+          "-p",
+          "test_*.py",
+          "-v"
+        ],
+        "exit_code": 0,
+        "finished_at": "2026-08-25T15:37:56+00:00",
+        "integrity": {
+          "issues": [],
+          "managed_content_subject_after": "workspace:sha256:5f55352b3063d30a2e14a672019d63e7152a717be73935b37323a2588b22d955",
+          "managed_content_subject_before": "workspace:sha256:5f55352b3063d30a2e14a672019d63e7152a717be73935b37323a2588b22d955",
+          "protected_state_digest_after": "protected-state:sha256:d98af43dfebd6412a2cefd3346fd1b14cfe51092f1a0e9ed747da6f41a15f648",
+          "protected_state_digest_before": "protected-state:sha256:d98af43dfebd6412a2cefd3346fd1b14cfe51092f1a0e9ed747da6f41a15f648",
+          "scope_hash_after": "sha256:149407e6ee5bd1959541669610e111a96a9a766961dc0895f39cbd1925bb012a",
+          "scope_hash_before": "sha256:149407e6ee5bd1959541669610e111a96a9a766961dc0895f39cbd1925bb012a",
+          "unchanged": true
+        },
+        "launch_error": null,
+        "phase": "local",
+        "plan_sha256": "sha256:ea8514c9d8c1331c594b2457bc2850ad02f21640411779acff37e8725dce1727",
+        "platform": {
+          "machine": "arm64",
+          "release": "25.5.0",
+          "system": "Darwin"
+        },
+        "python": {
+          "executable": "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9",
+          "implementation": "CPython",
+          "version": "3.9.6"
+        },
+        "recorded_at": "2026-08-25T15:37:56+00:00",
+        "release_unit": null,
+        "release_units": [
+          "backend",
+          "mac",
+          "win"
+        ],
+        "runner_version": "controlled-validation-runner-v1",
+        "scope_hash": "sha256:149407e6ee5bd1959541669610e111a96a9a766961dc0895f39cbd1925bb012a",
+        "source": "controlled-validation-runner-v1",
+        "started_at": "2026-08-25T15:37:54+00:00",
+        "status": "passed",
+        "stderr": {
+          "byte_count": 6474,
+          "sha256": "a471d87fada2363538283179b3ed59c1c719a46987c60d1e0d907b2042f6ee39"
+        },
+        "stdout": {
+          "byte_count": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "subject": "workspace:sha256:5f55352b3063d30a2e14a672019d63e7152a717be73935b37323a2588b22d955",
+        "timed_out": false,
+        "timeout_seconds": 600.0
+      },
+      {
+        "actor": "controlled-validation-runner",
+        "argv_sha256": "sha256:2042cf92c7f4d531ac2e02733ac326a0bed705dfdf4871c315ea938ea0f920fa",
+        "check_id": "workflow_reconcile",
+        "declared_argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "workflow",
+          "--json"
+        ],
+        "duration_ms": 307,
+        "environment": "controlled-local-macos-arm64-model-stack-ci-bootstrap-sync",
+        "evidence": "controlled-validation-runner-v1 derived status from process execution",
+        "executed_argv": [
+          "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9",
+          "tools/governance/reconcile.py",
+          "workflow",
+          "--json"
+        ],
+        "exit_code": 0,
+        "finished_at": "2026-08-25T15:37:57+00:00",
+        "integrity": {
+          "issues": [],
+          "managed_content_subject_after": "workspace:sha256:5f55352b3063d30a2e14a672019d63e7152a717be73935b37323a2588b22d955",
+          "managed_content_subject_before": "workspace:sha256:5f55352b3063d30a2e14a672019d63e7152a717be73935b37323a2588b22d955",
+          "protected_state_digest_after": "protected-state:sha256:d98af43dfebd6412a2cefd3346fd1b14cfe51092f1a0e9ed747da6f41a15f648",
+          "protected_state_digest_before": "protected-state:sha256:d98af43dfebd6412a2cefd3346fd1b14cfe51092f1a0e9ed747da6f41a15f648",
+          "scope_hash_after": "sha256:149407e6ee5bd1959541669610e111a96a9a766961dc0895f39cbd1925bb012a",
+          "scope_hash_before": "sha256:149407e6ee5bd1959541669610e111a96a9a766961dc0895f39cbd1925bb012a",
+          "unchanged": true
+        },
+        "launch_error": null,
+        "phase": "local",
+        "plan_sha256": "sha256:c51a5a4b4cae0185be182bddc8229f1d6f8778b81363084d834c183c43daf2a9",
+        "platform": {
+          "machine": "arm64",
+          "release": "25.5.0",
+          "system": "Darwin"
+        },
+        "python": {
+          "executable": "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9",
+          "implementation": "CPython",
+          "version": "3.9.6"
+        },
+        "recorded_at": "2026-08-25T15:37:57+00:00",
+        "release_unit": null,
+        "release_units": [
+          "backend",
+          "mac",
+          "win"
+        ],
+        "runner_version": "controlled-validation-runner-v1",
+        "scope_hash": "sha256:149407e6ee5bd1959541669610e111a96a9a766961dc0895f39cbd1925bb012a",
+        "source": "controlled-validation-runner-v1",
+        "started_at": "2026-08-25T15:37:57+00:00",
+        "status": "passed",
+        "stderr": {
+          "byte_count": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout": {
+          "byte_count": 16174,
+          "sha256": "23e503c2c6561fd0cb9b47e9e4e213e8696187e684815585e63b6f38d8e31514"
+        },
+        "subject": "workspace:sha256:5f55352b3063d30a2e14a672019d63e7152a717be73935b37323a2588b22d955",
+        "timed_out": false,
+        "timeout_seconds": 180.0
+      },
+      {
+        "actor": "controlled-validation-runner",
+        "argv_sha256": "sha256:e00bcb3ab83778088a7c5e5a6f63792549dcff2cf5b16922fde245973f5b644c",
+        "check_id": "repository_reconcile",
+        "declared_argv": [
+          "python3",
+          "tools/governance/reconcile.py",
+          "static",
+          "--json"
+        ],
+        "duration_ms": 423,
+        "environment": "controlled-local-macos-arm64-model-stack-ci-bootstrap-sync",
+        "evidence": "controlled-validation-runner-v1 derived status from process execution",
+        "executed_argv": [
+          "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9",
+          "tools/governance/reconcile.py",
+          "static",
+          "--json"
+        ],
+        "exit_code": 0,
+        "finished_at": "2026-08-25T15:37:57+00:00",
+        "integrity": {
+          "issues": [],
+          "managed_content_subject_after": "workspace:sha256:5f55352b3063d30a2e14a672019d63e7152a717be73935b37323a2588b22d955",
+          "managed_content_subject_before": "workspace:sha256:5f55352b3063d30a2e14a672019d63e7152a717be73935b37323a2588b22d955",
+          "protected_state_digest_after": "protected-state:sha256:d98af43dfebd6412a2cefd3346fd1b14cfe51092f1a0e9ed747da6f41a15f648",
+          "protected_state_digest_before": "protected-state:sha256:d98af43dfebd6412a2cefd3346fd1b14cfe51092f1a0e9ed747da6f41a15f648",
+          "scope_hash_after": "sha256:149407e6ee5bd1959541669610e111a96a9a766961dc0895f39cbd1925bb012a",
+          "scope_hash_before": "sha256:149407e6ee5bd1959541669610e111a96a9a766961dc0895f39cbd1925bb012a",
+          "unchanged": true
+        },
+        "launch_error": null,
+        "phase": "local",
+        "plan_sha256": "sha256:04e8bba96d1f7cffb0afb0edbbba7215b91fe4f35b5976096ec4abef96e70fc0",
+        "platform": {
+          "machine": "arm64",
+          "release": "25.5.0",
+          "system": "Darwin"
+        },
+        "python": {
+          "executable": "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9",
+          "implementation": "CPython",
+          "version": "3.9.6"
+        },
+        "recorded_at": "2026-08-25T15:37:57+00:00",
+        "release_unit": null,
+        "release_units": [
+          "backend",
+          "mac",
+          "win"
+        ],
+        "runner_version": "controlled-validation-runner-v1",
+        "scope_hash": "sha256:149407e6ee5bd1959541669610e111a96a9a766961dc0895f39cbd1925bb012a",
+        "source": "controlled-validation-runner-v1",
+        "started_at": "2026-08-25T15:37:57+00:00",
+        "status": "passed",
+        "stderr": {
+          "byte_count": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout": {
+          "byte_count": 20728,
+          "sha256": "a56a24ec50776d211cda47c0da5faed7410375c036a2878895e2b22f92709bac"
+        },
+        "subject": "workspace:sha256:5f55352b3063d30a2e14a672019d63e7152a717be73935b37323a2588b22d955",
+        "timed_out": false,
+        "timeout_seconds": 180.0
+      }
+    ]
+  }
+}

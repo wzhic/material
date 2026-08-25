@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0019",
-  "reason": "切换到官方 OpenAI Key 与模型连通测试独立开发任务",
+  "previous_task_id": "APP-0020",
+  "reason": "切换到用户确认的独立治理同步任务；APP-0022 已提交并在 PR #29 等待治理基线修复",
   "schema_version": 1,
-  "selected_at": "2026-08-25T09:27:12+00:00",
+  "selected_at": "2026-08-25T15:16:55+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0020"
+  "task_id": "GOV-0029"
 }
