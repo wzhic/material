@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0017",
-  "reason": "开始补充模型管理与自定义模型独立完整需求文档",
+  "previous_task_id": "APP-0018",
+  "reason": "切换到用户反馈触发的原型截图编排修订任务",
   "schema_version": 1,
-  "selected_at": "2026-08-25T06:14:40+00:00",
+  "selected_at": "2026-08-25T07:51:34+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0018"
+  "task_id": "APP-0019"
 }
