@@ -1042,6 +1042,37 @@ def _subject_path_is_excluded(relative: str) -> bool:
     return filename.endswith((".pyc", ".pyo")) or filename in (".DS_Store", "coverage.xml")
 
 
+def _untracked_ignored_git_paths(root: Path) -> Tuple[FrozenSet[str], FrozenSet[str]]:
+    """Return ignored untracked files and directories without hiding tracked content."""
+
+    output, error = run_git(
+        root,
+        ("ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"),
+    )
+    if error:
+        raise GovernanceError("cannot inspect Git-ignored generated content: %s" % error)
+    files = set()
+    directories = set()
+    for record in (output or "").split("\0"):
+        if not record:
+            continue
+        if record.endswith("/"):
+            directories.add(record[:-1])
+        else:
+            files.add(record)
+    return frozenset(files), frozenset(directories)
+
+
+def _path_is_untracked_ignored(
+    relative: str,
+    ignored_files: FrozenSet[str],
+    ignored_directories: FrozenSet[str],
+) -> bool:
+    if relative in ignored_files or relative in ignored_directories:
+        return True
+    return any(relative.startswith(directory + "/") for directory in ignored_directories)
+
+
 def _git_index_path(root: Path) -> Optional[Path]:
     """Return the real Git index path, including linked-worktree layouts."""
 
@@ -1197,8 +1228,9 @@ def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
     real worktree exists, unfiltered bytes use the standard SHA-1 Git blob
     identity so first-commit validation remains stable.  Task/review/current-task
     records are excluded so appending the validation result does not invalidate
-    itself.  Git metadata and generated caches are excluded as non-project
-    content.
+    itself.  Git metadata, ignored untracked build output and generated caches
+    are excluded as non-project content.  A tracked file remains governed even
+    if a later ignore rule also matches it.
     """
 
     root = root.resolve()
@@ -1206,6 +1238,15 @@ def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
     git_worktree = _git_worktree_available(root)
     tracked_entries = _tracked_git_entries(root)
     modified_paths = _git_modified_paths(root) if tracked_entries else frozenset()
+    ignored_files: FrozenSet[str] = frozenset()
+    ignored_directories: FrozenSet[str] = frozenset()
+    if git_worktree:
+        ignored_files, ignored_directories = _untracked_ignored_git_paths(root)
+    tracked_directories = {
+        "/".join(relative.split("/")[:index])
+        for relative in tracked_entries
+        for index in range(1, len(relative.split("/")))
+    }
     entries: List[Tuple[str, str, int, Optional[bytes]]] = []
     filtered_paths: List[str] = []
     try:
@@ -1216,6 +1257,12 @@ def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
                 candidate = directory_path / name
                 relative = candidate.relative_to(root).as_posix()
                 if _subject_path_is_excluded(relative):
+                    continue
+                if (
+                    _path_is_untracked_ignored(relative, ignored_files, ignored_directories)
+                    and relative not in tracked_directories
+                    and relative not in tracked_entries
+                ):
                     continue
                 if candidate.is_symlink():
                     if path_is_allowed(root, relative, patterns):
@@ -1233,6 +1280,11 @@ def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
                 relative = candidate.relative_to(root).as_posix()
                 if _subject_path_is_excluded(relative) or not path_is_allowed(root, relative, patterns):
                     continue
+                tracked_entry = tracked_entries.get(relative)
+                if tracked_entry is None and _path_is_untracked_ignored(
+                    relative, ignored_files, ignored_directories
+                ):
+                    continue
                 mode = os.lstat(str(candidate)).st_mode
                 if stat.S_ISLNK(mode):
                     kind = "symlink"
@@ -1240,7 +1292,6 @@ def managed_content_subject(root: Path, task: Mapping[str, Any]) -> str:
                     content = os.readlink(str(candidate)).encode("utf-8")
                 elif stat.S_ISREG(mode):
                     kind = "file"
-                    tracked_entry = tracked_entries.get(relative)
                     tracked_mode = tracked_entry[0] if tracked_entry is not None else None
                     if tracked_mode == "100755":
                         executable_bits = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
@@ -2706,6 +2757,30 @@ def expected_validation_subject(
     if phase is None:
         raise GovernanceError("unknown validation gate: %s" % gate)
     if phase == "local":
+        # After commit-task freezes a task, its local evidence remains bound to
+        # the immutable reviewed content. Descendant stack work may otherwise
+        # match broad allowed paths and retroactively invalidate that evidence.
+        frozen_states = NORMAL_STATES[NORMAL_STATES.index("COMMITTED"):]
+        if task.get("status") in frozen_states and task.get("git", {}).get("committed_sha"):
+            subjects = set()
+            for check in task.get("validation", {}).get("required", []):
+                if gate not in check.get("gates", []):
+                    continue
+                check_id = str(check.get("id"))
+                for unit in check.get("release_units", []) or [None]:
+                    result = _latest_validation_result_for_unit(task, check_id, phase, unit)
+                    if result is None or result.get("status") not in ("passed", "skipped"):
+                        continue
+                    subject = result.get("subject")
+                    if not isinstance(subject, str) or not re.fullmatch(
+                        r"workspace:sha256:[0-9a-f]{64}", subject
+                    ):
+                        return None, "frozen local validation subject is invalid"
+                    subjects.add(subject)
+            if len(subjects) == 1:
+                return next(iter(subjects)), None
+            if len(subjects) > 1:
+                return None, "frozen local validation results disagree on content subject"
         return managed_content_subject(root, task), None
     git_evidence = task.get("git", {})
     field = "committed_sha" if phase == "ci" else "merged_sha"

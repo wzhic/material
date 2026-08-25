@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import unittest
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
@@ -14,6 +15,18 @@ class AuthenticatedReceiptTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         super().setUp()
+        sanitized_environment = {
+            key: value for key, value in os.environ.items()
+            if not key.startswith("GITHUB_")
+            and key not in ("MATERIAL_RELEASE_UNIT", "RUNNER_OS")
+        }
+        environment_patcher = mock.patch.dict(
+            os.environ,
+            sanitized_environment,
+            clear=True,
+        )
+        environment_patcher.start()
+        self.addCleanup(environment_patcher.stop)
         patcher = mock.patch(
             "core.review_authenticity",
             return_value=(True, "authenticated test fixture"),

@@ -100,6 +100,8 @@ export interface StoredModelConfiguration {
   id: string;
   providerId: string;
   displayName: string;
+  baseUrl: string | null;
+  manualModelId: string | null;
   availableModels: AvailableModel[];
   selectedModelId: string | null;
   connectionStatus: ModelConnectionStatus;
@@ -144,6 +146,29 @@ const validateApiKey = (value: string): string => {
   return value;
 };
 
+const validateBaseUrlField = (value: string | null): string | null => {
+  if (value === null) return null;
+  if (
+    typeof value !== 'string'
+    || value.length === 0
+    || value.length > 2_048
+    || value.trim() !== value
+    || hasControlCharacters(value)
+  ) {
+    throw new ModelServiceError('INVALID_INPUT');
+  }
+  return value;
+};
+
+const validateManualModelId = (value: string | null): string | null => {
+  if (value === null) return null;
+  const normalized = value.trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(normalized)) {
+    throw new ModelServiceError('INVALID_INPUT');
+  }
+  return normalized;
+};
+
 const validModels = (value: unknown): value is AvailableModel[] =>
   Array.isArray(value)
   && value.length <= 200
@@ -171,6 +196,17 @@ const validConfiguration = (value: unknown): value is VaultConfiguration => {
     && item.encryptedApiKey.length > 0
     && item.encryptedApiKey.length <= 4096
     && validModels(item.availableModels)
+    && (item.baseUrl === undefined
+      || item.baseUrl === null
+      || (typeof item.baseUrl === 'string'
+        && item.baseUrl.length > 0
+        && item.baseUrl.length <= 2_048
+        && item.baseUrl.trim() === item.baseUrl
+        && !hasControlCharacters(item.baseUrl)))
+    && (item.manualModelId === undefined
+      || item.manualModelId === null
+      || (typeof item.manualModelId === 'string'
+        && /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(item.manualModelId)))
     && (item.selectedModelId === null || typeof item.selectedModelId === 'string')
     && ['error', 'ready', 'unchecked'].includes(String(item.connectionStatus))
     && (item.lastCheckedAt === null || typeof item.lastCheckedAt === 'string')
@@ -182,11 +218,13 @@ const validConfiguration = (value: unknown): value is VaultConfiguration => {
 
 const withoutCiphertext = (item: VaultConfiguration): StoredModelConfiguration => ({
   availableModels: item.availableModels.map((model) => ({ ...model })),
+  baseUrl: item.baseUrl ?? null,
   connectionStatus: item.connectionStatus,
   createdAt: item.createdAt,
   displayName: item.displayName,
   id: item.id,
   lastCheckedAt: item.lastCheckedAt,
+  manualModelId: item.manualModelId ?? null,
   providerId: item.providerId,
   selectedModelId: item.selectedModelId,
   updatedAt: item.updatedAt,
@@ -248,26 +286,45 @@ export class ModelCredentialVault {
       }
       const now = new Date().toISOString();
       const keyChanged = Boolean(apiKey);
+      const baseUrl = input.baseUrl === undefined
+        ? existing?.baseUrl ?? null
+        : validateBaseUrlField(input.baseUrl);
+      const manualModelId = input.manualModelId === undefined
+        ? existing?.manualModelId ?? null
+        : validateManualModelId(input.manualModelId);
+      const connectionChanged = keyChanged || baseUrl !== (existing?.baseUrl ?? null);
+      const manualModelChanged = manualModelId !== (existing?.manualModelId ?? null);
       const selectedModelId = input.selectedModelId === undefined
         ? existing?.selectedModelId ?? null
         : input.selectedModelId;
       if (
-        !keyChanged
+        !connectionChanged
+        && !manualModelChanged
         && selectedModelId
         && !existing?.availableModels.some((model) => model.id === selectedModelId)
       ) {
         throw new ModelServiceError('MODEL_NOT_AVAILABLE');
       }
       const next: VaultConfiguration = {
-        availableModels: keyChanged ? [] : existing?.availableModels ?? [],
-        connectionStatus: keyChanged ? 'unchecked' : existing?.connectionStatus ?? 'unchecked',
+        availableModels: connectionChanged || manualModelChanged
+          ? []
+          : existing?.availableModels ?? [],
+        baseUrl,
+        connectionStatus: connectionChanged || manualModelChanged
+          ? 'unchecked'
+          : existing?.connectionStatus ?? 'unchecked',
         createdAt: existing?.createdAt ?? now,
         displayName: validateDisplayName(input.displayName),
         encryptedApiKey,
         id: existing?.id ?? randomUUID(),
-        lastCheckedAt: keyChanged ? null : existing?.lastCheckedAt ?? null,
+        lastCheckedAt: connectionChanged || manualModelChanged
+          ? null
+          : existing?.lastCheckedAt ?? null,
+        manualModelId,
         providerId: input.providerId,
-        selectedModelId: keyChanged ? null : selectedModelId ?? null,
+        selectedModelId: connectionChanged || manualModelChanged
+          ? null
+          : selectedModelId ?? null,
         updatedAt: now,
         writeVersion: (existing?.writeVersion ?? 0) + 1,
       };
@@ -339,10 +396,17 @@ export class ModelCredentialVault {
       item.availableModels = models.map((model) => ({ ...model }));
       item.connectionStatus = status;
       item.lastCheckedAt = now;
-      item.selectedModelId = item.selectedModelId
-        && models.some((model) => model.id === item.selectedModelId)
-        ? item.selectedModelId
-        : models[0]?.id ?? null;
+      if (status === 'ready') {
+        if (item.manualModelId) {
+          item.selectedModelId = models.some((model) => model.id === item.manualModelId)
+            ? item.manualModelId
+            : null;
+        } else if (item.selectedModelId === null) {
+          item.selectedModelId = models[0]?.id ?? null;
+        } else if (!models.some((model) => model.id === item.selectedModelId)) {
+          item.selectedModelId = null;
+        }
+      }
       item.updatedAt = now;
       item.writeVersion += 1;
       envelope.configurations[index] = item;

@@ -3,7 +3,10 @@ export type ModelProviderId = string;
 export interface ModelProviderInfo {
   id: ModelProviderId;
   displayName: string;
-  baseUrl: string;
+  baseUrl: string | null;
+  customBaseUrl: boolean;
+  requiresManualModelId: boolean;
+  documentationUrl: string | null;
   adapterVersion: string;
   capabilities: {
     dataDestination: string;
@@ -13,8 +16,12 @@ export interface ModelProviderInfo {
     maxOutputTokens: number;
     rawMediaUpload: false;
     structuredOutput: true;
-    thinkingControl: true;
+    thinkingControl: boolean;
   };
+}
+
+export interface ModelProviderConnection {
+  baseUrl: string | null;
 }
 
 export interface AvailableModel {
@@ -29,6 +36,8 @@ export interface ModelConfigurationSummary {
   providerId: ModelProviderId;
   providerName: string;
   displayName: string;
+  baseUrl: string | null;
+  manualModelId: string | null;
   availableModels: AvailableModel[];
   selectedModelId: string | null;
   connectionStatus: ModelConnectionStatus;
@@ -44,6 +53,8 @@ export interface SaveModelConfigurationInput {
   providerId: ModelProviderId;
   displayName: string;
   apiKey?: string;
+  baseUrl?: string | null;
+  manualModelId?: string | null;
   selectedModelId?: string | null;
   expectedWriteVersion?: number;
 }

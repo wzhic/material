@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0018",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "requirement": {
+    "id": "单素材分析-REQ-0005",
+    "name": "模型管理整合",
+    "version": "v1.0",
+    "interaction_kind": "mixed"
+  },
+  "summary": "在当前已包含分析编排、报告预览和报告确认保存的 APP-0017 主开发基线上，整合隔离分支中已经本地验证的 APP-0016 自定义模型管理能力与模型管理关键原型：保留 DeepSeek 固定供应商，新增由用户明确配置的 OpenAI 兼容 API 地址、API Key 和模型 ID，支持新增、编辑、删除、连接验证、模型列表刷新及显式默认模型选择；同时把模型管理入口、从新建分析返回后的草稿恢复和两张关键原型接入现行 PRD。整合时重新解决 index、App、样式和文档的交叉改动并重跑全部门禁，不携带另一个隔离分支中重复编号的 APP-0017 机器记录。本任务不新增供应商大全、任意协议、自定义 Header、非 Bearer 鉴权、模型自动切换、原始媒体直传、对话重新分析、PDF、push、PR、合并或发布。",
+  "release_units": ["mac", "win"],
+  "branch": "codex/req-0005-app-0018-model-management-integration",
+  "base_branch": "codex/req-0005-app-0017-report-confirmation",
+  "allowed_paths": [
+    "apps/desktop/**",
+    "docs/development/模型接入与安全存储-DEV-0010-v1.0.md",
+    "docs/troubleshooting/模型连接与凭据-TRB-0007-v1.0.md",
+    "docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md",
+    "docs/requirements/单素材分析-REQ-0005/assets/prototype-add-custom-model.png",
+    "docs/requirements/单素材分析-REQ-0005/assets/prototype-model-management.png",
+    "project-control/**"
+  ],
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py docs --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/reconcile.py precommit --json",
+    "python3 tools/governance/taskctl.py begin APP-0018",
+    "python3 tools/governance/taskctl.py run-validation APP-0018",
+    "python3 tools/governance/taskctl.py run-required APP-0018",
+    "python3 tools/governance/taskctl.py commit-task APP-0018",
+    "python3 tools/governance/taskctl.py push-task APP-0018",
+    "python3 tools/governance/taskctl.py open-pr APP-0018",
+    "npm --prefix apps/desktop run lint",
+    "npm --prefix apps/desktop run typecheck",
+    "npm --prefix apps/desktop run test",
+    "npm --prefix apps/desktop run test:model-runtime",
+    "npm --prefix apps/desktop run package"
+  ],
+  "allowed_tools": [
+    "apply_patch", "ApplyPatch", "Bash", "Read", "Glob", "Grep", "view_image",
+    "codex_app__read_thread_terminal"
+  ],
+  "dependencies": [],
+  "required_docs": [
+    "docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md"
+  ],
+  "validation": {
+    "required": [
+      {
+        "id": "docs_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "docs", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "repository_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "static", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_lint",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "lint"],
+        "timeout_seconds": 300,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_typecheck",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "typecheck"],
+        "timeout_seconds": 300,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_tests",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "test"],
+        "timeout_seconds": 900,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_model_runtime_tests",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "test:model-runtime"],
+        "timeout_seconds": 300,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_package",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "package"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "governance_unit_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", "tools/governance/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      }
+    ],
+    "results": []
+  },
+  "assumptions": [
+    {
+      "id": "APP-0018-ASM-001",
+      "statement": "APP-0016 的功能提交和隔离原型分支只作为待整合来源；当前任务在 APP-0017 报告确认基线上重新验证最终组合，不复用来源分支的通过结果。",
+      "status": "confirmed",
+      "source": "当前分支图与用户要求进入下一步处理"
+    },
+    {
+      "id": "APP-0018-ASM-002",
+      "statement": "隔离原型分支中重复编号的 APP-0017 任务、current-task 和 change-set 不进入当前主开发链；其产品文档和原型内容由 APP-0018 承接。",
+      "status": "confirmed",
+      "source": "同一仓库任务 ID 必须唯一，当前 APP-0017 已用于报告确认与分析记录接线"
+    },
+    {
+      "id": "APP-0018-ASM-003",
+      "statement": "自定义模型仍限定 OpenAI 兼容 Bearer API：远端必须 HTTPS，本机回环可使用 HTTP；拒绝重定向、URL 凭据、查询参数和片段，保存验证不发起可能计费的完成调用。",
+      "status": "confirmed",
+      "source": "已完成 APP-0016 的安全与费用边界"
+    },
+    {
+      "id": "APP-0018-ASM-004",
+      "statement": "API Key 只进入主进程短生命周期内存和系统安全存储密文；报告、SQLite、日志、导出、Prompt、任务记录和 Renderer 不得获得明文。",
+      "status": "confirmed",
+      "source": "用户已确认的 BYOK 安全边界"
+    }
+  ],
+  "open_questions": [],
+  "blockers": [],
+  "review_authority": {
+    "scheme": "ssh-keygen-y-v1",
+    "identity": "material-project-owner",
+    "namespace": "material-governance-review",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E"
+  },
+  "ci_trust": {
+    "provider": "github_actions_rest_v1",
+    "repository": "wzhic/material",
+    "workflow_path": ".github/workflows/governance.yml",
+    "api_base": "https://api.github.com",
+    "api_version": "2026-03-10",
+    "private": true,
+    "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "ci_events": ["pull_request", "push"],
+    "post_merge_events": ["push"],
+    "required_jobs": {
+      "pull_request": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"],
+      "push": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"]
+    }
+  },
+  "coordination": {
+    "mode": "coordinated-multi",
+    "coordinator_task": "APP-0018",
+    "unit_tasks": {"mac": "APP-0018", "win": "APP-0018"},
+    "compatibility_matrix_doc": "docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md",
+    "deployment_order": ["mac", "win"],
+    "rollback_order": ["win", "mac"],
+    "unit_validation_checks": {
+      "mac": ["desktop_lint", "desktop_typecheck", "desktop_tests", "desktop_model_runtime_tests", "desktop_package"],
+      "win": ["desktop_lint", "desktop_typecheck", "desktop_tests", "desktop_model_runtime_tests", "desktop_package"]
+    },
+    "unit_rollback_checks": {
+      "mac": ["desktop_tests", "desktop_package"],
+      "win": ["desktop_tests", "desktop_package"]
+    }
+  }
+}
