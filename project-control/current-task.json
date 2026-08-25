@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0012",
-  "reason": "APP-0012 已完成并提交，切换到固定行业模板、标签与评分规则底座工作包",
+  "previous_task_id": "APP-0013",
+  "reason": "APP-0013 已本地提交，切换到下一独立分析引擎任务",
   "schema_version": 1,
-  "selected_at": "2026-08-25T01:50:31+00:00",
+  "selected_at": "2026-08-25T02:14:16+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0013"
+  "task_id": "APP-0014"
 }
