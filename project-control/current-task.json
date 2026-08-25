@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0018",
-  "reason": "切换到用户反馈触发的原型截图编排修订任务",
+  "previous_task_id": "APP-0019",
+  "reason": "切换到官方 OpenAI Key 与模型连通测试独立开发任务",
   "schema_version": 1,
-  "selected_at": "2026-08-25T07:51:34+00:00",
+  "selected_at": "2026-08-25T09:27:12+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0019"
+  "task_id": "APP-0020"
 }
