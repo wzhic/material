@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0013",
-  "reason": "APP-0013 已本地提交，切换到下一独立分析引擎任务",
+  "previous_task_id": "APP-0014",
+  "reason": "隔离开发用户自定义模型管理，保留并发 APP-0015 工作",
   "schema_version": 1,
-  "selected_at": "2026-08-25T02:14:16+00:00",
+  "selected_at": "2026-08-25T03:57:50+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0014"
+  "task_id": "APP-0016"
 }
