@@ -25,6 +25,14 @@ const safely = async <T>(operation: () => Promise<T>): Promise<ModelApiResult<T>
   }
 };
 
+const validConfigurationId = (value: unknown): value is string =>
+  typeof value === 'string'
+  && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value);
+
+const validModelId = (value: unknown): value is string =>
+  typeof value === 'string'
+  && /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(value);
+
 const clearHandlers = (): void => {
   Object.values(MODEL_IPC_CHANNELS).forEach((channel) => ipcMain.removeHandler(channel));
 };
@@ -48,6 +56,16 @@ export const registerModelIpc = (
   ipcMain.handle(MODEL_IPC_CHANNELS.refreshModels, (event, id: string) =>
     isTrustedSender(event.sender.id)
       ? safely(() => service.refreshModels(id))
+      : failure('INVALID_INPUT'));
+  ipcMain.handle(MODEL_IPC_CHANNELS.testModel, (
+    event,
+    configurationId: unknown,
+    modelId: unknown,
+  ) =>
+    isTrustedSender(event.sender.id)
+    && validConfigurationId(configurationId)
+    && validModelId(modelId)
+      ? safely(() => service.testModel(configurationId, modelId))
       : failure('INVALID_INPUT'));
   ipcMain.handle(MODEL_IPC_CHANNELS.removeConfiguration, (
     event,

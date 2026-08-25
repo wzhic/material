@@ -764,7 +764,12 @@ export const App = (): React.JSX.Element => {
   const refreshModelConfigurations = useCallback(async (): Promise<void> => {
     const result = await window.materialApi.models.getSettings();
     if (result.ok) {
-      setModelConfigurations(result.data.configurations);
+      const availableProviderIds = new Set(
+        result.data.providers.map((provider) => provider.id),
+      );
+      setModelConfigurations(result.data.configurations.filter(
+        (configuration) => availableProviderIds.has(configuration.providerId),
+      ));
     }
   }, []);
 

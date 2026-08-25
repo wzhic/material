@@ -43,7 +43,32 @@ interface OpenAiCompletionResponse {
   };
 }
 
+interface OpenAiResponsesResponse {
+  error?: unknown;
+  incomplete_details?: unknown;
+  model?: unknown;
+  output?: Array<{
+    content?: Array<{
+      text?: unknown;
+      type?: unknown;
+    }>;
+  }>;
+  output_text?: unknown;
+  status?: unknown;
+  system_fingerprint?: unknown;
+  usage?: {
+    input_tokens?: unknown;
+    input_tokens_details?: {
+      cached_tokens?: unknown;
+    };
+    output_tokens?: unknown;
+    total_tokens?: unknown;
+  };
+}
+
 const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
+const OFFICIAL_OPENAI_BASE_URL = 'https://api.openai.com/v1';
+const OFFICIAL_OPENAI_MAX_OUTPUT_TOKENS = 16_384;
 const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 
@@ -138,7 +163,7 @@ export class OpenAiCompatibleProvider implements ModelProviderAdapter {
 
   constructor(
     info: ModelProviderInfo,
-    private readonly fetcher: typeof fetch = fetch,
+    protected readonly fetcher: typeof fetch = fetch,
   ) {
     if ((info.customBaseUrl && info.baseUrl !== null) || (!info.customBaseUrl && !info.baseUrl)) {
       throw new Error('model provider base URL contract is invalid');
@@ -247,7 +272,7 @@ export class OpenAiCompatibleProvider implements ModelProviderAdapter {
     }
   }
 
-  private headers(apiKey: string): Record<string, string> {
+  protected headers(apiKey: string): Record<string, string> {
     return {
       Accept: 'application/json',
       Authorization: `Bearer ${apiKey}`,
@@ -255,7 +280,7 @@ export class OpenAiCompatibleProvider implements ModelProviderAdapter {
     };
   }
 
-  private resolveBaseUrl(connection: ModelProviderConnection): string {
+  protected resolveBaseUrl(connection: ModelProviderConnection): string {
     if (this.info.customBaseUrl) {
       if (!connection.baseUrl) {
         throw new ModelServiceError('INVALID_INPUT');
@@ -268,6 +293,121 @@ export class OpenAiCompatibleProvider implements ModelProviderAdapter {
     return this.info.baseUrl;
   }
 }
+
+export class OpenAiProvider extends OpenAiCompatibleProvider {
+  constructor(fetcher: typeof fetch = fetch) {
+    super({
+      adapterVersion: '1.0.0',
+      baseUrl: OFFICIAL_OPENAI_BASE_URL,
+      capabilities: {
+        dataDestination: 'OpenAI API',
+        inputKinds: ['text'],
+        maxInputCharacters: 250_000,
+        maxMessages: 100,
+        maxOutputTokens: OFFICIAL_OPENAI_MAX_OUTPUT_TOKENS,
+        rawMediaUpload: false,
+        structuredOutput: true,
+        thinkingControl: false,
+      },
+      customBaseUrl: false,
+      displayName: 'OpenAI',
+      documentationUrl: 'https://developers.openai.com/api/docs/',
+      id: 'openai',
+      requiresManualModelId: false,
+    }, fetcher);
+  }
+
+  override async complete(
+    apiKey: string,
+    connection: ModelProviderConnection,
+    request: ModelCompletionRequest,
+    signal: AbortSignal,
+  ): Promise<ModelCompletion> {
+    try {
+      const requestBody: Record<string, unknown> = {
+        input: request.messages,
+        max_output_tokens: Math.min(request.maxTokens, OFFICIAL_OPENAI_MAX_OUTPUT_TOKENS),
+        model: request.modelId,
+        store: false,
+        stream: false,
+      };
+      if (request.format === 'json') {
+        requestBody.text = { format: { type: 'json_object' } };
+      }
+      if (request.temperature !== undefined) {
+        requestBody.temperature = request.temperature;
+      }
+      const response = await this.fetcher(`${this.resolveBaseUrl(connection)}/responses`, {
+        body: JSON.stringify(requestBody),
+        headers: this.headers(apiKey),
+        method: 'POST',
+        redirect: 'error',
+        signal,
+      });
+      if (!response.ok) {
+        throw mapStatus(response.status);
+      }
+      const body = (await parseJsonResponse(response)) as OpenAiResponsesResponse;
+      const hasError = body.error !== undefined && body.error !== null;
+      const isIncomplete = body.incomplete_details !== undefined
+        && body.incomplete_details !== null;
+      if (hasError || body.status === 'failed') {
+        throw new ModelServiceError('SERVICE_UNAVAILABLE');
+      }
+      if (
+        isIncomplete
+        || body.status !== 'completed'
+        || typeof body.model !== 'string'
+      ) {
+        throw new ModelServiceError('RESPONSE_INVALID');
+      }
+      const nestedOutputText = body.output
+        ?.flatMap((item) => item.content ?? [])
+        .flatMap((content) => (
+          content.type === 'output_text' && typeof content.text === 'string'
+            ? [content.text]
+            : []
+        ))
+        .join('');
+      const content = nestedOutputText
+        || (typeof body.output_text === 'string' ? body.output_text : null);
+      if (content === null || content.trim().length === 0) {
+        throw new ModelServiceError('RESPONSE_INVALID');
+      }
+      const rawUsage = body.usage ?? {};
+      const promptTokens = integerOrZero(rawUsage.input_tokens);
+      const completionTokens = integerOrZero(rawUsage.output_tokens);
+      const promptCacheHitTokens = Math.min(
+        promptTokens,
+        integerOrZero(rawUsage.input_tokens_details?.cached_tokens),
+      );
+      const usage: ModelUsage = {
+        completionTokens,
+        promptCacheHitTokens,
+        promptCacheMissTokens: promptTokens - promptCacheHitTokens,
+        promptTokens,
+        totalTokens: integerOrZero(rawUsage.total_tokens),
+      };
+      return {
+        content,
+        finishReason: typeof body.status === 'string' ? body.status.slice(0, 80) : null,
+        modelId: body.model,
+        providerId: this.info.id,
+        systemFingerprint:
+          typeof body.system_fingerprint === 'string'
+            ? body.system_fingerprint.slice(0, 160)
+            : null,
+        usage,
+      };
+    } catch (error) {
+      return normalizeFetchError(error, signal);
+    }
+  }
+}
+
+export const createOpenAiProvider = (
+  fetcher: typeof fetch = fetch,
+): ModelProviderAdapter => new OpenAiProvider(fetcher);
 
 export const createDeepSeekProvider = (
   baseUrl = 'https://api.deepseek.com',

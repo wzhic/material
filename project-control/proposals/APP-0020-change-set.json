@@ -1,0 +1,22 @@
+{
+  "base_head": "80077b2d50232952d6b822ed33dcd036e020d9cf",
+  "paths": [
+    "apps/desktop/src/index.ts",
+    "apps/desktop/src/model/ipc.test.ts",
+    "apps/desktop/src/model/ipc.ts",
+    "apps/desktop/src/model/model.runtime.test.ts",
+    "apps/desktop/src/model/provider.test.ts",
+    "apps/desktop/src/model/provider.ts",
+    "apps/desktop/src/model/service.test.ts",
+    "apps/desktop/src/model/service.ts",
+    "apps/desktop/src/model/types.ts",
+    "apps/desktop/src/preload.ts",
+    "apps/desktop/src/ui/App.tsx",
+    "apps/desktop/src/ui/ModelSettingsPage.tsx",
+    "docs/development/模型接入与安全存储-DEV-0010-v1.0.md",
+    "docs/requirements/模型管理与自定义模型-REQ-0006/模型管理与自定义模型-REQ-0006-v1.0.md",
+    "docs/troubleshooting/模型连接与凭据-TRB-0007-v1.0.md"
+  ],
+  "schema_version": 1,
+  "task_id": "APP-0020"
+}

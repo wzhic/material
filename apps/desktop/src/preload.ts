@@ -46,6 +46,8 @@ const modelApi: ModelApi = {
     ipcRenderer.invoke(MODEL_IPC_CHANNELS.saveConfiguration, input),
   refreshModels: (id) =>
     ipcRenderer.invoke(MODEL_IPC_CHANNELS.refreshModels, id),
+  testModel: (configurationId, modelId) =>
+    ipcRenderer.invoke(MODEL_IPC_CHANNELS.testModel, configurationId, modelId),
   removeConfiguration: (id, expectedWriteVersion) =>
     ipcRenderer.invoke(
       MODEL_IPC_CHANNELS.removeConfiguration,

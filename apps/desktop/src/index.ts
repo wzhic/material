@@ -8,6 +8,7 @@ import { registerModelIpc } from './model/ipc';
 import {
   createCustomOpenAiCompatibleProvider,
   createDeepSeekProvider,
+  createOpenAiProvider,
 } from './model/provider';
 import { ModelProviderRegistry } from './model/registry';
 import { ModelService } from './model/service';
@@ -57,6 +58,7 @@ app.whenReady().then(() => {
   registerMaterialProtocol(materialSessionService);
   registerMaterialIpc(materialSessionService);
   const modelRegistry = new ModelProviderRegistry();
+  modelRegistry.register(createOpenAiProvider());
   modelRegistry.register(createDeepSeekProvider());
   modelRegistry.register(createCustomOpenAiCompatibleProvider());
   const modelVault = new ModelCredentialVault(

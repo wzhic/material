@@ -91,6 +91,15 @@ export interface ModelCompletion {
   usage: ModelUsage;
 }
 
+export interface ModelConnectivityTestResult {
+  checkedAt: string;
+  configurationId: string;
+  durationMs: number;
+  providerId: ModelProviderId;
+  requestedModelId: string;
+  returnedModelId: string;
+}
+
 export interface ModelInvocationAudit {
   adapterVersion: string;
   configurationId: string;
@@ -162,6 +171,10 @@ export interface ModelApi {
   refreshModels: (
     id: string,
   ) => Promise<ModelApiResult<ModelConfigurationSummary>>;
+  testModel: (
+    configurationId: string,
+    modelId: string,
+  ) => Promise<ModelApiResult<ModelConnectivityTestResult>>;
   removeConfiguration: (
     id: string,
     expectedWriteVersion: number,
@@ -173,4 +186,5 @@ export const MODEL_IPC_CHANNELS = {
   refreshModels: 'material:models:refresh-models',
   removeConfiguration: 'material:models:remove-configuration',
   saveConfiguration: 'material:models:save-configuration',
+  testModel: 'material:models:test-model',
 } as const;

@@ -8,6 +8,7 @@ import {
   AvailableModel,
   ModelCompletionRequest,
   ModelConfigurationSummary,
+  ModelConnectivityTestResult,
   ModelInvocationAudit,
   ModelInvocationResult,
   ModelSettingsSnapshot,
@@ -18,6 +19,8 @@ import { ModelCredentialVault, StoredModelConfiguration } from './vault';
 const MAX_MESSAGE_CHARS = 250_000;
 const MODEL_TIMEOUT_MS = 180_000;
 const MODEL_LIST_TIMEOUT_MS = 30_000;
+const MODEL_CONNECTIVITY_TEST_TIMEOUT_MS = 60_000;
+const MODEL_CONNECTIVITY_TEST_PROMPT = 'Reply with exactly OK.';
 
 const toError = (error: unknown): ModelServiceError =>
   error instanceof ModelServiceError ? error : new ModelServiceError('UNKNOWN');
@@ -155,6 +158,73 @@ export class ModelService {
       } catch (updateError) {
         throw toError(updateError);
       }
+      throw toError(error);
+    }
+  }
+
+  async testModel(
+    configurationId: string,
+    modelId: string,
+  ): Promise<ModelConnectivityTestResult> {
+    if (
+      typeof configurationId !== 'string'
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+        configurationId,
+      )
+      || typeof modelId !== 'string'
+      || normalizeModelId(modelId) !== modelId
+    ) {
+      throw new ModelServiceError('INVALID_INPUT');
+    }
+    const startedAt = new Date();
+    try {
+      const credential = await this.vault.readCredential(configurationId);
+      if (
+        credential.configuration.connectionStatus !== 'ready'
+        || credential.configuration.selectedModelId !== modelId
+        || !credential.configuration.availableModels.some((model) => model.id === modelId)
+      ) {
+        throw new ModelServiceError('MODEL_NOT_AVAILABLE');
+      }
+      const provider = this.registry.resolve(credential.configuration.providerId);
+      const completion = await this.withTimeout(
+        (signal) => provider.complete(
+          credential.apiKey,
+          { baseUrl: credential.configuration.baseUrl },
+          {
+            configurationId,
+            format: 'text',
+            maxTokens: 128,
+            messages: [{ content: MODEL_CONNECTIVITY_TEST_PROMPT, role: 'user' }],
+            modelId,
+            thinking: 'disabled',
+          },
+          signal,
+        ),
+        MODEL_CONNECTIVITY_TEST_TIMEOUT_MS,
+      );
+      if (completion.providerId !== credential.configuration.providerId) {
+        throw new ModelServiceError('RESPONSE_INVALID');
+      }
+      let returnedModelId: string;
+      try {
+        returnedModelId = normalizeModelId(completion.modelId);
+      } catch {
+        throw new ModelServiceError('RESPONSE_INVALID');
+      }
+      if (returnedModelId !== completion.modelId) {
+        throw new ModelServiceError('RESPONSE_INVALID');
+      }
+      const finishedAt = new Date();
+      return {
+        checkedAt: finishedAt.toISOString(),
+        configurationId,
+        durationMs: Math.max(0, finishedAt.getTime() - startedAt.getTime()),
+        providerId: credential.configuration.providerId,
+        requestedModelId: modelId,
+        returnedModelId,
+      };
+    } catch (error) {
       throw toError(error);
     }
   }

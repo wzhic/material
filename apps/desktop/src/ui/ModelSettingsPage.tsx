@@ -38,7 +38,11 @@ const emptyForm = (providers: ModelProviderInfo[] = []): ConfigurationForm => ({
   providerId: providers[0]?.id ?? '',
 });
 
-const statusLabel = (configuration: ModelConfigurationSummary): string => {
+const statusLabel = (
+  configuration: ModelConfigurationSummary,
+  providerAvailable: boolean,
+): string => {
+  if (!providerAvailable) return 'Provider 不可用';
   if (configuration.connectionStatus === 'ready') return '连接正常';
   if (configuration.connectionStatus === 'error') return '验证失败';
   return '待验证';
@@ -187,7 +191,7 @@ export const ModelSettingsPage = ({
     setError('');
     setMessage('');
     const result = await window.materialApi.models.saveConfiguration({
-      apiKey: form.apiKey.trim() || undefined,
+      apiKey: form.apiKey || undefined,
       baseUrl: selectedProvider.customBaseUrl ? form.baseUrl.trim() : undefined,
       displayName: form.displayName.trim(),
       expectedWriteVersion: form.expectedWriteVersion ?? undefined,
@@ -210,7 +214,7 @@ export const ModelSettingsPage = ({
     if (!refreshResult.ok) {
       setError(
         `配置已安全保存，但 /models 验证失败：${refreshResult.error.message}。`
-        + '可编辑配置后重试，或使用“测试并刷新”。',
+        + '可编辑配置后重试，或使用“刷新模型”。',
       );
     } else if (loaded) {
       setMessage(
@@ -254,6 +258,46 @@ export const ModelSettingsPage = ({
     setBusyAction(null);
     onChanged();
     if (loaded) setMessage('模型配置和对应凭据已删除');
+  };
+
+  const handleTestModel = async (
+    configuration: ModelConfigurationSummary,
+  ): Promise<void> => {
+    const provider = snapshot?.providers.find(
+      (item) => item.id === configuration.providerId,
+    );
+    if (
+      !provider
+      || configuration.connectionStatus !== 'ready'
+      || !configuration.selectedModelId
+    ) {
+      return;
+    }
+    const confirmed = window.confirm(
+      `将使用配置“${configuration.displayName}”和模型“${configuration.selectedModelId}”`
+      + `向 ${provider.capabilities.dataDestination} 发送固定测试文本（仅要求模型回复 OK），`
+      + '不会发送用户素材，但供应商可能收取少量调用费用。是否继续？',
+    );
+    if (!confirmed) return;
+    setBusyAction(`test:${configuration.id}`);
+    setError('');
+    setMessage('');
+    const result = await window.materialApi.models.testModel(
+      configuration.id,
+      configuration.selectedModelId,
+    );
+    setBusyAction(null);
+    if (!result.ok) {
+      setError(`测试调用失败：${result.error.message}`);
+      return;
+    }
+    const returnedModel = result.data.returnedModelId === result.data.requestedModelId
+      ? ''
+      : `；供应商报告实际模型 ${result.data.returnedModelId}，请核对是否为别名或版本快照`;
+    setMessage(
+      `测试调用成功：${configuration.providerName} / 请求模型 `
+      + `${result.data.requestedModelId}${returnedModel}；耗时 ${result.data.durationMs} 毫秒`,
+    );
   };
 
   const handleDefaultModel = async (
@@ -317,12 +361,21 @@ export const ModelSettingsPage = ({
       <div className="model-validation-boundary">
         <strong>验证边界</strong>
         <span>
-          保存和“测试并刷新”只请求供应商的 /models；不会自动发起完成请求、生成分析或切换模型。
+          保存和“刷新模型”只请求供应商的 /models；只有明确点击“测试调用”并确认后，
+          才发送固定测试文本且可能产生少量费用。测试不会发送用户素材、生成分析或切换模型。
         </span>
       </div>
 
-      {error ? <div className="settings-message is-error" role="alert">{error}</div> : null}
-      {message ? <div className="settings-message is-success" role="status">{message}</div> : null}
+      {error ? (
+        <div aria-live="assertive" className="settings-message is-error" role="alert">
+          {error}
+        </div>
+      ) : null}
+      {message ? (
+        <div aria-live="polite" className="settings-message is-success" role="status">
+          {message}
+        </div>
+      ) : null}
 
       <section className="model-config-list" aria-labelledby="saved-models-heading">
         <div className="settings-section-heading">
@@ -377,14 +430,16 @@ export const ModelSettingsPage = ({
                       <span>{configuration.providerName}</span>
                     </div>
                     <Tag
-                      theme={configuration.connectionStatus === 'ready'
-                        ? 'success'
-                        : configuration.connectionStatus === 'error'
-                          ? 'danger'
-                          : 'warning'}
+                      theme={!providerAvailable
+                        ? 'danger'
+                        : configuration.connectionStatus === 'ready'
+                          ? 'success'
+                          : configuration.connectionStatus === 'error'
+                            ? 'danger'
+                            : 'warning'}
                       variant="light"
                     >
-                      {statusLabel(configuration)}
+                      {statusLabel(configuration, providerAvailable)}
                     </Tag>
                   </div>
                   <div className="model-config-meta">
@@ -408,6 +463,7 @@ export const ModelSettingsPage = ({
                     <select
                       disabled={
                         configuration.availableModels.length === 0
+                        || !providerAvailable
                         || configuration.connectionStatus !== 'ready'
                         || anyActionBusy
                       }
@@ -431,13 +487,28 @@ export const ModelSettingsPage = ({
                   </label>
                   <div className="model-config-actions">
                     <Button
-                      disabled={anyActionBusy && busyAction !== `refresh:${configuration.id}`}
+                      disabled={!providerAvailable || !secureStorageReady || anyActionBusy}
                       loading={busyAction === `refresh:${configuration.id}`}
                       onClick={() => void handleRefresh(configuration.id)}
                       size="small"
                       variant="outline"
                     >
-                      测试并刷新
+                      刷新模型
+                    </Button>
+                    <Button
+                      disabled={
+                        !providerAvailable
+                        || !secureStorageReady
+                        || configuration.connectionStatus !== 'ready'
+                        || !configuration.selectedModelId
+                        || anyActionBusy
+                      }
+                      loading={busyAction === `test:${configuration.id}`}
+                      onClick={() => void handleTestModel(configuration)}
+                      size="small"
+                      variant="outline"
+                    >
+                      测试调用
                     </Button>
                     <Button
                       disabled={!providerAvailable || anyActionBusy}
@@ -479,7 +550,7 @@ export const ModelSettingsPage = ({
             <div className="model-dialog-header">
               <div>
                 <h2 id="model-dialog-title">{form.id ? '编辑模型' : '添加模型'}</h2>
-                <p id="model-dialog-description">仅支持当前列出的 OpenAI 兼容接入方式。</p>
+                <p id="model-dialog-description">支持当前列出的 OpenAI 及兼容接入方式。</p>
               </div>
               <button
                 aria-label="关闭模型配置弹窗"
@@ -576,7 +647,7 @@ export const ModelSettingsPage = ({
                       autoComplete="new-password"
                       disabled={busyAction === 'save'}
                       id="model-api-key"
-                      maxLength={4_096}
+                      maxLength={512}
                       onChange={(event) => setForm((current) => ({
                         ...current,
                         apiKey: event.target.value,
@@ -626,7 +697,8 @@ export const ModelSettingsPage = ({
               <div className="model-form-notice">
                 <strong>保存与调用边界</strong>
                 <span>
-                  保存后只请求 /models 验证连接，不会调用 /chat/completions 或生成分析。
+                  保存后只请求 /models 验证连接，不会发起模型生成或产生测试调用费用。
+                  只有之后明确点击“测试调用”并再次确认，才会发送固定测试文本。
                   {selectedProvider
                     ? ` 后续明确运行分析时，文本与结构化证据会发送至 ${selectedProvider.capabilities.dataDestination}；不会直接上传原始视频或图片。`
                     : ''}
