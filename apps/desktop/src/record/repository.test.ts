@@ -253,6 +253,16 @@ describe('RecordRepository', () => {
     expect(repository.list().total).toBe(0);
   });
 
+  it('rejects malformed visible conversation before persisting a record', () => {
+    const input = confirmedInput();
+    input.visibleConversation = [
+      { role: 'user', text: 'x'.repeat(2_001), timeReferenceMs: 2_000 },
+    ];
+
+    expect(() => repository.confirmAndSave(input)).toThrow('可见对话内容过长');
+    expect(repository.list().total).toBe(0);
+  });
+
   it('migrates a v1 database without rewriting legacy snapshots', () => {
     repository.close();
     const directory = mkdtempSync(path.join(tmpdir(), 'material-record-migration-'));

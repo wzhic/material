@@ -25,6 +25,7 @@ import type {
 import type {
   AnalysisRuntimeErrorCode,
   AnalysisRuntimeProgress,
+  AnalysisRuntimeRefineInput,
   AnalysisRuntimeResult,
   AnalysisRuntimeStage,
   AnalysisRuntimeStartInput,
@@ -57,10 +58,19 @@ interface EnginePort {
 
 type ProgressListener = (progress: AnalysisRuntimeProgress) => void;
 
+interface RefinementContext {
+  input: AnalysisRuntimeStartInput;
+  materialFingerprintSha256: string;
+  media: MediaEvidenceOutput;
+  mediaSummary: Extract<AnalysisRuntimeResult, { ok: true }>['data']['media'];
+  productSnapshot: ProductSnapshot | null;
+}
+
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const STAGE_MESSAGES: Record<AnalysisRuntimeStage, string> = {
+  applying_guidance: '正在应用你补充的关注点并复用当前素材证据',
   cancelled: '分析已取消，当前设置仍然保留',
   extracting_structure: '正在拆解媒体结构与代表帧',
   failed: '分析未完成，可以保留设置后重试',
@@ -71,6 +81,8 @@ const STAGE_MESSAGES: Record<AnalysisRuntimeStage, string> = {
   report_ready: '待确认报告已经生成',
   validating_context: '正在核对素材、产品与模型选择',
 };
+
+const MAX_REFINEMENT_CONTEXTS = 8;
 
 const TOOL_LABELS: Record<string, string> = {
   'media.asr': '口播识别',
@@ -101,6 +113,37 @@ const validateInput = (input: AnalysisRuntimeStartInput): void => {
   }
 };
 
+const validateRefineInput = (input: AnalysisRuntimeRefineInput): void => {
+  if (
+    !SAFE_ID.test(input.clientRunId)
+    || !SAFE_ID.test(input.sourceClientRunId)
+    || input.clientRunId === input.sourceClientRunId
+    || !input.guidance.trim()
+    || input.guidance.trim().length > 2_000
+    || (
+      input.referenceTimeMs !== undefined
+      && input.referenceTimeMs !== null
+      && (!Number.isFinite(input.referenceTimeMs) || input.referenceTimeMs < 0)
+    )
+  ) {
+    throw new AnalysisRuntimeError('INVALID_INPUT', '补充关注点无效，请检查后重试');
+  }
+};
+
+const mergeGuidance = (
+  conversionContext: string | undefined,
+  guidance: string,
+  referenceTimeMs: number | null | undefined,
+): string => {
+  const reference = referenceTimeMs === null || referenceTimeMs === undefined
+    ? ''
+    : `[参考时间 ${(referenceTimeMs / 1_000).toFixed(1)} 秒] `;
+  const combined = [conversionContext?.trim(), `${reference}${guidance.trim()}`]
+    .filter(Boolean)
+    .join('\n');
+  return combined.length <= 2_000 ? combined : combined.slice(combined.length - 2_000);
+};
+
 const toolOutput = <T>(result: ToolInvocationSuccess): T =>
   structuredClone(result.output) as unknown as T;
 
@@ -122,6 +165,7 @@ const engineStageMessage = (result: Parameters<AnalysisRunListener>[0]): string 
 
 export class AnalysisRuntimeService {
   private readonly active = new Map<string, AbortController>();
+  private readonly refinementContexts = new Map<string, RefinementContext>();
 
   constructor(
     private readonly tools: ToolPort,
@@ -343,15 +387,23 @@ export class AnalysisRuntimeService {
         }
         throw new AnalysisRuntimeError('MODEL_FAILED', engineResult.error.message);
       }
+      const mediaSummary = {
+        durationMs: probe.durationMs,
+        hasAudio: probe.hasAudio,
+        ...visualDimensions(probe),
+      };
+      this.rememberContext(input.clientRunId, {
+        input: structuredClone(input),
+        materialFingerprintSha256: material.summary.fingerprintSha256,
+        media: structuredClone(media),
+        mediaSummary,
+        productSnapshot: productSnapshot ? structuredClone(productSnapshot) : null,
+      });
       emit('report_ready');
       return {
         data: {
           engineEvents: engineResult.events,
-          media: {
-            durationMs: probe.durationMs,
-            hasAudio: probe.hasAudio,
-            ...visualDimensions(probe),
-          },
+          media: mediaSummary,
           report: engineResult.report,
         },
         ok: true,
@@ -369,6 +421,125 @@ export class AnalysisRuntimeService {
     }
   }
 
+  async refine(
+    input: AnalysisRuntimeRefineInput,
+    listener?: ProgressListener,
+  ): Promise<AnalysisRuntimeResult> {
+    try {
+      validateRefineInput(input);
+      if (this.active.has(input.clientRunId)) {
+        throw new AnalysisRuntimeError('ALREADY_RUNNING', '当前重新分析请求已经在运行');
+      }
+    } catch (error) {
+      return this.failure(error);
+    }
+
+    const source = this.refinementContexts.get(input.sourceClientRunId);
+    if (!source) {
+      return this.failure(new AnalysisRuntimeError(
+        'INVALID_INPUT',
+        '原分析会话已不可用于增量处理，请从当前配置重新开始',
+      ));
+    }
+    if (
+      input.referenceTimeMs !== null
+      && input.referenceTimeMs !== undefined
+      && input.referenceTimeMs > source.mediaSummary.durationMs
+    ) {
+      return this.failure(new AnalysisRuntimeError('INVALID_INPUT', '引用时间超出素材时长'));
+    }
+
+    const controller = new AbortController();
+    this.active.set(input.clientRunId, controller);
+    const emit = (stage: AnalysisRuntimeStage, message = STAGE_MESSAGES[stage]): void => {
+      try {
+        listener?.({ clientRunId: input.clientRunId, message, stage });
+      } catch {
+        // UI progress listeners cannot change model results.
+      }
+    };
+
+    try {
+      emit('validating_context');
+      const material = await this.materials.inspect(source.input.sessionId);
+      if (
+        material.sourceStatus !== 'available'
+        || material.summary.fingerprintSha256 !== source.materialFingerprintSha256
+      ) {
+        throw new AnalysisRuntimeError(
+          'MATERIAL_UNAVAILABLE',
+          '原素材已移动、变化或失去权限，请重新定位后再分析',
+        );
+      }
+      if (controller.signal.aborted) {
+        throw new AnalysisRuntimeError('CANCELLED', '重新分析已取消');
+      }
+
+      const conversionContext = mergeGuidance(
+        source.input.conversionContext,
+        input.guidance,
+        input.referenceTimeMs,
+      );
+      emit('applying_guidance');
+      const engineInput: AnalysisRunInput = {
+        conversionContext,
+        industry: source.input.industry,
+        media: structuredClone(source.media),
+        mediaKind: material.summary.kind,
+        model: {
+          configurationDisplayName: source.input.configurationDisplayName,
+          configurationId: source.input.configurationId,
+          modelId: source.input.modelId,
+        },
+        productSnapshot: source.productSnapshot
+          ? structuredClone(source.productSnapshot)
+          : null,
+      };
+      emit('generating_report');
+      const engineResult = await this.engine.run(
+        engineInput,
+        controller.signal,
+        (event) => emit('generating_report', engineStageMessage(event)),
+      );
+      if (!engineResult.ok) {
+        if (engineResult.error.code === 'CANCELLED' || controller.signal.aborted) {
+          throw new AnalysisRuntimeError('CANCELLED', '重新分析已取消');
+        }
+        throw new AnalysisRuntimeError('MODEL_FAILED', engineResult.error.message);
+      }
+      const nextStartInput: AnalysisRuntimeStartInput = {
+        ...structuredClone(source.input),
+        clientRunId: input.clientRunId,
+        conversionContext,
+      };
+      this.rememberContext(input.clientRunId, {
+        input: nextStartInput,
+        materialFingerprintSha256: source.materialFingerprintSha256,
+        media: structuredClone(source.media),
+        mediaSummary: structuredClone(source.mediaSummary),
+        productSnapshot: source.productSnapshot ? structuredClone(source.productSnapshot) : null,
+      });
+      emit('report_ready');
+      return {
+        data: {
+          engineEvents: engineResult.events,
+          media: structuredClone(source.mediaSummary),
+          report: engineResult.report,
+        },
+        ok: true,
+      };
+    } catch (error) {
+      emit(
+        error instanceof AnalysisRuntimeError && error.code === 'CANCELLED'
+          ? 'cancelled'
+          : 'failed',
+      );
+      return this.failure(error);
+    } finally {
+      this.active.delete(input.clientRunId);
+    }
+  }
+
   cancel(clientRunId: string): boolean {
     const controller = this.active.get(clientRunId);
     if (!controller) return false;
@@ -378,6 +549,16 @@ export class AnalysisRuntimeService {
 
   cancelAll(): void {
     for (const controller of this.active.values()) controller.abort();
+  }
+
+  private rememberContext(clientRunId: string, context: RefinementContext): void {
+    this.refinementContexts.delete(clientRunId);
+    this.refinementContexts.set(clientRunId, context);
+    while (this.refinementContexts.size > MAX_REFINEMENT_CONTEXTS) {
+      const oldest = this.refinementContexts.keys().next().value as string | undefined;
+      if (!oldest) break;
+      this.refinementContexts.delete(oldest);
+    }
   }
 
   private failure(error: unknown): AnalysisRuntimeResult {

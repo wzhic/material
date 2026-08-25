@@ -164,4 +164,20 @@ describe('createConfirmedRecordInput', () => {
     expect(serialized).not.toContain('material-local://');
     expect(serialized).not.toContain('sessionId');
   });
+
+  it('keeps visible conversation and the explicit source-record relation', () => {
+    const input = createConfirmedRecordInput(data, material, '加强情绪转化', {
+      sourceRecordId: 'record-source-1',
+      visibleConversation: [
+        { role: 'user', text: '重点关注 00:03 的 CTA', timeReferenceMs: 3_000 },
+        { role: 'assistant', text: '已按该关注点生成新版报告。', timeReferenceMs: 3_000 },
+      ],
+    });
+
+    expect(input.sourceRecordId).toBe('record-source-1');
+    expect(input.visibleConversation).toEqual([
+      { role: 'user', text: '重点关注 00:03 的 CTA', timeReferenceMs: 3_000 },
+      { role: 'assistant', text: '已按该关注点生成新版报告。', timeReferenceMs: 3_000 },
+    ]);
+  });
 });

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Button, Tag } from 'tdesign-react';
 
 import type { AnalysisRuntimeResult } from '../analysis-runtime/types';
@@ -10,10 +10,16 @@ interface AnalysisReportPreviewPageProps {
   confirmError: string;
   confirming: boolean;
   data: ReportData;
+  isLatestVersion: boolean;
   materialName: string;
   onBackToConfiguration: () => void;
   onBackToWorkspace: () => void;
   onConfirm: () => void;
+  onPreviewVersionChange: (index: number) => void;
+  onReanalyze: (guidance: string) => void;
+  previewVersionCount: number;
+  previewVersionIndex: number;
+  reanalyzing: boolean;
 }
 
 const formatTime = (milliseconds: number | null): string => {
@@ -43,11 +49,20 @@ export const AnalysisReportPreviewPage = ({
   confirmError,
   confirming,
   data,
+  isLatestVersion,
   materialName,
   onBackToConfiguration,
   onBackToWorkspace,
   onConfirm,
+  onPreviewVersionChange,
+  onReanalyze,
+  previewVersionCount,
+  previewVersionIndex,
+  reanalyzing,
 }: AnalysisReportPreviewPageProps): React.JSX.Element => {
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedback, setFeedback] = useState('');
+  const [feedbackError, setFeedbackError] = useState('');
   const { report } = data;
   const scoreDimensions = report.score.dimensions;
   const maximumTime = Math.max(
@@ -78,7 +93,12 @@ export const AnalysisReportPreviewPage = ({
         </div>
         <div className="report-header-actions">
           <Tag theme="warning" variant="light">尚未保存</Tag>
-          <Button loading={confirming} onClick={onConfirm} theme="primary">
+          <Button
+            disabled={!isLatestVersion || reanalyzing}
+            loading={confirming}
+            onClick={onConfirm}
+            theme="primary"
+          >
             {confirming ? '正在保存' : '确认并保存'}
           </Button>
         </div>
@@ -88,6 +108,72 @@ export const AnalysisReportPreviewPage = ({
         <div className="page-alert is-error" role="alert">
           {confirmError}；待确认报告仍保留，可直接重试。
         </div>
+      ) : null}
+
+      {reanalyzing ? (
+        <div className="page-alert" role="status">
+          正在使用原模型和当前素材证据生成新版报告；当前预览仍保留，可继续查看。
+        </div>
+      ) : null}
+
+      <section className="report-version-bar" aria-label="待确认报告版本">
+        <div>
+          <strong>当前会话预览 {previewVersionIndex + 1} / {previewVersionCount}</strong>
+          <span>{isLatestVersion ? '最新版本，可确认保存' : '历史预览，仅供比较'}</span>
+        </div>
+        <div>
+          <Button
+            disabled={previewVersionIndex === 0 || reanalyzing}
+            onClick={() => onPreviewVersionChange(previewVersionIndex - 1)}
+            size="small"
+            variant="outline"
+          >上一版</Button>
+          <Button
+            disabled={previewVersionIndex >= previewVersionCount - 1 || reanalyzing}
+            onClick={() => onPreviewVersionChange(previewVersionIndex + 1)}
+            size="small"
+            variant="outline"
+          >下一版</Button>
+        </div>
+      </section>
+
+      {feedbackOpen ? (
+        <section className="report-feedback-panel" aria-labelledby="report-feedback-heading">
+          <div>
+            <span>不采纳当前结论</span>
+            <h2 id="report-feedback-heading">指出问题并重新分析</h2>
+            <p>提交会再次调用当前模型，但复用已解析的素材证据；旧预览不会保存为正式记录。</p>
+          </div>
+          <textarea
+            aria-label="报告问题或重新分析关注点"
+            disabled={reanalyzing}
+            maxLength={2_000}
+            onChange={(event) => {
+              setFeedback(event.target.value);
+              setFeedbackError('');
+            }}
+            placeholder="例如：前 5 秒对卖点的判断不准确，请更关注字幕与口播是否一致"
+            value={feedback}
+          />
+          {feedbackError ? <span className="field-error" role="alert">{feedbackError}</span> : null}
+          <div>
+            <Button disabled={reanalyzing} onClick={() => setFeedbackOpen(false)} variant="outline">取消</Button>
+            <Button
+              disabled={reanalyzing}
+              onClick={() => {
+                const guidance = feedback.trim();
+                if (!guidance) {
+                  setFeedbackError('请先说明报告存在的问题或希望加强的关注点');
+                  return;
+                }
+                onReanalyze(guidance);
+                setFeedbackOpen(false);
+                setFeedback('');
+              }}
+              theme="primary"
+            >按反馈重新分析</Button>
+          </div>
+        </section>
       ) : null}
 
       <section className="report-hero-card">
@@ -239,8 +325,18 @@ export const AnalysisReportPreviewPage = ({
       <footer className="report-preview-footer">
         <p>这是一份待确认预览，关闭应用或离开当前会话不会形成正式分析记录。</p>
         <div>
-          <Button disabled={confirming} onClick={onBackToConfiguration} variant="outline">返回配置</Button>
-          <Button loading={confirming} onClick={onConfirm} theme="primary">
+          <Button disabled={confirming || reanalyzing} onClick={onBackToConfiguration} variant="outline">返回配置</Button>
+          <Button
+            disabled={confirming || reanalyzing || !isLatestVersion}
+            onClick={() => setFeedbackOpen(true)}
+            variant="outline"
+          >指出问题并重新分析</Button>
+          <Button
+            disabled={!isLatestVersion || reanalyzing}
+            loading={confirming}
+            onClick={onConfirm}
+            theme="primary"
+          >
             {confirming ? '正在保存' : '确认并保存'}
           </Button>
         </div>
