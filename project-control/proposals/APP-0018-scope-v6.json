@@ -1,0 +1,22 @@
+{
+  "allowed_paths": [
+    ".github/workflows/governance.yml",
+    "apps/desktop/**",
+    "docs/development/模型接入与安全存储-DEV-0010-v1.0.md",
+    "docs/troubleshooting/模型连接与凭据-TRB-0007-v1.0.md",
+    "docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md",
+    "docs/requirements/单素材分析-REQ-0005/assets/prototype-add-custom-model.png",
+    "docs/requirements/单素材分析-REQ-0005/assets/prototype-model-management.png",
+    "project-control/**",
+    "tools/governance/core.py",
+    "tools/governance/reconcile.py",
+    "tools/governance/taskctl.py",
+    "tools/governance/validation_runner.py",
+    "tools/governance/tests/helpers.py",
+    "tools/governance/tests/test_controlled_taskctl.py",
+    "tools/governance/tests/test_core.py",
+    "tools/governance/tests/test_projectctl.py",
+    "tools/governance/tests/test_reconcile_ci_static.py",
+    "tools/governance/tests/test_validation_runner.py"
+  ]
+}
