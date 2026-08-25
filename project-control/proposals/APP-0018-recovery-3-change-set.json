@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0018",
+  "base_head": "8cfd6b78ff2f936ac16ffa52b68d71ea0e67a5fc",
+  "paths": [
+    ".github/workflows/governance.yml",
+    "project-control/proposals/APP-0018-scope-v3.json",
+    "project-control/proposals/APP-0018-scope-v4.json",
+    "tools/governance/core.py",
+    "tools/governance/taskctl.py",
+    "tools/governance/tests/helpers.py",
+    "tools/governance/tests/test_controlled_taskctl.py"
+  ]
+}

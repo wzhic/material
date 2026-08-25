@@ -2706,6 +2706,30 @@ def expected_validation_subject(
     if phase is None:
         raise GovernanceError("unknown validation gate: %s" % gate)
     if phase == "local":
+        # After commit-task freezes a task, its local evidence remains bound to
+        # the immutable reviewed content. Descendant stack work may otherwise
+        # match broad allowed paths and retroactively invalidate that evidence.
+        frozen_states = NORMAL_STATES[NORMAL_STATES.index("COMMITTED"):]
+        if task.get("status") in frozen_states and task.get("git", {}).get("committed_sha"):
+            subjects = set()
+            for check in task.get("validation", {}).get("required", []):
+                if gate not in check.get("gates", []):
+                    continue
+                check_id = str(check.get("id"))
+                for unit in check.get("release_units", []) or [None]:
+                    result = _latest_validation_result_for_unit(task, check_id, phase, unit)
+                    if result is None or result.get("status") not in ("passed", "skipped"):
+                        continue
+                    subject = result.get("subject")
+                    if not isinstance(subject, str) or not re.fullmatch(
+                        r"workspace:sha256:[0-9a-f]{64}", subject
+                    ):
+                        return None, "frozen local validation subject is invalid"
+                    subjects.add(subject)
+            if len(subjects) == 1:
+                return next(iter(subjects)), None
+            if len(subjects) > 1:
+                return None, "frozen local validation results disagree on content subject"
         return managed_content_subject(root, task), None
     git_evidence = task.get("git", {})
     field = "committed_sha" if phase == "ci" else "merged_sha"
