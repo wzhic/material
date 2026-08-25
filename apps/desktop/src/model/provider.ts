@@ -3,15 +3,21 @@ import {
   AvailableModel,
   ModelCompletion,
   ModelCompletionRequest,
+  ModelProviderConnection,
   ModelProviderInfo,
   ModelUsage,
 } from './types';
 
 export interface ModelProviderAdapter {
   readonly info: ModelProviderInfo;
-  listModels(apiKey: string, signal: AbortSignal): Promise<AvailableModel[]>;
+  listModels(
+    apiKey: string,
+    connection: ModelProviderConnection,
+    signal: AbortSignal,
+  ): Promise<AvailableModel[]>;
   complete(
     apiKey: string,
+    connection: ModelProviderConnection,
     request: ModelCompletionRequest,
     signal: AbortSignal,
   ): Promise<ModelCompletion>;
@@ -38,7 +44,49 @@ interface OpenAiCompletionResponse {
 }
 
 const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
-const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
+
+export const normalizeModelId = (value: string): string => {
+  const normalized = value.trim();
+  if (!MODEL_ID_PATTERN.test(normalized)) {
+    throw new ModelServiceError('INVALID_INPUT');
+  }
+  return normalized;
+};
+
+export const normalizeOpenAiCompatibleBaseUrl = (value: string): string => {
+  const normalizedInput = value.trim();
+  if (
+    !normalizedInput
+    || normalizedInput.length > 2_048
+    || normalizedInput.includes('?')
+    || normalizedInput.includes('#')
+  ) {
+    throw new ModelServiceError('INVALID_INPUT');
+  }
+  let url: URL;
+  try {
+    url = new URL(normalizedInput);
+  } catch {
+    throw new ModelServiceError('INVALID_INPUT');
+  }
+  const isLoopback = LOOPBACK_HOSTS.has(url.hostname.toLowerCase());
+  if (
+    (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopback))
+    || url.username
+    || url.password
+    || url.search
+    || url.hash
+  ) {
+    throw new ModelServiceError('INVALID_INPUT');
+  }
+  let pathname = url.pathname.replace(/\/+$/, '');
+  if (pathname.endsWith('/chat/completions')) {
+    pathname = pathname.slice(0, -'/chat/completions'.length).replace(/\/+$/, '');
+  }
+  return `${url.origin}${pathname}`;
+};
 
 const integerOrZero = (value: unknown): number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0;
@@ -92,23 +140,22 @@ export class OpenAiCompatibleProvider implements ModelProviderAdapter {
     info: ModelProviderInfo,
     private readonly fetcher: typeof fetch = fetch,
   ) {
-    const baseUrl = new URL(info.baseUrl);
-    if (
-      (baseUrl.protocol !== 'https:' && baseUrl.hostname !== '127.0.0.1')
-      || baseUrl.username
-      || baseUrl.password
-      || baseUrl.search
-      || baseUrl.hash
-      || (baseUrl.pathname !== '' && baseUrl.pathname !== '/')
-    ) {
-      throw new Error('model provider base URL must use HTTPS');
+    if ((info.customBaseUrl && info.baseUrl !== null) || (!info.customBaseUrl && !info.baseUrl)) {
+      throw new Error('model provider base URL contract is invalid');
     }
-    this.info = Object.freeze({ ...info, baseUrl: baseUrl.toString().replace(/\/$/, '') });
+    this.info = Object.freeze({
+      ...info,
+      baseUrl: info.baseUrl === null ? null : normalizeOpenAiCompatibleBaseUrl(info.baseUrl),
+    });
   }
 
-  async listModels(apiKey: string, signal: AbortSignal): Promise<AvailableModel[]> {
+  async listModels(
+    apiKey: string,
+    connection: ModelProviderConnection,
+    signal: AbortSignal,
+  ): Promise<AvailableModel[]> {
     try {
-      const response = await this.fetcher(`${this.info.baseUrl}/models`, {
+      const response = await this.fetcher(`${this.resolveBaseUrl(connection)}/models`, {
         headers: this.headers(apiKey),
         method: 'GET',
         redirect: 'error',
@@ -143,20 +190,24 @@ export class OpenAiCompatibleProvider implements ModelProviderAdapter {
 
   async complete(
     apiKey: string,
+    connection: ModelProviderConnection,
     request: ModelCompletionRequest,
     signal: AbortSignal,
   ): Promise<ModelCompletion> {
     try {
-      const response = await this.fetcher(`${this.info.baseUrl}/chat/completions`, {
-        body: JSON.stringify({
-          max_tokens: request.maxTokens,
-          messages: request.messages,
-          model: request.modelId,
-          response_format: request.format === 'json' ? { type: 'json_object' } : undefined,
-          stream: false,
-          temperature: request.temperature,
-          thinking: { type: request.thinking },
-        }),
+      const requestBody: Record<string, unknown> = {
+        max_tokens: request.maxTokens,
+        messages: request.messages,
+        model: request.modelId,
+        response_format: request.format === 'json' ? { type: 'json_object' } : undefined,
+        stream: false,
+        temperature: request.temperature,
+      };
+      if (this.info.capabilities.thinkingControl) {
+        requestBody.thinking = { type: request.thinking };
+      }
+      const response = await this.fetcher(`${this.resolveBaseUrl(connection)}/chat/completions`, {
+        body: JSON.stringify(requestBody),
         headers: this.headers(apiKey),
         method: 'POST',
         redirect: 'error',
@@ -203,12 +254,30 @@ export class OpenAiCompatibleProvider implements ModelProviderAdapter {
       'Content-Type': 'application/json',
     };
   }
+
+  private resolveBaseUrl(connection: ModelProviderConnection): string {
+    if (this.info.customBaseUrl) {
+      if (!connection.baseUrl) {
+        throw new ModelServiceError('INVALID_INPUT');
+      }
+      return normalizeOpenAiCompatibleBaseUrl(connection.baseUrl);
+    }
+    if (!this.info.baseUrl) {
+      throw new ModelServiceError('PROVIDER_NOT_SUPPORTED');
+    }
+    return this.info.baseUrl;
+  }
 }
 
-export const createDeepSeekProvider = (baseUrl = 'https://api.deepseek.com'):
-ModelProviderAdapter => new OpenAiCompatibleProvider({
+export const createDeepSeekProvider = (
+  baseUrl = 'https://api.deepseek.com',
+  fetcher: typeof fetch = fetch,
+): ModelProviderAdapter => new OpenAiCompatibleProvider({
   adapterVersion: '1.0.0',
   baseUrl,
+  customBaseUrl: false,
+  documentationUrl: 'https://api-docs.deepseek.com/',
+  requiresManualModelId: false,
   capabilities: {
     dataDestination: 'DeepSeek API',
     inputKinds: ['text'],
@@ -221,4 +290,26 @@ ModelProviderAdapter => new OpenAiCompatibleProvider({
   },
   displayName: 'DeepSeek',
   id: 'deepseek',
-});
+}, fetcher);
+
+export const createCustomOpenAiCompatibleProvider = (
+  fetcher: typeof fetch = fetch,
+): ModelProviderAdapter => new OpenAiCompatibleProvider({
+  adapterVersion: '1.0.0',
+  baseUrl: null,
+  capabilities: {
+    dataDestination: '用户配置的 OpenAI 兼容 API',
+    inputKinds: ['text'],
+    maxInputCharacters: 250_000,
+    maxMessages: 100,
+    maxOutputTokens: 384_000,
+    rawMediaUpload: false,
+    structuredOutput: true,
+    thinkingControl: false,
+  },
+  customBaseUrl: true,
+  displayName: '自定义 OpenAI 兼容 API',
+  documentationUrl: null,
+  id: 'openai-compatible',
+  requiresManualModelId: true,
+}, fetcher);

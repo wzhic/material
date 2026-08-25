@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { createDeepSeekProvider, OpenAiCompatibleProvider } from './provider';
+import {
+  createCustomOpenAiCompatibleProvider,
+  createDeepSeekProvider,
+} from './provider';
 import { ModelCompletionRequest } from './types';
 
 const LOCAL_API_KEY = 'unit_test_api_key_local_runtime';
@@ -23,6 +26,7 @@ const completionRequest = (modelId: string): ModelCompletionRequest => ({
 describe('OpenAI-compatible model runtime', () => {
   it('lists models and performs a structured completion over the HTTP contract', async () => {
     const receivedBodies: unknown[] = [];
+    const receivedUrls: string[] = [];
     const fetcher: typeof fetch = async (input, init) => {
       if (new Headers(init?.headers).get('Authorization') !== `Bearer ${LOCAL_API_KEY}`) {
         return new Response('{"error":"not returned to caller"}', {
@@ -31,6 +35,8 @@ describe('OpenAI-compatible model runtime', () => {
         });
       }
       const url = String(input);
+      receivedUrls.push(url);
+      expect(init?.redirect).toBe('error');
       if (url.endsWith('/models')) {
         return new Response(JSON.stringify({
           data: [
@@ -62,25 +68,16 @@ describe('OpenAI-compatible model runtime', () => {
       }
       return new Response('', { status: 404 });
     };
-    const provider = new OpenAiCompatibleProvider({
-      adapterVersion: '1.0.0',
-      baseUrl: 'https://runtime.example.invalid',
-      capabilities: {
-        dataDestination: 'Runtime Test',
-        inputKinds: ['text'],
-        maxInputCharacters: 250_000,
-        maxMessages: 100,
-        maxOutputTokens: 384_000,
-        rawMediaUpload: false,
-        structuredOutput: true,
-        thinkingControl: true,
-      },
-      displayName: 'Runtime Test',
-      id: 'runtime-test',
-    }, fetcher);
-    const models = await provider.listModels(LOCAL_API_KEY, new AbortController().signal);
+    const provider = createCustomOpenAiCompatibleProvider(fetcher);
+    const connection = { baseUrl: 'https://runtime.example.invalid/v1' };
+    const models = await provider.listModels(
+      LOCAL_API_KEY,
+      connection,
+      new AbortController().signal,
+    );
     const completion = await provider.complete(
       LOCAL_API_KEY,
+      connection,
       completionRequest(models[0].id),
       new AbortController().signal,
     );
@@ -95,8 +92,12 @@ describe('OpenAI-compatible model runtime', () => {
       model: 'deepseek-runtime-flash',
       response_format: { type: 'json_object' },
       stream: false,
-      thinking: { type: 'disabled' },
     })]);
+    expect(receivedBodies[0]).not.toHaveProperty('thinking');
+    expect(receivedUrls).toEqual([
+      'https://runtime.example.invalid/v1/models',
+      'https://runtime.example.invalid/v1/chat/completions',
+    ]);
   });
 
   it('maps authentication failures without returning provider bodies or keys', async () => {
@@ -104,25 +105,14 @@ describe('OpenAI-compatible model runtime', () => {
       '{"error":"not returned to caller"}',
       { headers: { 'Content-Type': 'application/json' }, status: 401 },
     );
-    const provider = new OpenAiCompatibleProvider({
-      adapterVersion: '1.0.0',
-      baseUrl: 'https://runtime.example.invalid',
-      capabilities: {
-        dataDestination: 'Runtime Test',
-        inputKinds: ['text'],
-        maxInputCharacters: 250_000,
-        maxMessages: 100,
-        maxOutputTokens: 384_000,
-        rawMediaUpload: false,
-        structuredOutput: true,
-        thinkingControl: true,
-      },
-      displayName: 'Runtime Test',
-      id: 'runtime-test',
-    }, fetcher);
+    const provider = createCustomOpenAiCompatibleProvider(fetcher);
 
     await expect(
-      provider.listModels('unit_test_api_key_wrong_runtime', new AbortController().signal),
+      provider.listModels(
+        'unit_test_api_key_wrong_runtime',
+        { baseUrl: 'https://runtime.example.invalid/v1' },
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({
       code: 'AUTHENTICATION_FAILED',
       message: 'API Key 无效或已失效，请更新后重试',
@@ -143,10 +133,16 @@ describe.skipIf(!liveConfigPath)('DeepSeek live credential smoke test', () => {
     const apiKey = config.KEY;
     if (!apiKey) throw new Error('live credential file has no KEY field');
     const provider = createDeepSeekProvider();
-    const models = await provider.listModels(apiKey, new AbortController().signal);
+    const connection = { baseUrl: null };
+    const models = await provider.listModels(
+      apiKey,
+      connection,
+      new AbortController().signal,
+    );
     const preferred = models.find((model) => model.id.includes('flash')) ?? models[0];
     const completion = await provider.complete(
       apiKey,
+      connection,
       completionRequest(preferred.id),
       new AbortController().signal,
     );

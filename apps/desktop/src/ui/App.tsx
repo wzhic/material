@@ -103,7 +103,7 @@ const Sidebar = ({ onNavigate, page }: SidebarProps): React.JSX.Element => {
         onClick={() => onNavigate('settings')}
         type="button"
       >
-        模型与工具设置
+        模型管理
         <span>BYOK</span>
       </button>
     </aside>
@@ -408,7 +408,7 @@ const NewAnalysisPage = ({
               <small>
                 {modelOptions.length
                   ? '模型由你显式选择；同一任务不会静默切换。'
-                  : '请前往“模型与工具设置”保存并验证用户自有 Key。'}
+                  : '请前往“模型管理”保存并验证用户自有 Key。'}
               </small>
             </label>
 
@@ -775,10 +775,12 @@ export const App = (): React.JSX.Element => {
 
   const modelOptions = useMemo<ModelSelectionOption[]>(() =>
     modelConfigurations.flatMap((configuration) =>
-      configuration.availableModels.map((model) => ({
-        label: `${configuration.displayName} · ${model.id}`,
-        value: `${configuration.id}::${model.id}`,
-      }))), [modelConfigurations]);
+      configuration.connectionStatus === 'ready'
+        ? configuration.availableModels.map((model) => ({
+            label: `${configuration.displayName} · ${model.id}`,
+            value: `${configuration.id}::${model.id}`,
+          }))
+        : []), [modelConfigurations]);
 
   useEffect(() => {
     setModelId((current) =>

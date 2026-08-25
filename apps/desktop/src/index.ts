@@ -5,7 +5,10 @@ import { registerMaterialIpc } from './media/ipc';
 import { registerMaterialProtocol } from './media/protocol';
 import { MaterialSessionService } from './media/session';
 import { registerModelIpc } from './model/ipc';
-import { createDeepSeekProvider } from './model/provider';
+import {
+  createCustomOpenAiCompatibleProvider,
+  createDeepSeekProvider,
+} from './model/provider';
 import { ModelProviderRegistry } from './model/registry';
 import { ModelService } from './model/service';
 import { ElectronSafeStorageCipher, ModelCredentialVault } from './model/vault';
@@ -55,6 +58,7 @@ app.whenReady().then(() => {
   registerMaterialIpc(materialSessionService);
   const modelRegistry = new ModelProviderRegistry();
   modelRegistry.register(createDeepSeekProvider());
+  modelRegistry.register(createCustomOpenAiCompatibleProvider());
   const modelVault = new ModelCredentialVault(
     path.join(app.getPath('userData'), 'model-credentials.secure.json'),
     new ElectronSafeStorageCipher(),

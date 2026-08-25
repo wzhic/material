@@ -1,6 +1,11 @@
 import { ModelServiceError, safeModelMessage } from './errors';
+import {
+  normalizeModelId,
+  normalizeOpenAiCompatibleBaseUrl,
+} from './provider';
 import { ModelProviderRegistry } from './registry';
 import {
+  AvailableModel,
   ModelCompletionRequest,
   ModelConfigurationSummary,
   ModelInvocationAudit,
@@ -75,8 +80,33 @@ export class ModelService {
   async saveConfiguration(
     input: SaveModelConfigurationInput,
   ): Promise<ModelConfigurationSummary> {
-    this.registry.resolve(input.providerId);
-    const saved = await this.vault.save(input);
+    const provider = this.registry.resolve(input.providerId);
+    const existing = input.id
+      ? (await this.vault.list()).find((item) => item.id === input.id)
+      : undefined;
+    if (input.id && !existing) {
+      throw new ModelServiceError('CONFIGURATION_NOT_FOUND');
+    }
+    const rawBaseUrl = input.baseUrl === undefined ? existing?.baseUrl ?? null : input.baseUrl;
+    const rawManualModelId = input.manualModelId === undefined
+      ? existing?.manualModelId ?? null
+      : input.manualModelId;
+    let baseUrl: string | null = null;
+    let manualModelId: string | null = null;
+    if (provider.info.customBaseUrl) {
+      if (typeof rawBaseUrl !== 'string' || typeof rawManualModelId !== 'string') {
+        throw new ModelServiceError('INVALID_INPUT');
+      }
+      baseUrl = normalizeOpenAiCompatibleBaseUrl(rawBaseUrl);
+      manualModelId = normalizeModelId(rawManualModelId);
+    } else if (rawBaseUrl !== null || rawManualModelId !== null) {
+      throw new ModelServiceError('INVALID_INPUT');
+    }
+    const saved = await this.vault.save({
+      ...input,
+      baseUrl,
+      manualModelId,
+    });
     return this.toSummary(saved);
   }
 
@@ -97,13 +127,21 @@ export class ModelService {
     const provider = this.registry.resolve(credential.configuration.providerId);
     try {
       const models = await this.withTimeout(
-        (signal) => provider.listModels(credential.apiKey, signal),
+        (signal) => provider.listModels(
+          credential.apiKey,
+          { baseUrl: credential.configuration.baseUrl },
+          signal,
+        ),
         MODEL_LIST_TIMEOUT_MS,
+      );
+      const availableModels = this.mergeModels(
+        models,
+        credential.configuration.manualModelId,
       );
       return this.toSummary(await this.vault.updateConnection(
         id,
         'ready',
-        models,
+        availableModels,
         credential.configuration.writeVersion,
       ));
     } catch (error) {
@@ -135,7 +173,8 @@ export class ModelService {
       providerId = credential.configuration.providerId;
       configurationVersion = credential.configuration.writeVersion;
       if (
-        !credential.configuration.availableModels.some(
+        credential.configuration.connectionStatus !== 'ready'
+        || !credential.configuration.availableModels.some(
           (model) => model.id === request.modelId,
         )
       ) {
@@ -143,9 +182,13 @@ export class ModelService {
       }
       const provider = this.registry.resolve(providerId);
       adapterVersion = provider.info.adapterVersion;
+      if (request.thinking === 'enabled' && !provider.info.capabilities.thinkingControl) {
+        throw new ModelServiceError('INVALID_INPUT');
+      }
       const completion = await this.withTimeout(
         (operationSignal) => provider.complete(
           credential.apiKey,
+          { baseUrl: credential.configuration.baseUrl },
           request,
           operationSignal,
         ),
@@ -201,6 +244,23 @@ export class ModelService {
       hasCredential: true,
       providerName,
     };
+  }
+
+  private mergeModels(
+    models: readonly AvailableModel[],
+    manualModelId: string | null,
+  ): AvailableModel[] {
+    if (models.length === 0) {
+      throw new ModelServiceError('RESPONSE_INVALID');
+    }
+    const merged = new Map(models.map((model) => [model.id, { ...model }]));
+    if (manualModelId && !merged.has(manualModelId)) {
+      merged.set(manualModelId, { id: manualModelId, ownedBy: 'user-declared' });
+    }
+    if (merged.size === 0 || merged.size > 200) {
+      throw new ModelServiceError('RESPONSE_INVALID');
+    }
+    return [...merged.values()].sort((left, right) => left.id.localeCompare(right.id));
   }
 
   private audit(
