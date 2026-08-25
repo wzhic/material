@@ -1,8 +1,17 @@
 import type { AnalysisRuntimeResult } from '../analysis-runtime/types';
 import type { MaterialSession } from '../media/types';
-import type { ConfirmedRecordInput, ReportDiagnosis } from './types';
+import type {
+  ConfirmedRecordInput,
+  ReportDiagnosis,
+  VisibleConversationItem,
+} from './types';
 
 type ReportData = Extract<AnalysisRuntimeResult, { ok: true }>['data'];
+
+interface ConfirmationContext {
+  sourceRecordId?: string | null;
+  visibleConversation?: VisibleConversationItem[];
+}
 
 const recommendationFor = (
   data: ReportData,
@@ -36,6 +45,7 @@ export const createConfirmedRecordInput = (
   data: ReportData,
   material: MaterialSession,
   conversionContext: string,
+  context: ConfirmationContext = {},
 ): ConfirmedRecordInput => {
   const { report } = data;
   const rule = report.ruleSnapshot.package;
@@ -109,7 +119,7 @@ export const createConfirmedRecordInput = (
       modelId: report.model.modelId,
       schemaVersion: 1,
     },
-    sourceRecordId: null,
-    visibleConversation: [],
+    sourceRecordId: context.sourceRecordId ?? null,
+    visibleConversation: structuredClone(context.visibleConversation ?? []),
   };
 };

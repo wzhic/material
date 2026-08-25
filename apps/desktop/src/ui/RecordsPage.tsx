@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Input, Tag } from 'tdesign-react';
 
+import type { MaterialSession } from '../media/types';
 import {
   AnalysisRecord,
   AnalysisRecordListItem,
@@ -16,6 +17,7 @@ interface RecordsPageProps {
   initialRecordId?: string | null;
   onCreate: () => void;
   onInitialRecordOpened?: () => void;
+  onReanalyze: (record: AnalysisRecord, material: MaterialSession) => void;
 }
 
 const PAGE_SIZE = 50;
@@ -25,6 +27,11 @@ const formatLocalTime = (value: string): string =>
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));
+
+const formatReferenceTime = (milliseconds: number): string => {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1_000));
+  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+};
 
 const industryLabel = (industry: RecordIndustry): string =>
   industry === 'apparel' ? '服饰' : '游戏';
@@ -75,6 +82,7 @@ interface RecordDetailProps {
   onBack: () => void;
   onDeleted: () => void;
   onOpenRecord: (id: string) => void;
+  onReanalyze: (record: AnalysisRecord, material: MaterialSession) => void;
   onRefresh: () => Promise<void>;
 }
 
@@ -83,6 +91,7 @@ const RecordDetail = ({
   onBack,
   onDeleted,
   onOpenRecord,
+  onReanalyze,
   onRefresh,
 }: RecordDetailProps): React.JSX.Element => {
   const [rating, setRating] = useState(String(record.feedback?.rating ?? 4));
@@ -94,6 +103,7 @@ const RecordDetail = ({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [reanalysisBusy, setReanalysisBusy] = useState(false);
 
   useEffect(() => {
     setRating(String(record.feedback?.rating ?? 4));
@@ -152,6 +162,29 @@ const RecordDetail = ({
     onDeleted();
   };
 
+  const startReanalysis = async (): Promise<void> => {
+    if (!record.material.fingerprintSha256) {
+      setError('该记录没有可校验的素材指纹，无法安全发起重新分析');
+      return;
+    }
+    setReanalysisBusy(true);
+    setError('');
+    setSuccess('');
+    const selected = await window.materialApi.media.select();
+    setReanalysisBusy(false);
+    if (!selected.ok) {
+      setError(selected.error.message);
+      return;
+    }
+    if (selected.data.cancelled) return;
+    if (selected.data.session.summary.fingerprintSha256 !== record.material.fingerprintSha256) {
+      void window.materialApi.media.release(selected.data.session.sessionId);
+      setError('所选文件与该记录的源素材指纹不一致；旧记录和当前草稿均未改变');
+      return;
+    }
+    onReanalyze(record, selected.data.session);
+  };
+
   const sourceUnavailable = record.material.sourceStatus !== 'available';
 
   return (
@@ -165,7 +198,13 @@ const RecordDetail = ({
           </p>
         </div>
         <div className="header-actions">
-          <Button disabled variant="outline">重新分析 · 后续接入</Button>
+          <Button
+            loading={reanalysisBusy}
+            onClick={() => void startReanalysis()}
+            variant="outline"
+          >
+            选择原素材并重新分析
+          </Button>
           <Button disabled theme="primary">导出 PDF · 后续接入</Button>
           <Button onClick={() => setConfirmDelete(true)} theme="danger" variant="outline">删除</Button>
         </div>
@@ -176,7 +215,7 @@ const RecordDetail = ({
       {sourceUnavailable ? (
         <div className="record-source-alert" role="status">
           <strong>源素材{sourceStatusLabel(record.material.sourceStatus)}</strong>
-          <span>已确认报告和反馈仍可查看；播放、证据定位和重新定位将在本地素材句柄工作包接入。</span>
+          <span>已确认报告和反馈仍可查看；重新分析时需要选择原文件，并通过素材指纹校验。</span>
         </div>
       ) : null}
 
@@ -260,6 +299,26 @@ const RecordDetail = ({
             ) : <p className="record-muted">该报告没有可展示的时间证据。</p>}
           </section>
 
+          {record.visibleConversation.length ? (
+            <section className="record-detail-card">
+              <div className="record-card-heading">
+                <h2>确认时的对话分析</h2>
+                <span>只保存用户可见内容，不包含内部提示词</span>
+              </div>
+              <div className="record-conversation-list">
+                {record.visibleConversation.map((item, index) => (
+                  <article className={`is-${item.role}`} key={`${item.role}-${index}`}>
+                    <span>{item.role === 'user' ? '你' : '分析助手'}</span>
+                    <p>{item.text}</p>
+                    {item.timeReferenceMs !== null ? (
+                      <small>引用 {formatReferenceTime(item.timeReferenceMs)}</small>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           <section className="record-detail-card record-feedback-card">
             <div className="record-card-heading">
               <h2>报告反馈</h2>
@@ -305,7 +364,7 @@ const RecordDetail = ({
             <div className="record-source-placeholder">
               <span>{record.material.mediaKind === 'video' ? '视' : '图'}</span>
               <strong>未复制源素材</strong>
-              <p>本记录只保存素材摘要。播放器与指纹重定位能力将在后续工作包接入。</p>
+              <p>本记录只保存素材摘要；重新分析时由你选择原文件并校验指纹。</p>
             </div>
           </section>
 
@@ -374,6 +433,7 @@ export const RecordsPage = ({
   initialRecordId = null,
   onCreate,
   onInitialRecordOpened,
+  onReanalyze,
 }: RecordsPageProps): React.JSX.Element => {
   const [items, setItems] = useState<AnalysisRecordListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -503,6 +563,7 @@ export const RecordsPage = ({
           void load();
         }}
         onOpenRecord={(id) => void openRecord(id)}
+        onReanalyze={onReanalyze}
         onRefresh={refreshSelected}
       />
     );

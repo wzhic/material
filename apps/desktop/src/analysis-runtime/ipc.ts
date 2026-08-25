@@ -3,6 +3,7 @@ import { ipcMain, WebContents } from 'electron';
 import { AnalysisRuntimeService } from './service';
 import {
   ANALYSIS_RUNTIME_IPC_CHANNELS,
+  AnalysisRuntimeRefineInput,
   AnalysisRuntimeResult,
   AnalysisRuntimeStartInput,
 } from './types';
@@ -17,6 +18,7 @@ export const registerAnalysisRuntimeIpc = (
   isTrustedSender: (webContentsId: number) => boolean,
 ): void => {
   ipcMain.removeHandler(ANALYSIS_RUNTIME_IPC_CHANNELS.start);
+  ipcMain.removeHandler(ANALYSIS_RUNTIME_IPC_CHANNELS.refine);
   ipcMain.removeHandler(ANALYSIS_RUNTIME_IPC_CHANNELS.cancel);
   ipcMain.handle(
     ANALYSIS_RUNTIME_IPC_CHANNELS.start,
@@ -24,6 +26,18 @@ export const registerAnalysisRuntimeIpc = (
       if (!isTrustedSender(event.sender.id)) return invalid();
       const sender: WebContents = event.sender;
       return service.run(input, (progress) => {
+        if (!sender.isDestroyed()) {
+          sender.send(ANALYSIS_RUNTIME_IPC_CHANNELS.progress, progress);
+        }
+      });
+    },
+  );
+  ipcMain.handle(
+    ANALYSIS_RUNTIME_IPC_CHANNELS.refine,
+    (event, input: AnalysisRuntimeRefineInput) => {
+      if (!isTrustedSender(event.sender.id)) return invalid();
+      const sender: WebContents = event.sender;
+      return service.refine(input, (progress) => {
         if (!sender.isDestroyed()) {
           sender.send(ANALYSIS_RUNTIME_IPC_CHANNELS.progress, progress);
         }

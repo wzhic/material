@@ -1,6 +1,7 @@
 import type { AnalysisReportDraft, AnalysisRunEvent } from '../analysis-engine';
 
 export type AnalysisRuntimeStage =
+  | 'applying_guidance'
   | 'cancelled'
   | 'extracting_structure'
   | 'failed'
@@ -26,6 +27,13 @@ export interface AnalysisRuntimeStartInput {
   modelId: string;
   productId?: string | null;
   sessionId: string;
+}
+
+export interface AnalysisRuntimeRefineInput {
+  clientRunId: string;
+  guidance: string;
+  referenceTimeMs?: number | null;
+  sourceClientRunId: string;
 }
 
 export type AnalysisRuntimeErrorCode =
@@ -63,11 +71,13 @@ export type AnalysisRuntimeResult =
 export interface AnalysisRuntimeApi {
   cancel(clientRunId: string): Promise<boolean>;
   onProgress(listener: (progress: AnalysisRuntimeProgress) => void): () => void;
+  refine(input: AnalysisRuntimeRefineInput): Promise<AnalysisRuntimeResult>;
   start(input: AnalysisRuntimeStartInput): Promise<AnalysisRuntimeResult>;
 }
 
 export const ANALYSIS_RUNTIME_IPC_CHANNELS = {
   cancel: 'material:analysis:cancel',
   progress: 'material:analysis:progress',
+  refine: 'material:analysis:refine',
   start: 'material:analysis:start',
 } as const;

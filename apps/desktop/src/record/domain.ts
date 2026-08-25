@@ -174,6 +174,32 @@ export const validateConfirmedRecord = (input: ConfirmedRecordInput): void => {
       }
     });
   });
+  if (typeof input.conversionContext !== 'string' || input.conversionContext.length > 2_000) {
+    throw new RecordValidationError('转化依据内容过长');
+  }
+  if (input.sourceRecordId && !/^[0-9a-f-]{36}$/i.test(input.sourceRecordId)) {
+    throw new RecordValidationError('来源分析记录标识格式不正确');
+  }
+  if (!Array.isArray(input.visibleConversation)) {
+    throw new RecordValidationError('可见对话格式不正确');
+  }
+  if (input.visibleConversation.length > 100) {
+    throw new RecordValidationError('可见对话条目过多');
+  }
+  input.visibleConversation.forEach((item) => {
+    if (!['assistant', 'user'].includes(item.role)) {
+      throw new RecordValidationError('可见对话角色不受支持');
+    }
+    requireText(item.text, '可见对话', 2_000);
+    if (item.timeReferenceMs !== null) {
+      validateFiniteRange(
+        item.timeReferenceMs,
+        0,
+        input.material.durationMs ?? Number.MAX_SAFE_INTEGER,
+        '可见对话时间引用',
+      );
+    }
+  });
   scanKeys(input);
   const encoded = Buffer.byteLength(JSON.stringify(input), 'utf8');
   if (encoded > MAX_RECORD_BYTES) {

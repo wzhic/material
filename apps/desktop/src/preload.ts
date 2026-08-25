@@ -62,6 +62,7 @@ const modelApi: ModelApi = {
 
 const analysisApi: AnalysisRuntimeApi = {
   start: (input) => ipcRenderer.invoke(ANALYSIS_RUNTIME_IPC_CHANNELS.start, input),
+  refine: (input) => ipcRenderer.invoke(ANALYSIS_RUNTIME_IPC_CHANNELS.refine, input),
   cancel: (clientRunId) =>
     ipcRenderer.invoke(ANALYSIS_RUNTIME_IPC_CHANNELS.cancel, clientRunId),
   onProgress: (listener) => {

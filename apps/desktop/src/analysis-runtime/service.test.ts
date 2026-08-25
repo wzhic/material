@@ -240,6 +240,79 @@ describe('analysis runtime service', () => {
     expect(tools.release).toHaveBeenCalledTimes(8);
   });
 
+  it('reuses normalized evidence and the original model for explicit report refinement', async () => {
+    const tools = {
+      invoke: vi.fn(async ({ capabilityId }: { capabilityId: string }) =>
+        success(capabilityId, toolOutputs[capabilityId])),
+      release: vi.fn(async () => undefined),
+    };
+    let engineRunCount = 0;
+    const engine = {
+      run: vi.fn(async (runInput): Promise<AnalysisRunResult> => ({
+        events: [],
+        modelAudit: {} as never,
+        ok: true,
+        report: { ...report, productSnapshot: runInput.productSnapshot ?? null },
+        runId: `engine-run-${++engineRunCount}`,
+      })),
+    };
+    const service = new AnalysisRuntimeService(
+      tools,
+      { inspect: vi.fn(async () => materialSession) },
+      engine,
+      { snapshot: vi.fn(() => snapshot) },
+    );
+
+    const first = await service.run(input);
+    expect(first.ok).toBe(true);
+    const toolCallCount = tools.invoke.mock.calls.length;
+    const progress = vi.fn();
+    const refined = await service.refine({
+      clientRunId: 'client-run-2',
+      guidance: '加强情绪转化判断',
+      referenceTimeMs: 1_500,
+      sourceClientRunId: input.clientRunId,
+    }, progress);
+
+    expect(refined.ok).toBe(true);
+    expect(tools.invoke).toHaveBeenCalledTimes(toolCallCount);
+    expect(engine.run).toHaveBeenCalledTimes(2);
+    expect(engine.run.mock.calls[1][0]).toMatchObject({
+      conversionContext: expect.stringContaining('加强情绪转化判断'),
+      model: {
+        configurationDisplayName: input.configurationDisplayName,
+        configurationId: input.configurationId,
+        modelId: input.modelId,
+      },
+      productSnapshot: snapshot,
+    });
+    expect(engine.run.mock.calls[1][0].conversionContext).toContain('1.5 秒');
+    expect(progress.mock.calls.map((call) => call[0].stage)).toContain('applying_guidance');
+  });
+
+  it('rejects refinement after its source run context is unavailable', async () => {
+    const service = new AnalysisRuntimeService(
+      { invoke: vi.fn(), release: vi.fn() },
+      { inspect: vi.fn(async () => materialSession) },
+      { run: vi.fn() },
+      null,
+    );
+
+    const result = await service.refine({
+      clientRunId: 'client-run-2',
+      guidance: '重点看开场',
+      sourceClientRunId: 'missing-run',
+    });
+
+    expect(result).toEqual({
+      error: {
+        code: 'INVALID_INPUT',
+        message: '原分析会话已不可用于增量处理，请从当前配置重新开始',
+      },
+      ok: false,
+    });
+  });
+
   it('stops before the model when a required tool fails', async () => {
     const tools = {
       invoke: vi.fn(async ({ capabilityId }: { capabilityId: string }) =>

@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0021",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "requirement": {
+    "id": "单素材分析-REQ-0005",
+    "name": "对话分析、报告问题反馈与重新分析链路",
+    "version": "v1.0",
+    "interaction_kind": "ui"
+  },
+  "summary": "在已接通模型管理、分析运行、待确认报告和分析记录的桌面客户端上，实现同一单素材会话的对话关注点、时间证据引用、报告问题反馈和重新分析闭环：用户可在分析工作区补充本次关注点，报告生成后可说明不采纳原因并使用原模型重新生成新预览；旧预览仅在当前页面会话保留用于切换查看，不写入正式记录。确认保存时只持久化当前确认版本、用户可见对话摘要和可选来源记录关系。从历史记录发起重新分析时先校验用户重新选择的同指纹本地素材，再创建预填草稿，不立即运行、不自动换模型、不覆盖或级联修改旧记录。本任务不实现 PDF、持久化未确认草稿、后台自动调权、跨用户反馈聚合、自动模型切换、素材库、标签库、批量分析、部署或发布。",
+  "release_units": ["mac", "win"],
+  "branch": "codex/req-0005-app-0021-conversation-feedback-reanalysis",
+  "base_branch": "codex/req-0005-app-0017-report-confirmation",
+  "allowed_paths": [
+    "apps/desktop/**",
+    "docs/development/对话分析与重新分析-DEV-0015-v1.0.md",
+    "docs/development/README.md",
+    "docs/troubleshooting/对话分析与重新分析-TRB-0012-v1.0.md",
+    "docs/troubleshooting/README.md",
+    "project-control/**"
+  ],
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py docs --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/reconcile.py precommit --json",
+    "python3 tools/governance/taskctl.py begin APP-0021",
+    "python3 tools/governance/taskctl.py run-validation APP-0021",
+    "python3 tools/governance/taskctl.py run-required APP-0021",
+    "python3 tools/governance/taskctl.py commit-task APP-0021",
+    "python3 tools/governance/taskctl.py push-task APP-0021",
+    "python3 tools/governance/taskctl.py open-pr APP-0021",
+    "npm --prefix apps/desktop run lint",
+    "npm --prefix apps/desktop run typecheck",
+    "npm --prefix apps/desktop run test",
+    "npm --prefix apps/desktop run test:model-runtime",
+    "npm --prefix apps/desktop run package"
+  ],
+  "allowed_tools": ["apply_patch", "ApplyPatch", "Bash", "Read", "Glob", "Grep", "view_image", "codex_app__read_thread_terminal"],
+  "dependencies": [],
+  "required_docs": ["docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md"],
+  "validation": {
+    "required": [
+      {"id": "docs_reconcile", "argv": ["python3", "tools/governance/reconcile.py", "docs", "--json"], "timeout_seconds": 120, "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"], "release_units": ["mac", "win"]},
+      {"id": "repository_reconcile", "argv": ["python3", "tools/governance/reconcile.py", "static", "--json"], "timeout_seconds": 120, "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"], "release_units": ["mac", "win"]},
+      {"id": "desktop_lint", "argv": ["npm", "--prefix", "apps/desktop", "run", "lint"], "timeout_seconds": 300, "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"], "release_units": ["mac", "win"]},
+      {"id": "desktop_typecheck", "argv": ["npm", "--prefix", "apps/desktop", "run", "typecheck"], "timeout_seconds": 300, "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"], "release_units": ["mac", "win"]},
+      {"id": "desktop_tests", "argv": ["npm", "--prefix", "apps/desktop", "run", "test"], "timeout_seconds": 900, "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"], "release_units": ["mac", "win"]},
+      {"id": "desktop_model_runtime_tests", "argv": ["npm", "--prefix", "apps/desktop", "run", "test:model-runtime"], "timeout_seconds": 300, "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"], "release_units": ["mac", "win"]},
+      {"id": "desktop_package", "argv": ["npm", "--prefix", "apps/desktop", "run", "package"], "timeout_seconds": 1200, "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"], "release_units": ["mac", "win"]},
+      {"id": "governance_unit_tests", "argv": ["python3", "-m", "unittest", "discover", "-s", "tools/governance/tests", "-p", "test_*.py", "-v"], "timeout_seconds": 1200, "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"], "release_units": ["mac", "win"]}
+    ],
+    "results": []
+  },
+  "assumptions": [
+    {"id": "APP-0021-ASM-001", "statement": "用户提交的对话关注点只影响当前用户、当前素材会话和之后生成的预览；提交动作可触发额外模型调用，界面必须明确显示重新分析状态，不在后台静默调用。", "status": "confirmed", "source": "单素材分析 PRD 10.5、10.6 与用户已确认的模型选择权边界"},
+    {"id": "APP-0021-ASM-002", "statement": "待确认报告重新分析默认复用原模型配置和当前会话内已归一化媒体证据；模型配置失效或用户主动更改时才要求显式重新选择，不自动切换。", "status": "confirmed", "source": "单素材分析 PRD 10.14 与用户明确不采用任务内自动调度切换模型"},
+    {"id": "APP-0021-ASM-003", "statement": "旧待确认预览只在当前窗口会话内保留用于前后查看，关闭或离开后不恢复；只有当前显示版本被确认保存时才形成一条正式记录，其他预览不占记录编号。", "status": "confirmed", "source": "单素材分析 PRD 10.14、10.15 与用户确认的报告先展示后确认保存链路"},
+    {"id": "APP-0021-ASM-004", "statement": "历史记录不保存绝对路径或素材字节；发起重新分析时由用户重新选择本地文件并校验确认记录中的 SHA-256 指纹，一致才创建预填草稿，不一致时零变化。", "status": "confirmed", "source": "单素材分析 PRD 10.15.3、10.15.4 与本地素材安全边界"},
+    {"id": "APP-0021-ASM-005", "statement": "确认记录只保存用户可见的对话内容和必要时间引用，不保存系统提示词、内部推理、工具日志、密钥或未提交输入。", "status": "confirmed", "source": "单素材分析 PRD 10.5 与现有 RecordValidation 安全合同"}
+  ],
+  "open_questions": [],
+  "blockers": [],
+  "review_authority": {"scheme": "ssh-keygen-y-v1", "identity": "material-project-owner", "namespace": "material-governance-review", "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review", "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E"},
+  "ci_trust": {"provider": "github_actions_rest_v1", "repository": "wzhic/material", "workflow_path": ".github/workflows/governance.yml", "api_base": "https://api.github.com", "api_version": "2026-03-10", "private": true, "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN", "ci_events": ["pull_request", "push"], "post_merge_events": ["push"], "required_jobs": {"pull_request": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"], "push": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"]}},
+  "coordination": {"mode": "coordinated-multi", "coordinator_task": "APP-0021", "unit_tasks": {"mac": "APP-0021", "win": "APP-0021"}, "compatibility_matrix_doc": "docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md", "deployment_order": ["mac", "win"], "rollback_order": ["win", "mac"], "unit_validation_checks": {"mac": ["desktop_lint", "desktop_typecheck", "desktop_tests", "desktop_model_runtime_tests", "desktop_package"], "win": ["desktop_lint", "desktop_typecheck", "desktop_tests", "desktop_model_runtime_tests", "desktop_package"]}, "unit_rollback_checks": {"mac": ["desktop_package"], "win": ["desktop_package"]}}
+}
