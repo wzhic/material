@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0014",
-  "reason": "APP-0014 已完成本地提交，进入用户授权的下一阶段 APP-0015",
+  "previous_task_id": "APP-0015",
+  "reason": "切换到报告确认与分析记录接线独立任务",
   "schema_version": 1,
-  "selected_at": "2026-08-25T03:49:44+00:00",
+  "selected_at": "2026-08-25T05:03:47+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0015"
+  "task_id": "APP-0017"
 }
