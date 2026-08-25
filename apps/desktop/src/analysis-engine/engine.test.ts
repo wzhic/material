@@ -380,6 +380,23 @@ describe('analysis engine', () => {
     });
   });
 
+  it('rejects missing evidence before model invocation', async () => {
+    const complete = vi.fn(async () => successResult(JSON.stringify(validModelObject(rule))));
+    const engine = new AnalysisEngine({ complete }, { idFactory: () => 'run-no-evidence' });
+
+    const result = await engine.run({
+      ...input,
+      media: { ...media, evidence: [], timeline: [] },
+    });
+
+    expect(complete).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      error: { code: 'EVIDENCE_INVALID' },
+      modelAudit: null,
+      ok: false,
+    });
+  });
+
   it('normalizes a thrown abort as cancellation without retrying', async () => {
     const controller = new AbortController();
     const complete = vi.fn(async () => {
