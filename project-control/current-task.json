@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0018",
-  "reason": "用户要求进入对话分析、报告问题反馈与重新分析链路实现",
+  "previous_task_id": "APP-0021",
+  "reason": "用户要求继续完成剩余内容，下一独立功能为单条已确认报告 PDF 导出",
   "schema_version": 1,
-  "selected_at": "2026-08-25T09:31:55+00:00",
+  "selected_at": "2026-08-25T15:18:54+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0021"
+  "task_id": "APP-0023"
 }
