@@ -22,6 +22,7 @@ const measure = (runs: number, operation: (index: number) => void): number[] =>
   });
 
 const recordJson = (name: string, index: number): ConfirmedRecordInput => ({
+  confirmationId: null,
   industry: index % 2 ? 'game' : 'apparel',
   material: {
     schemaVersion: 1,

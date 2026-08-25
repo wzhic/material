@@ -13,7 +13,9 @@ import {
 } from '../record/types';
 
 interface RecordsPageProps {
+  initialRecordId?: string | null;
   onCreate: () => void;
+  onInitialRecordOpened?: () => void;
 }
 
 const PAGE_SIZE = 50;
@@ -186,7 +188,7 @@ const RecordDetail = ({
               <span>{record.rules.templateId} · 评分规则 {record.rules.scoringRuleVersion}</span>
             </div>
             <div className="record-score-summary">
-              <div><strong>{record.report.score.total}</strong><span>素材总评分</span></div>
+              <div><strong>{record.report.score.total ?? '—'}</strong><span>素材总评分</span></div>
               <div>
                 <h3>{record.report.title}</h3>
                 <p>{record.report.summary}</p>
@@ -203,7 +205,7 @@ const RecordDetail = ({
               <div className="record-dimension-grid">
                 {record.report.score.dimensions.map((dimension) => (
                   <div key={dimension.id}>
-                    <span>{dimension.label}</span><strong>{dimension.score}</strong>
+                    <span>{dimension.label}</span><strong>{dimension.score ?? '—'}</strong>
                   </div>
                 ))}
               </div>
@@ -330,7 +332,7 @@ const RecordDetail = ({
               ) : <span>不是由历史记录重新分析</span>}
               {record.subsequentRecords.map((item) => (
                 <button key={item.id} onClick={() => onOpenRecord(item.id)} type="button">
-                  {item.materialDisplayName} · 评分 {item.totalScore}
+                    {item.materialDisplayName} · 评分 {item.totalScore ?? '未评分'}
                 </button>
               ))}
               {!record.subsequentRecords.length ? <small>尚无后续重新分析记录</small> : null}
@@ -368,7 +370,11 @@ const RecordDetail = ({
   );
 };
 
-export const RecordsPage = ({ onCreate }: RecordsPageProps): React.JSX.Element => {
+export const RecordsPage = ({
+  initialRecordId = null,
+  onCreate,
+  onInitialRecordOpened,
+}: RecordsPageProps): React.JSX.Element => {
   const [items, setItems] = useState<AnalysisRecordListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [query, setQuery] = useState('');
@@ -433,6 +439,17 @@ export const RecordsPage = ({ onCreate }: RecordsPageProps): React.JSX.Element =
     setError('');
     return true;
   }, []);
+
+  useEffect(() => {
+    if (!initialRecordId) return;
+    void openRecord(initialRecordId).then((opened) => {
+      if (opened) {
+        const container = document.querySelector('.app-content');
+        if (container) container.scrollTop = 0;
+      }
+      onInitialRecordOpened?.();
+    });
+  }, [initialRecordId, onInitialRecordOpened, openRecord]);
 
   const openFromList = (id: string): void => {
     listScrollTop.current = document.querySelector('.app-content')?.scrollTop ?? 0;
@@ -579,7 +596,7 @@ export const RecordsPage = ({ onCreate }: RecordsPageProps): React.JSX.Element =
                 </span>
                 <Tag theme="primary" variant="light">{industryLabel(item.industry)} · {mediaLabel(item.mediaKind)}</Tag>
                 <span>{item.productDisplayName ?? '未绑定产品'}</span>
-                <strong className="records-score">{item.totalScore}</strong>
+                <strong className="records-score">{item.totalScore ?? '未评分'}</strong>
                 <Tag theme={item.feedback ? 'success' : 'warning'} variant="light">
                   {item.feedback ? `已评价 ${item.feedback.rating}/5` : '未评价'}
                 </Tag>

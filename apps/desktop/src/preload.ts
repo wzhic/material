@@ -29,6 +29,7 @@ const productApi: ProductApi = {
 };
 
 const recordApi: RecordApi = {
+  confirm: (input) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.confirm, input),
   list: (query) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.list, query),
   get: (id) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.get, id),
   saveFeedback: (id, input) =>

@@ -4,6 +4,7 @@ import { RecordValidationError } from './domain';
 import { RecordRepository, RecordRepositoryError } from './repository';
 import {
   AnalysisRecordQuery,
+  ConfirmedRecordInput,
   RECORD_IPC_CHANNELS,
   RecordApiErrorCode,
   RecordApiResult,
@@ -33,30 +34,48 @@ const clearRecordHandlers = (): void => {
   Object.values(RECORD_IPC_CHANNELS).forEach((channel) => ipcMain.removeHandler(channel));
 };
 
-export const registerRecordIpc = (repository: RecordRepository): void => {
+export const registerRecordIpc = (
+  repository: RecordRepository,
+  isTrustedSender: (webContentsId: number) => boolean,
+): void => {
   clearRecordHandlers();
-  ipcMain.handle(RECORD_IPC_CHANNELS.list, (_event, query?: AnalysisRecordQuery) =>
-    safely(() => repository.list(query)),
+  ipcMain.handle(RECORD_IPC_CHANNELS.confirm, (event, input: ConfirmedRecordInput) =>
+    isTrustedSender(event.sender.id)
+      ? safely(() => repository.confirmAndSave(input))
+      : failure('INVALID_INPUT', '分析记录请求来源无效'),
   );
-  ipcMain.handle(RECORD_IPC_CHANNELS.get, (_event, id: string) =>
-    safely(() => repository.get(id)),
+  ipcMain.handle(RECORD_IPC_CHANNELS.list, (event, query?: AnalysisRecordQuery) =>
+    isTrustedSender(event.sender.id)
+      ? safely(() => repository.list(query))
+      : failure('INVALID_INPUT', '分析记录请求来源无效'),
+  );
+  ipcMain.handle(RECORD_IPC_CHANNELS.get, (event, id: string) =>
+    isTrustedSender(event.sender.id)
+      ? safely(() => repository.get(id))
+      : failure('INVALID_INPUT', '分析记录请求来源无效'),
   );
   ipcMain.handle(
     RECORD_IPC_CHANNELS.saveFeedback,
-    (_event, id: string, input: RecordFeedbackInput) =>
-      safely(() => repository.saveFeedback(id, input)),
+    (event, id: string, input: RecordFeedbackInput) =>
+      isTrustedSender(event.sender.id)
+        ? safely(() => repository.saveFeedback(id, input))
+        : failure('INVALID_INPUT', '分析记录请求来源无效'),
   );
-  ipcMain.handle(RECORD_IPC_CHANNELS.clearFeedback, (_event, id: string) =>
-    safely(() => {
-      repository.clearFeedback(id);
-      return null;
-    }),
+  ipcMain.handle(RECORD_IPC_CHANNELS.clearFeedback, (event, id: string) =>
+    isTrustedSender(event.sender.id)
+      ? safely(() => {
+        repository.clearFeedback(id);
+        return null;
+      })
+      : failure('INVALID_INPUT', '分析记录请求来源无效'),
   );
-  ipcMain.handle(RECORD_IPC_CHANNELS.remove, (_event, id: string) =>
-    safely(() => {
-      repository.remove(id);
-      return null;
-    }),
+  ipcMain.handle(RECORD_IPC_CHANNELS.remove, (event, id: string) =>
+    isTrustedSender(event.sender.id)
+      ? safely(() => {
+        repository.remove(id);
+        return null;
+      })
+      : failure('INVALID_INPUT', '分析记录请求来源无效'),
   );
 };
 

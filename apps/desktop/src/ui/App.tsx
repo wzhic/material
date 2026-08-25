@@ -22,6 +22,7 @@ import type {
 import { MaterialSession } from '../media/types';
 import { ModelConfigurationSummary } from '../model/types';
 import { ProductListItem } from '../product/types';
+import { createConfirmedRecordInput } from '../record/confirmation';
 import { AnalysisReportPreviewPage } from './AnalysisReportPreviewPage';
 import { ModelSettingsPage } from './ModelSettingsPage';
 import { ProductLibraryPage } from './ProductLibraryPage';
@@ -133,8 +134,10 @@ type RuntimeReportData = Extract<AnalysisRuntimeResult, { ok: true }>['data'];
 
 interface ActiveAnalysisRun {
   clientRunId: string;
+  conversionContext: string;
   data?: RuntimeReportData;
   error?: string;
+  material: SelectedMaterial;
   materialName: string;
   progress: AnalysisRuntimeProgress[];
   status: 'cancelled' | 'failed' | 'running' | 'succeeded';
@@ -912,6 +915,9 @@ export const App = (): React.JSX.Element => {
   const [products, setProducts] = useState<ProductListItem[]>([]);
   const [productId, setProductId] = useState('');
   const [activeRun, setActiveRun] = useState<ActiveAnalysisRun | null>(null);
+  const [confirmingReport, setConfirmingReport] = useState(false);
+  const [confirmReportError, setConfirmReportError] = useState('');
+  const [recordToOpenId, setRecordToOpenId] = useState<string | null>(null);
 
   const refreshProducts = useCallback(async (): Promise<void> => {
     const result = await window.materialApi.products.list({ limit: 500 });
@@ -976,6 +982,8 @@ export const App = (): React.JSX.Element => {
     const clientRunId = crypto.randomUUID();
     setActiveRun({
       clientRunId,
+      conversionContext,
+      material: verifiedMaterial,
       materialName: verifiedMaterial.summary.name,
       progress: [],
       status: 'running',
@@ -1009,14 +1017,57 @@ export const App = (): React.JSX.Element => {
     }
   }, [activeRun]);
 
+  const handleConfirmReport = useCallback(async (): Promise<void> => {
+    if (!activeRun?.data || confirmingReport) return;
+    setConfirmingReport(true);
+    setConfirmReportError('');
+    const input = createConfirmedRecordInput(
+      activeRun.data,
+      activeRun.material,
+      activeRun.conversionContext,
+    );
+    const result = await window.materialApi.records.confirm(input);
+    setConfirmingReport(false);
+    if (!result.ok) {
+      setConfirmReportError(result.error.message);
+      return;
+    }
+    setActiveRun(null);
+    setConfirmReportError('');
+    setRecordToOpenId(result.data.id);
+    setPage('records');
+  }, [activeRun, confirmingReport]);
+
+  const leaveReportForConfiguration = useCallback((): void => {
+    if (confirmingReport) return;
+    if (!window.confirm('当前报告尚未保存，返回配置将放弃这份预览。是否继续？')) return;
+    setActiveRun(null);
+    setConfirmReportError('');
+    setPage('new-analysis');
+  }, [confirmingReport]);
+
+  const navigate = useCallback((nextPage: AppPage): void => {
+    if (page === 'report' && activeRun?.data && nextPage !== 'report') {
+      if (confirmingReport) return;
+      if (!window.confirm('当前报告尚未保存，离开将放弃这份预览。是否继续？')) return;
+      setActiveRun(null);
+      setConfirmReportError('');
+    }
+    setRecordToOpenId(null);
+    setPage(nextPage);
+  }, [activeRun?.data, confirmingReport, page]);
+
   const content = useMemo(() => {
     if (page === 'report' && activeRun?.data) {
       return (
         <AnalysisReportPreviewPage
+          confirmError={confirmReportError}
+          confirming={confirmingReport}
           data={activeRun.data}
           materialName={activeRun.materialName}
-          onBackToConfiguration={() => setPage('new-analysis')}
+          onBackToConfiguration={leaveReportForConfiguration}
           onBackToWorkspace={() => setPage('workspace')}
+          onConfirm={() => void handleConfirmReport()}
         />
       );
     }
@@ -1036,7 +1087,13 @@ export const App = (): React.JSX.Element => {
       );
     }
     if (page === 'records') {
-      return <RecordsPage onCreate={() => setPage('new-analysis')} />;
+      return (
+        <RecordsPage
+          initialRecordId={recordToOpenId}
+          onCreate={() => setPage('new-analysis')}
+          onInitialRecordOpened={() => setRecordToOpenId(null)}
+        />
+      );
     }
     if (page === 'products') {
       return <ProductLibraryPage onProductsChanged={() => void refreshProducts()} />;
@@ -1093,7 +1150,10 @@ export const App = (): React.JSX.Element => {
   }, [
     activeRun,
     conversionContext,
+    confirmReportError,
+    confirmingReport,
     handleCancelAnalysis,
+    handleConfirmReport,
     handleStartAnalysis,
     industry,
     material,
@@ -1102,13 +1162,15 @@ export const App = (): React.JSX.Element => {
     page,
     productId,
     products,
+    recordToOpenId,
     refreshModelConfigurations,
     refreshProducts,
+    leaveReportForConfiguration,
   ]);
 
   return (
     <div className="app-frame">
-      <Sidebar onNavigate={setPage} page={page} />
+      <Sidebar onNavigate={navigate} page={page} />
       <div className="app-content">{content}</div>
     </div>
   );

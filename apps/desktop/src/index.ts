@@ -42,6 +42,10 @@ let productRepository: ProductRepository | null = null;
 let recordRepository: RecordRepository | null = null;
 let analysisRuntimeService: AnalysisRuntimeService | null = null;
 const materialSessionService = new MaterialSessionService();
+const isTrustedSender = (webContentsId: number): boolean =>
+  BrowserWindow.getAllWindows().some(
+    (window) => window.webContents.id === webContentsId,
+  );
 
 const createWindow = (): void => {
   const mainWindow = new BrowserWindow({
@@ -89,7 +93,7 @@ app.whenReady().then(() => {
   );
   try {
     recordRepository = new RecordRepository(recordDatabasePath);
-    registerRecordIpc(recordRepository);
+    registerRecordIpc(recordRepository, isTrustedSender);
   } catch {
     registerUnavailableRecordIpc('分析记录无法打开，请检查应用数据目录权限或数据库版本');
   }
@@ -139,10 +143,6 @@ app.whenReady().then(() => {
     new AnalysisEngine(modelService),
     productRepository,
   );
-  const isTrustedSender = (webContentsId: number): boolean =>
-    BrowserWindow.getAllWindows().some(
-      (window) => window.webContents.id === webContentsId,
-    );
   registerModelIpc(
     modelService,
     isTrustedSender,

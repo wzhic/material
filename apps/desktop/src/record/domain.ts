@@ -92,6 +92,12 @@ const validateMaterial = (material: MaterialReferenceSnapshot): void => {
 };
 
 export const validateConfirmedRecord = (input: ConfirmedRecordInput): void => {
+  if (
+    input.confirmationId !== null
+    && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(input.confirmationId)
+  ) {
+    throw new RecordValidationError('报告确认标识格式不正确');
+  }
   validateMaterial(input.material);
   if (input.material.mediaKind !== 'image' && input.material.mediaKind !== 'video') {
     throw new RecordValidationError('媒体类型不受支持');
@@ -120,11 +126,31 @@ export const validateConfirmedRecord = (input: ConfirmedRecordInput): void => {
   if (Number.isNaN(new Date(input.run.completedAt).getTime())) {
     throw new RecordValidationError('分析完成时间格式不正确');
   }
-  validateFiniteRange(input.report.score.total, 0, 100, '素材总评分');
+  if (input.report.score.total !== null) {
+    validateFiniteRange(input.report.score.total, 0, 100, '素材总评分');
+  }
   input.report.score.dimensions.forEach((dimension) => {
     requireText(dimension.id, '评分维度标识');
     requireText(dimension.label, '评分维度名称');
-    validateFiniteRange(dimension.score, 0, 100, '评分维度分数');
+    if (dimension.score !== null) {
+      validateFiniteRange(dimension.score, 0, 100, '评分维度分数');
+    }
+    if (
+      dimension.status !== undefined
+      && !['insufficient_evidence', 'not_applicable', 'scored'].includes(dimension.status)
+    ) {
+      throw new RecordValidationError('评分维度状态不受支持');
+    }
+    if (
+      (dimension.status === 'scored' && dimension.score === null)
+      || (
+        dimension.status !== undefined
+        && dimension.status !== 'scored'
+        && dimension.score !== null
+      )
+    ) {
+      throw new RecordValidationError('评分维度状态与分数不一致');
+    }
   });
   const evidenceIds = new Set(input.report.evidence.map((evidence) => evidence.id));
   if (evidenceIds.size !== input.report.evidence.length) {

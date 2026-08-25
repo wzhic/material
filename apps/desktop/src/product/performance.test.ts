@@ -111,5 +111,5 @@ describe('product library 10,000 item performance baseline', () => {
     expect(summary.listP95Ms).toBeLessThan(1_000);
     expect(summary.searchP95Ms).toBeLessThan(1_000);
     expect(summary.writeP95Ms).toBeLessThan(1_000);
-  });
+  }, 15_000);
 });

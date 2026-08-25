@@ -37,7 +37,7 @@ interface RecordRow {
   media_kind: 'image' | 'video';
   material_display_name: string;
   product_display_name: string | null;
-  total_score: number;
+  total_score: number | null;
   source_status: 'available' | 'mismatch' | 'needs_relocation';
   source_record_id: string | null;
   confirmed_at: string;
@@ -60,7 +60,12 @@ interface SubsequentRow {
   id: string;
   material_display_name: string;
   confirmed_at: string;
-  total_score: number;
+  total_score: number | null;
+}
+
+interface ConfirmationRow {
+  id: string;
+  record_json: string;
 }
 
 const asRow = <T>(value: unknown): T | undefined => value as T | undefined;
@@ -229,30 +234,45 @@ export class RecordRepository {
 
   confirmAndSave(input: ConfirmedRecordInput): AnalysisRecord {
     validateConfirmedRecord(input);
-    if (input.sourceRecordId) {
-      const source = asRow<CountRow>(
-        this.database
-          .prepare('SELECT COUNT(*) AS count FROM analysis_records WHERE id = ?')
-          .get(input.sourceRecordId),
-      );
-      if (!source?.count) {
-        throw new RecordRepositoryError('INVALID_INPUT', '来源分析记录不存在');
-      }
+    if (!input.confirmationId) {
+      throw new RecordRepositoryError('INVALID_INPUT', '报告确认标识不能为空');
     }
-    const id = randomUUID();
-    const confirmedAt = new Date().toISOString();
-    const productDisplayName = input.productSnapshot?.name ?? null;
-    const searchText = normalizeRecordSearch(
-      `${input.material.displayName} ${productDisplayName ?? ''}`,
-    );
-    this.transaction(() => {
+    const recordJson = JSON.stringify(input);
+    return this.transaction(() => {
+      const existing = asRow<ConfirmationRow>(
+        this.database
+          .prepare('SELECT id, record_json FROM analysis_records WHERE confirmation_id = ?')
+          .get(input.confirmationId),
+      );
+      if (existing) {
+        if (existing.record_json !== recordJson) {
+          throw new RecordRepositoryError('CONFLICT', '该报告预览已用不同内容确认');
+        }
+        return this.get(existing.id);
+      }
+      if (input.sourceRecordId) {
+        const source = asRow<CountRow>(
+          this.database
+            .prepare('SELECT COUNT(*) AS count FROM analysis_records WHERE id = ?')
+            .get(input.sourceRecordId),
+        );
+        if (!source?.count) {
+          throw new RecordRepositoryError('INVALID_INPUT', '来源分析记录不存在');
+        }
+      }
+      const id = randomUUID();
+      const confirmedAt = new Date().toISOString();
+      const productDisplayName = input.productSnapshot?.name ?? null;
+      const searchText = normalizeRecordSearch(
+        `${input.material.displayName} ${productDisplayName ?? ''}`,
+      );
       this.database
         .prepare(
           `INSERT INTO analysis_records (
              id, industry, media_kind, material_display_name, product_display_name,
              total_score, source_status, source_record_id, confirmed_at,
-             search_text, record_json
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             search_text, record_json, confirmation_id
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           id,
@@ -265,10 +285,11 @@ export class RecordRepository {
           input.sourceRecordId,
           confirmedAt,
           searchText,
-          JSON.stringify(input),
+          recordJson,
+          input.confirmationId,
         );
+      return this.get(id);
     });
-    return this.get(id);
   }
 
   saveFeedback(id: string, input: RecordFeedbackInput): RecordFeedback {
@@ -361,12 +382,13 @@ export class RecordRepository {
           media_kind TEXT NOT NULL CHECK (media_kind IN ('image', 'video')),
           material_display_name TEXT NOT NULL,
           product_display_name TEXT,
-          total_score REAL NOT NULL CHECK (total_score >= 0 AND total_score <= 100),
+          total_score REAL CHECK (total_score IS NULL OR (total_score >= 0 AND total_score <= 100)),
           source_status TEXT NOT NULL CHECK (source_status IN ('available', 'mismatch', 'needs_relocation')),
           source_record_id TEXT,
           confirmed_at TEXT NOT NULL,
           search_text TEXT NOT NULL,
-          record_json TEXT NOT NULL
+          record_json TEXT NOT NULL,
+          confirmation_id TEXT UNIQUE
         );
         CREATE INDEX analysis_records_confirmed_idx ON analysis_records(confirmed_at DESC);
         CREATE INDEX analysis_records_industry_media_idx ON analysis_records(industry, media_kind);
@@ -378,10 +400,12 @@ export class RecordRepository {
           weight_direction TEXT NOT NULL,
           updated_at TEXT NOT NULL
         );
-        PRAGMA user_version = 1;
+        PRAGMA user_version = 2;
         COMMIT;
       `);
-    } else if (version !== 1) {
+    } else if (version === 1 && this.writable) {
+      this.migrateV1ToV2();
+    } else if (version !== 1 && version !== 2) {
       throw new RecordRepositoryError(
         'DATABASE_UNAVAILABLE',
         '分析记录版本高于当前客户端，请升级客户端后重试',
@@ -398,6 +422,72 @@ export class RecordRepository {
     }
   }
 
+  private migrateV1ToV2(): void {
+    this.database.exec('PRAGMA foreign_keys = OFF; BEGIN IMMEDIATE;');
+    try {
+      this.database.exec(`
+        CREATE TABLE analysis_records_v2 (
+          id TEXT PRIMARY KEY,
+          industry TEXT NOT NULL CHECK (industry IN ('apparel', 'game')),
+          media_kind TEXT NOT NULL CHECK (media_kind IN ('image', 'video')),
+          material_display_name TEXT NOT NULL,
+          product_display_name TEXT,
+          total_score REAL CHECK (total_score IS NULL OR (total_score >= 0 AND total_score <= 100)),
+          source_status TEXT NOT NULL CHECK (source_status IN ('available', 'mismatch', 'needs_relocation')),
+          source_record_id TEXT,
+          confirmed_at TEXT NOT NULL,
+          search_text TEXT NOT NULL,
+          record_json TEXT NOT NULL,
+          confirmation_id TEXT UNIQUE
+        );
+        INSERT INTO analysis_records_v2 (
+          id, industry, media_kind, material_display_name, product_display_name,
+          total_score, source_status, source_record_id, confirmed_at, search_text,
+          record_json, confirmation_id
+        ) SELECT
+          id, industry, media_kind, material_display_name, product_display_name,
+          total_score, source_status, source_record_id, confirmed_at, search_text,
+          record_json, NULL
+        FROM analysis_records;
+        CREATE TABLE analysis_record_feedback_v2 (
+          record_id TEXT PRIMARY KEY REFERENCES analysis_records_v2(id) ON DELETE CASCADE,
+          rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+          reason TEXT NOT NULL,
+          weight_direction TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        INSERT INTO analysis_record_feedback_v2
+          (record_id, rating, reason, weight_direction, updated_at)
+        SELECT record_id, rating, reason, weight_direction, updated_at
+        FROM analysis_record_feedback;
+        DROP TABLE analysis_record_feedback;
+        DROP TABLE analysis_records;
+        ALTER TABLE analysis_records_v2 RENAME TO analysis_records;
+        ALTER TABLE analysis_record_feedback_v2 RENAME TO analysis_record_feedback;
+        CREATE INDEX analysis_records_confirmed_idx ON analysis_records(confirmed_at DESC);
+        CREATE INDEX analysis_records_industry_media_idx ON analysis_records(industry, media_kind);
+        CREATE INDEX analysis_records_source_idx ON analysis_records(source_record_id);
+        PRAGMA user_version = 2;
+      `);
+      const foreignKeyIssues = this.database.prepare('PRAGMA foreign_key_check').all();
+      if (foreignKeyIssues.length) {
+        throw new RecordRepositoryError(
+          'DATABASE_UNAVAILABLE',
+          '分析记录升级后关系检查失败，原数据保持不变',
+        );
+      }
+      this.database.exec('COMMIT;');
+    } catch {
+      this.database.exec('ROLLBACK;');
+      throw new RecordRepositoryError(
+        'DATABASE_UNAVAILABLE',
+        '分析记录升级失败，原数据保持不变',
+      );
+    } finally {
+      this.database.exec('PRAGMA foreign_keys = ON;');
+    }
+  }
+
   private requireRecord(id: string): void {
     const count = asRow<CountRow>(
       this.database.prepare('SELECT COUNT(*) AS count FROM analysis_records WHERE id = ?').get(id),
@@ -409,7 +499,11 @@ export class RecordRepository {
 
   private parseRecord(value: string): ConfirmedRecordInput {
     try {
-      const parsed = JSON.parse(value) as ConfirmedRecordInput;
+      const stored = JSON.parse(value) as Partial<ConfirmedRecordInput>;
+      const parsed = {
+        ...stored,
+        confirmationId: stored.confirmationId ?? null,
+      } as ConfirmedRecordInput;
       validateConfirmedRecord(parsed);
       return parsed;
     } catch (error) {

@@ -1,3 +1,8 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RecordValidationError } from './domain';
@@ -8,6 +13,7 @@ const confirmedInput = (
   name = 'fashion_video_01.mp4',
   overrides: Partial<ConfirmedRecordInput> = {},
 ): ConfirmedRecordInput => ({
+  confirmationId: `confirmation-${Buffer.from(name).toString('hex')}`,
   industry: 'apparel',
   material: {
     schemaVersion: 1,
@@ -102,6 +108,44 @@ describe('RecordRepository', () => {
     expect(readBack.report.summary).toContain('卖点证据');
     expect(readBack.report.score.total).toBe(82);
     expect(repository.list().items).toHaveLength(1);
+  });
+
+  it('returns the same record when one report preview is confirmed twice', () => {
+    const input = confirmedInput();
+
+    const first = repository.confirmAndSave(input);
+    const second = repository.confirmAndSave(structuredClone(input));
+
+    expect(second.id).toBe(first.id);
+    expect(repository.list().total).toBe(1);
+  });
+
+  it('rejects reusing a confirmation id for different report content', () => {
+    const input = confirmedInput();
+    repository.confirmAndSave(input);
+    const changed = structuredClone(input);
+    changed.report.summary = '同一确认标识下的不同内容';
+
+    expect(() => repository.confirmAndSave(changed)).toThrow('不同内容');
+    expect(repository.list().total).toBe(1);
+  });
+
+  it('preserves insufficient evidence as unscored instead of zero', () => {
+    const input = confirmedInput();
+    input.report.score = {
+      dimensions: [{
+        id: 'emotion',
+        label: '情绪转化',
+        score: null,
+        status: 'insufficient_evidence',
+      }],
+      total: null,
+    };
+
+    const saved = repository.confirmAndSave(input);
+
+    expect(saved.report.score.total).toBeNull();
+    expect(repository.list().items[0].totalScore).toBeNull();
   });
 
   it('rejects an invalid evidence reference without creating a record', () => {
@@ -207,5 +251,73 @@ describe('RecordRepository', () => {
 
     expect(() => repository.confirmAndSave(input)).toThrow('不允许持久化');
     expect(repository.list().total).toBe(0);
+  });
+
+  it('migrates a v1 database without rewriting legacy snapshots', () => {
+    repository.close();
+    const directory = mkdtempSync(path.join(tmpdir(), 'material-record-migration-'));
+    const databasePath = path.join(directory, 'records.sqlite3');
+    const database = new DatabaseSync(databasePath);
+    const legacy = structuredClone(confirmedInput('旧版记录.mp4'));
+    delete (legacy as Partial<ConfirmedRecordInput>).confirmationId;
+    database.exec(`
+      CREATE TABLE analysis_records (
+        id TEXT PRIMARY KEY,
+        industry TEXT NOT NULL,
+        media_kind TEXT NOT NULL,
+        material_display_name TEXT NOT NULL,
+        product_display_name TEXT,
+        total_score REAL NOT NULL,
+        source_status TEXT NOT NULL,
+        source_record_id TEXT,
+        confirmed_at TEXT NOT NULL,
+        search_text TEXT NOT NULL,
+        record_json TEXT NOT NULL
+      );
+      CREATE TABLE analysis_record_feedback (
+        record_id TEXT PRIMARY KEY REFERENCES analysis_records(id) ON DELETE CASCADE,
+        rating INTEGER NOT NULL,
+        reason TEXT NOT NULL,
+        weight_direction TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      PRAGMA user_version = 1;
+    `);
+    database.prepare(
+      `INSERT INTO analysis_records (
+        id, industry, media_kind, material_display_name, product_display_name,
+        total_score, source_status, source_record_id, confirmed_at, search_text,
+        record_json
+      ) VALUES (?, ?, ?, ?, NULL, ?, ?, NULL, ?, ?, ?)`,
+    ).run(
+      'legacy-record',
+      legacy.industry,
+      legacy.material.mediaKind,
+      legacy.material.displayName,
+      legacy.report.score.total,
+      legacy.material.sourceStatus,
+      '2026-08-24T06:00:00.000Z',
+      '旧版记录.mp4',
+      JSON.stringify(legacy),
+    );
+    database.close();
+
+    const migrated = new RecordRepository(databasePath);
+    expect(migrated.get('legacy-record').confirmationId).toBeNull();
+    const next = confirmedInput('证据不足.png', {
+      confirmationId: 'confirmation-after-migration',
+    });
+    next.report.score.total = null;
+    next.report.score.dimensions = [];
+    expect(migrated.confirmAndSave(next).report.score.total).toBeNull();
+    migrated.close();
+
+    const verified = new DatabaseSync(databasePath, { readOnly: true });
+    expect(
+      (verified.prepare('PRAGMA user_version').get() as { user_version: number }).user_version,
+    ).toBe(2);
+    verified.close();
+    rmSync(directory, { force: true, recursive: true });
+    repository = new RecordRepository(':memory:');
   });
 });

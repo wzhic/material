@@ -42,7 +42,8 @@ export interface ReportDiagnosis {
 export interface ReportScoreDimension {
   id: string;
   label: string;
-  score: number;
+  score: number | null;
+  status?: 'insufficient_evidence' | 'not_applicable' | 'scored';
 }
 
 export interface ConfirmedReportSnapshot {
@@ -58,7 +59,7 @@ export interface ConfirmedReportSnapshot {
   emotionSummary: string[];
   ctaSummary: string[];
   score: {
-    total: number;
+    total: number | null;
     dimensions: ReportScoreDimension[];
   };
   tags: ReportTag[];
@@ -91,6 +92,7 @@ export interface VisibleConversationItem {
 }
 
 export interface ConfirmedRecordInput {
+  confirmationId: string | null;
   industry: RecordIndustry;
   material: MaterialReferenceSnapshot;
   productSnapshot: ProductSnapshot | null;
@@ -124,7 +126,7 @@ export interface AnalysisRecord extends ConfirmedRecordInput {
     id: string;
     materialDisplayName: string;
     confirmedAt: string;
-    totalScore: number;
+    totalScore: number | null;
   }>;
 }
 
@@ -134,7 +136,7 @@ export interface AnalysisRecordListItem {
   industry: RecordIndustry;
   mediaKind: RecordMediaKind;
   productDisplayName: string | null;
-  totalScore: number;
+  totalScore: number | null;
   feedback: Pick<RecordFeedback, 'rating' | 'updatedAt'> | null;
   sourceStatus: MaterialSourceStatus;
   sourceRecordId: string | null;
@@ -173,6 +175,7 @@ export type RecordApiResult<T> =
   | { ok: false; error: { code: RecordApiErrorCode; message: string } };
 
 export interface RecordApi {
+  confirm: (input: ConfirmedRecordInput) => Promise<RecordApiResult<AnalysisRecord>>;
   list: (query?: AnalysisRecordQuery) => Promise<RecordApiResult<AnalysisRecordPage>>;
   get: (id: string) => Promise<RecordApiResult<AnalysisRecord>>;
   saveFeedback: (
@@ -185,6 +188,7 @@ export interface RecordApi {
 
 export const RECORD_IPC_CHANNELS = {
   clearFeedback: 'material:records:clear-feedback',
+  confirm: 'material:records:confirm',
   get: 'material:records:get',
   list: 'material:records:list',
   remove: 'material:records:remove',

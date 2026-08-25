@@ -7,10 +7,13 @@ import type { AnalysisClaim } from '../analysis-engine';
 type ReportData = Extract<AnalysisRuntimeResult, { ok: true }>['data'];
 
 interface AnalysisReportPreviewPageProps {
+  confirmError: string;
+  confirming: boolean;
   data: ReportData;
   materialName: string;
   onBackToConfiguration: () => void;
   onBackToWorkspace: () => void;
+  onConfirm: () => void;
 }
 
 const formatTime = (milliseconds: number | null): string => {
@@ -37,10 +40,13 @@ const ClaimSection = ({ items, title }: { items: AnalysisClaim[]; title: string 
 );
 
 export const AnalysisReportPreviewPage = ({
+  confirmError,
+  confirming,
   data,
   materialName,
   onBackToConfiguration,
   onBackToWorkspace,
+  onConfirm,
 }: AnalysisReportPreviewPageProps): React.JSX.Element => {
   const { report } = data;
   const scoreDimensions = report.score.dimensions;
@@ -61,7 +67,7 @@ export const AnalysisReportPreviewPage = ({
     <main className="page-shell report-preview-page">
       <header className="report-preview-header">
         <div>
-          <button className="text-back" onClick={onBackToWorkspace} type="button">
+          <button className="text-back" disabled={confirming} onClick={onBackToWorkspace} type="button">
             ← 返回分析工作区
           </button>
           <span className="eyebrow">待确认报告</span>
@@ -72,9 +78,17 @@ export const AnalysisReportPreviewPage = ({
         </div>
         <div className="report-header-actions">
           <Tag theme="warning" variant="light">尚未保存</Tag>
-          <Button disabled theme="primary">确认并保存 · 下一阶段接入</Button>
+          <Button loading={confirming} onClick={onConfirm} theme="primary">
+            {confirming ? '正在保存' : '确认并保存'}
+          </Button>
         </div>
       </header>
+
+      {confirmError ? (
+        <div className="page-alert is-error" role="alert">
+          {confirmError}；待确认报告仍保留，可直接重试。
+        </div>
+      ) : null}
 
       <section className="report-hero-card">
         <div
@@ -225,8 +239,10 @@ export const AnalysisReportPreviewPage = ({
       <footer className="report-preview-footer">
         <p>这是一份待确认预览，关闭应用或离开当前会话不会形成正式分析记录。</p>
         <div>
-          <Button onClick={onBackToConfiguration} variant="outline">返回配置</Button>
-          <Button disabled theme="primary">确认并保存 · 下一阶段接入</Button>
+          <Button disabled={confirming} onClick={onBackToConfiguration} variant="outline">返回配置</Button>
+          <Button loading={confirming} onClick={onConfirm} theme="primary">
+            {confirming ? '正在保存' : '确认并保存'}
+          </Button>
         </div>
       </footer>
     </main>
