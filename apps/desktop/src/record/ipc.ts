@@ -1,8 +1,14 @@
-import { ipcMain } from 'electron';
+import { BrowserWindow, ipcMain } from 'electron';
 
+import { chooseMaterialFile } from '../media/ipc';
+import { MaterialSessionError } from '../media/session';
 import { RecordValidationError } from './domain';
 import { RecordPdfExportError, type RecordPdfExporter } from './pdf-contract';
 import { RecordRepository, RecordRepositoryError } from './repository';
+import {
+  RecordSourceAccessError,
+  type RecordSourceAccessService,
+} from './source-access';
 import {
   AnalysisRecordQuery,
   ConfirmedRecordInput,
@@ -48,6 +54,29 @@ const safelyAsync = async <T>(operation: () => Promise<T>): Promise<RecordApiRes
   }
 };
 
+const safelySource = async <T>(operation: () => Promise<T>): Promise<RecordApiResult<T>> => {
+  try {
+    return { ok: true, data: await operation() };
+  } catch (error) {
+    if (error instanceof RecordRepositoryError) {
+      return failure(error.code, error.message);
+    }
+    if (error instanceof RecordValidationError) {
+      return failure('INVALID_INPUT', error.message);
+    }
+    if (error instanceof RecordSourceAccessError) {
+      return failure(error.code, error.message);
+    }
+    if (error instanceof MaterialSessionError) {
+      return failure(
+        error.code === 'INVALID_INPUT' ? 'INVALID_INPUT' : 'SOURCE_UNAVAILABLE',
+        error.message,
+      );
+    }
+    return failure('SOURCE_UNAVAILABLE', '源素材访问失败，请重新定位后重试');
+  }
+};
+
 const clearRecordHandlers = (): void => {
   Object.values(RECORD_IPC_CHANNELS).forEach((channel) => ipcMain.removeHandler(channel));
 };
@@ -56,12 +85,35 @@ export const registerRecordIpc = (
   repository: RecordRepository,
   isTrustedSender: (webContentsId: number) => boolean,
   pdfExporter?: RecordPdfExporter,
+  sourceAccess?: RecordSourceAccessService,
 ): void => {
   clearRecordHandlers();
-  ipcMain.handle(RECORD_IPC_CHANNELS.confirm, (event, input: ConfirmedRecordInput) =>
-    isTrustedSender(event.sender.id)
-      ? safely(() => repository.confirmAndSave(input))
-      : failure('INVALID_INPUT', '分析记录请求来源无效'),
+  ipcMain.handle(
+    RECORD_IPC_CHANNELS.confirm,
+    (event, input: ConfirmedRecordInput, materialSessionId?: string) => {
+      if (!isTrustedSender(event.sender.id)) {
+        return failure('INVALID_INPUT', '分析记录请求来源无效');
+      }
+      return safelySource(async () => {
+        let encryptedSourcePath: string | undefined;
+        if (sourceAccess && materialSessionId) {
+          try {
+            encryptedSourcePath = await sourceAccess.sealSession(
+              materialSessionId,
+              input.material,
+            );
+          } catch (error) {
+            if (
+              !(error instanceof RecordSourceAccessError)
+              || error.code !== 'SOURCE_UNAVAILABLE'
+            ) {
+              throw error;
+            }
+          }
+        }
+        return repository.confirmAndSave(input, encryptedSourcePath);
+      });
+    },
   );
   ipcMain.handle(RECORD_IPC_CHANNELS.list, (event, query?: AnalysisRecordQuery) =>
     isTrustedSender(event.sender.id)
@@ -73,6 +125,62 @@ export const registerRecordIpc = (
       ? safely(() => repository.get(id))
       : failure('INVALID_INPUT', '分析记录请求来源无效'),
   );
+  ipcMain.handle(RECORD_IPC_CHANNELS.openSource, (event, id: string) => {
+    if (!isTrustedSender(event.sender.id)) {
+      return failure('INVALID_INPUT', '分析记录请求来源无效');
+    }
+    if (!sourceAccess) {
+      return failure('SOURCE_UNAVAILABLE', '源素材恢复能力当前不可用，请重启应用后重试');
+    }
+    return safelySource(async () => {
+      const record = repository.get(id);
+      const encryptedPath = repository.sourceReference(id);
+      if (!encryptedPath) {
+        repository.updateSourceStatus(id, 'needs_relocation');
+        return {
+          cancelled: false,
+          mismatch: null,
+          session: null,
+          sourceStatus: 'needs_relocation' as const,
+        };
+      }
+      const result = await sourceAccess.openEncrypted(record, encryptedPath);
+      repository.updateSourceStatus(id, result.sourceStatus);
+      return result;
+    });
+  });
+  ipcMain.handle(RECORD_IPC_CHANNELS.relocateSource, (event, id: string) => {
+    if (!isTrustedSender(event.sender.id)) {
+      return failure('INVALID_INPUT', '分析记录请求来源无效');
+    }
+    if (!sourceAccess) {
+      return failure('SOURCE_UNAVAILABLE', '源素材恢复能力当前不可用，请重启应用后重试');
+    }
+    return safelySource(async () => {
+      const record = repository.get(id);
+      const filePath = await chooseMaterialFile(BrowserWindow.fromWebContents(event.sender));
+      if (!filePath) {
+        return {
+          cancelled: true,
+          mismatch: null,
+          session: null,
+          sourceStatus: record.material.sourceStatus,
+        };
+      }
+      const relocated = await sourceAccess.relocate(record, filePath);
+      if (relocated.encryptedPath && relocated.access.session) {
+        try {
+          repository.replaceSourceReference(id, relocated.encryptedPath);
+        } catch (error) {
+          sourceAccess.releaseSession(relocated.access.session.sessionId);
+          throw error;
+        }
+      } else {
+        repository.updateSourceStatus(id, relocated.access.sourceStatus);
+      }
+      return relocated.access;
+    });
+  });
   ipcMain.handle(RECORD_IPC_CHANNELS.exportPdf, (event, id: string) => {
     if (!isTrustedSender(event.sender.id)) {
       return failure('INVALID_INPUT', '分析记录请求来源无效');

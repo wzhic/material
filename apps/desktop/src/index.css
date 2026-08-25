@@ -2251,6 +2251,7 @@ textarea:focus-visible,
 }
 
 .record-source-alert span {
+  flex: 1;
   font-size: 12px;
 }
 
@@ -2421,6 +2422,24 @@ textarea:focus-visible,
   white-space: nowrap;
 }
 
+.record-evidence-list > div > button {
+  align-self: center;
+  background: #edf4ff;
+  border: 1px solid #c7daf8;
+  border-radius: 6px;
+  color: var(--app-blue);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 6px 9px;
+}
+
+.record-evidence-list > div > button:disabled {
+  background: #f4f6f8;
+  border-color: #e1e6ed;
+  color: #98a2b1;
+  cursor: not-allowed;
+}
+
 .record-section-grid {
   display: grid;
   gap: 16px;
@@ -2532,6 +2551,36 @@ textarea:focus-visible,
   text-align: center;
 }
 
+.record-source-preview {
+  background: #111a28;
+  border: 1px solid #26344a;
+  border-radius: 8px;
+  min-height: 240px;
+  overflow: hidden;
+}
+
+.record-source-preview:focus-visible {
+  box-shadow: 0 0 0 3px rgb(54 112 198 / 25%);
+  outline: 2px solid var(--app-blue);
+}
+
+.record-source-preview video,
+.record-source-preview img {
+  background: #0d1521;
+  display: block;
+  max-height: 420px;
+  object-fit: contain;
+  width: 100%;
+}
+
+.record-source-preview video {
+  min-height: 240px;
+}
+
+.record-source-preview img {
+  min-height: 240px;
+}
+
 .record-source-placeholder > span {
   align-items: center;
   background: #34435a;
@@ -2554,6 +2603,10 @@ textarea:focus-visible,
   font-size: 11px;
   line-height: 1.6;
   margin: 7px 0 0;
+}
+
+.record-source-placeholder button {
+  margin-top: 14px;
 }
 
 .record-info-list {

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const electron = vi.hoisted(() => ({
+  fromWebContents: vi.fn(() => null),
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
   handle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
     electron.handlers.set(channel, handler);
@@ -8,9 +9,16 @@ const electron = vi.hoisted(() => ({
   removeHandler: vi.fn((channel: string) => {
     electron.handlers.delete(channel);
   }),
+  showOpenDialog: vi.fn(),
 }));
 
 vi.mock('electron', () => ({
+  BrowserWindow: {
+    fromWebContents: electron.fromWebContents,
+  },
+  dialog: {
+    showOpenDialog: electron.showOpenDialog,
+  },
   ipcMain: {
     handle: electron.handle,
     removeHandler: electron.removeHandler,
@@ -20,6 +28,7 @@ vi.mock('electron', () => ({
 import { registerRecordIpc } from './ipc';
 import type { RecordPdfExporter } from './pdf-contract';
 import type { RecordRepository } from './repository';
+import type { RecordSourceAccessService } from './source-access';
 import type {
   AnalysisRecord,
   ConfirmedRecordInput,
@@ -32,6 +41,7 @@ describe('record IPC confirmation boundary', () => {
     electron.handlers.clear();
     electron.handle.mockClear();
     electron.removeHandler.mockClear();
+    electron.showOpenDialog.mockReset();
   });
 
   it('rejects an untrusted renderer before it reaches the repository', () => {
@@ -48,20 +58,110 @@ describe('record IPC confirmation boundary', () => {
     expect(confirmAndSave).not.toHaveBeenCalled();
   });
 
-  it('returns the repository read-back for a trusted renderer', () => {
+  it('returns the repository read-back for a trusted renderer', async () => {
     const record = { id: 'record-1' } as AnalysisRecord;
     const confirmAndSave = vi.fn(() => record);
     const input = {} as ConfirmedRecordInput;
     registerRecordIpc({ confirmAndSave } as unknown as RecordRepository, (id) => id === 7);
     const handler = electron.handlers.get(RECORD_IPC_CHANNELS.confirm);
 
-    const result = handler?.(
+    const result = await handler?.(
       { sender: { id: 7 } },
       input,
     ) as RecordApiResult<AnalysisRecord>;
 
     expect(result).toEqual({ ok: true, data: record });
-    expect(confirmAndSave).toHaveBeenCalledWith(input);
+    expect(confirmAndSave).toHaveBeenCalledWith(input, undefined);
+  });
+
+  it('seals the current source session before saving a trusted confirmation', async () => {
+    const record = { id: 'record-1' } as AnalysisRecord;
+    const input = { material: { displayName: '素材.mp4' } } as ConfirmedRecordInput;
+    const confirmAndSave = vi.fn(() => record);
+    const sealSession = vi.fn(async () => 'c2VhbGVkLXNvdXJjZQ==');
+    registerRecordIpc(
+      { confirmAndSave } as unknown as RecordRepository,
+      (id) => id === 7,
+      undefined,
+      { sealSession } as unknown as RecordSourceAccessService,
+    );
+    const handler = electron.handlers.get(RECORD_IPC_CHANNELS.confirm);
+
+    const result = await handler?.({ sender: { id: 7 } }, input, 'session-1');
+
+    expect(result).toEqual({ ok: true, data: record });
+    expect(sealSession).toHaveBeenCalledWith('session-1', input.material);
+    expect(confirmAndSave).toHaveBeenCalledWith(input, 'c2VhbGVkLXNvdXJjZQ==');
+  });
+
+  it('opens a persisted source in the main process and updates its live status', async () => {
+    const record = { id: 'record-1' } as AnalysisRecord;
+    const sourceReference = vi.fn(() => 'c2VhbGVkLXNvdXJjZQ==');
+    const updateSourceStatus = vi.fn();
+    const openEncrypted = vi.fn(async () => ({
+      cancelled: false,
+      mismatch: null,
+      session: { sessionId: 'session-1' },
+      sourceStatus: 'available',
+    }));
+    registerRecordIpc(
+      {
+        get: vi.fn(() => record),
+        sourceReference,
+        updateSourceStatus,
+      } as unknown as RecordRepository,
+      (id) => id === 7,
+      undefined,
+      { openEncrypted } as unknown as RecordSourceAccessService,
+    );
+    const handler = electron.handlers.get(RECORD_IPC_CHANNELS.openSource);
+
+    const result = await handler?.({ sender: { id: 7 } }, 'record-1');
+
+    expect(result).toMatchObject({ ok: true, data: { sourceStatus: 'available' } });
+    expect(openEncrypted).toHaveBeenCalledWith(record, 'c2VhbGVkLXNvdXJjZQ==');
+    expect(updateSourceStatus).toHaveBeenCalledWith('record-1', 'available');
+  });
+
+  it('replaces a record source only after a successful fingerprint relocation', async () => {
+    const record = {
+      id: 'record-1',
+      material: { sourceStatus: 'needs_relocation' },
+    } as AnalysisRecord;
+    const session = { sessionId: 'session-2' };
+    const replaceSourceReference = vi.fn();
+    const relocate = vi.fn(async () => ({
+      access: {
+        cancelled: false,
+        mismatch: null,
+        session,
+        sourceStatus: 'available',
+      },
+      encryptedPath: 'c2VhbGVkLW5ldy1zb3VyY2U=',
+    }));
+    electron.showOpenDialog.mockResolvedValue({
+      canceled: false,
+      filePaths: ['/private/source.mp4'],
+    });
+    registerRecordIpc(
+      {
+        get: vi.fn(() => record),
+        replaceSourceReference,
+      } as unknown as RecordRepository,
+      (id) => id === 7,
+      undefined,
+      { relocate } as unknown as RecordSourceAccessService,
+    );
+    const handler = electron.handlers.get(RECORD_IPC_CHANNELS.relocateSource);
+
+    const result = await handler?.({ sender: { id: 7 } }, 'record-1');
+
+    expect(result).toMatchObject({ ok: true, data: { sourceStatus: 'available' } });
+    expect(relocate).toHaveBeenCalledWith(record, '/private/source.mp4');
+    expect(replaceSourceReference).toHaveBeenCalledWith(
+      'record-1',
+      'c2VhbGVkLW5ldy1zb3VyY2U=',
+    );
   });
 
   it('re-reads a trusted record in the main process before exporting it', async () => {

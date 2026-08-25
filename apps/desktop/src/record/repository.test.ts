@@ -120,6 +120,45 @@ describe('RecordRepository', () => {
     expect(repository.list().total).toBe(1);
   });
 
+  it('stores an encrypted source reference separately and projects live source status', () => {
+    const encryptedPath = Buffer.from('sealed-source-reference', 'utf8').toString('base64');
+    const saved = repository.confirmAndSave(
+      confirmedInput('安全引用.mp4', {
+        material: {
+          ...confirmedInput().material,
+          displayName: '安全引用.mp4',
+          sourceStatus: 'needs_relocation',
+        },
+      }),
+      encryptedPath,
+    );
+
+    expect(saved.material.sourceStatus).toBe('available');
+    expect(repository.sourceReference(saved.id)).toBe(encryptedPath);
+    expect(repository.updateSourceStatus(saved.id, 'mismatch').material.sourceStatus).toBe(
+      'mismatch',
+    );
+    expect(repository.list({ sourceStatus: 'mismatch' }).items).toHaveLength(1);
+  });
+
+  it('deletes the encrypted source reference with its analysis record', () => {
+    const saved = repository.confirmAndSave(
+      confirmedInput('待删除.mp4'),
+      Buffer.from('sealed-delete-reference', 'utf8').toString('base64'),
+    );
+
+    repository.remove(saved.id);
+
+    expect(() => repository.sourceReference(saved.id)).toThrow('不存在或已删除');
+  });
+
+  it('rejects a malformed source reference before creating a partial record', () => {
+    expect(() => repository.confirmAndSave(confirmedInput(), '/plain/local/path.mp4')).toThrow(
+      '安全引用格式不正确',
+    );
+    expect(repository.list().total).toBe(0);
+  });
+
   it('rejects reusing a confirmation id for different report content', () => {
     const input = confirmedInput();
     repository.confirmAndSave(input);
@@ -325,7 +364,12 @@ describe('RecordRepository', () => {
     const verified = new DatabaseSync(databasePath, { readOnly: true });
     expect(
       (verified.prepare('PRAGMA user_version').get() as { user_version: number }).user_version,
-    ).toBe(2);
+    ).toBe(3);
+    expect(
+      (verified.prepare(
+        "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'analysis_record_sources'",
+      ).get() as { count: number }).count,
+    ).toBe(1);
     verified.close();
     rmSync(directory, { force: true, recursive: true });
     repository = new RecordRepository(':memory:');

@@ -105,6 +105,55 @@ const RecordDetail = ({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [reanalysisBusy, setReanalysisBusy] = useState(false);
+  const [sourceBusy, setSourceBusy] = useState(true);
+  const [sourceSession, setSourceSession] = useState<MaterialSession | null>(null);
+  const [sourceStatus, setSourceStatus] = useState<MaterialSourceStatus>(
+    record.material.sourceStatus,
+  );
+  const sourceSessionRef = useRef<MaterialSession | null>(null);
+  const sourceOwnershipTransferred = useRef(false);
+  const sourcePreviewRef = useRef<HTMLDivElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  const replaceSourceSession = useCallback((session: MaterialSession | null): void => {
+    const previous = sourceSessionRef.current;
+    if (previous && previous.sessionId !== session?.sessionId) {
+      void window.materialApi.media.release(previous.sessionId);
+    }
+    sourceSessionRef.current = session;
+    setSourceSession(session);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    sourceOwnershipTransferred.current = false;
+    setSourceBusy(true);
+    setSourceStatus(record.material.sourceStatus);
+    void window.materialApi.records.openSource(record.id).then((result) => {
+      if (!active) {
+        if (result.ok && result.data.session) {
+          void window.materialApi.media.release(result.data.session.sessionId);
+        }
+        return;
+      }
+      setSourceBusy(false);
+      if (!result.ok) {
+        setSourceStatus('needs_relocation');
+        setError(result.error.message);
+        return;
+      }
+      setSourceStatus(result.data.sourceStatus);
+      replaceSourceSession(result.data.session);
+    });
+    return () => {
+      active = false;
+      const current = sourceSessionRef.current;
+      if (current && !sourceOwnershipTransferred.current) {
+        void window.materialApi.media.release(current.sessionId);
+      }
+      sourceSessionRef.current = null;
+    };
+  }, [record.id, record.material.sourceStatus, replaceSourceSession]);
 
   useEffect(() => {
     setRating(String(record.feedback?.rating ?? 4));
@@ -113,6 +162,32 @@ const RecordDetail = ({
     setError('');
     setSuccess('');
   }, [record]);
+
+  const relocateSource = async (
+    refreshRecord = true,
+  ): Promise<MaterialSession | null> => {
+    setSourceBusy(true);
+    setError('');
+    setSuccess('');
+    const result = await window.materialApi.records.relocateSource(record.id);
+    setSourceBusy(false);
+    if (!result.ok) {
+      setError(result.error.message);
+      return null;
+    }
+    if (result.data.cancelled) return null;
+    setSourceStatus(result.data.sourceStatus);
+    if (result.data.mismatch) {
+      setError(
+        `所选文件“${result.data.mismatch.candidate.name}”与原素材指纹不一致，旧引用和报告均未改变`,
+      );
+      return null;
+    }
+    replaceSourceSession(result.data.session);
+    setSuccess('源素材已通过完整指纹校验，播放和证据定位已恢复。');
+    if (refreshRecord) await onRefresh();
+    return result.data.session;
+  };
 
   const saveFeedback = async (): Promise<void> => {
     setBusy(true);
@@ -171,19 +246,21 @@ const RecordDetail = ({
     setReanalysisBusy(true);
     setError('');
     setSuccess('');
-    const selected = await window.materialApi.media.select();
+    const restored = sourceSessionRef.current ?? await relocateSource(false);
     setReanalysisBusy(false);
-    if (!selected.ok) {
-      setError(selected.error.message);
-      return;
+    if (!restored) return;
+    sourceOwnershipTransferred.current = true;
+    onReanalyze(record, restored);
+  };
+
+  const locateEvidence = (milliseconds: number): void => {
+    sourcePreviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (videoRef.current) {
+      videoRef.current.currentTime = Math.max(0, milliseconds / 1_000);
+      videoRef.current.focus();
+    } else {
+      sourcePreviewRef.current?.focus();
     }
-    if (selected.data.cancelled) return;
-    if (selected.data.session.summary.fingerprintSha256 !== record.material.fingerprintSha256) {
-      void window.materialApi.media.release(selected.data.session.sessionId);
-      setError('所选文件与该记录的源素材指纹不一致；旧记录和当前草稿均未改变');
-      return;
-    }
-    onReanalyze(record, selected.data.session);
   };
 
   const exportPdf = async (): Promise<void> => {
@@ -200,7 +277,7 @@ const RecordDetail = ({
     setSuccess(`PDF 已导出：${result.data.fileName ?? '分析报告.pdf'}`);
   };
 
-  const sourceUnavailable = record.material.sourceStatus !== 'available';
+  const sourceUnavailable = sourceStatus !== 'available' || !sourceSession;
 
   return (
     <main className="page-shell record-detail-page">
@@ -218,7 +295,7 @@ const RecordDetail = ({
             onClick={() => void startReanalysis()}
             variant="outline"
           >
-            选择原素材并重新分析
+            {sourceUnavailable ? '重新定位并分析' : '使用原素材重新分析'}
           </Button>
           <Button loading={exportBusy} onClick={() => void exportPdf()} theme="primary">导出 PDF</Button>
           <Button onClick={() => setConfirmDelete(true)} theme="danger" variant="outline">删除</Button>
@@ -229,8 +306,13 @@ const RecordDetail = ({
       {success ? <div className="page-alert is-success" role="status">{success}</div> : null}
       {sourceUnavailable ? (
         <div className="record-source-alert" role="status">
-          <strong>源素材{sourceStatusLabel(record.material.sourceStatus)}</strong>
-          <span>已确认报告和反馈仍可查看；重新分析时需要选择原文件，并通过素材指纹校验。</span>
+          <strong>{sourceBusy ? '正在校验源素材' : `源素材${sourceStatusLabel(sourceStatus)}`}</strong>
+          <span>报告、反馈和 PDF 仍可使用；选择同一指纹文件后恢复播放、证据定位与重新分析。</span>
+          {!sourceBusy ? (
+            <Button onClick={() => void relocateSource()} size="small" variant="outline">
+              重新定位
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
@@ -308,6 +390,15 @@ const RecordDetail = ({
                       {evidence.endMs === null ? '' : ` – ${(evidence.endMs / 1000).toFixed(1)}s`}
                       {' · '}{evidence.source === 'tool' ? '工具' : evidence.source === 'model' ? '模型' : '融合'}
                     </span>
+                    {evidence.startMs !== null ? (
+                      <button
+                        disabled={sourceUnavailable}
+                        onClick={() => locateEvidence(evidence.startMs as number)}
+                        type="button"
+                      >
+                        {sourceUnavailable ? '素材恢复后可定位' : `定位到 ${formatReferenceTime(evidence.startMs)}`}
+                      </button>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -372,14 +463,40 @@ const RecordDetail = ({
           <section className="record-detail-card record-source-card">
             <div className="record-card-heading">
               <h2>源素材</h2>
-              <Tag theme={sourceStatusTheme(record.material.sourceStatus)} variant="light">
-                {sourceStatusLabel(record.material.sourceStatus)}
+              <Tag theme={sourceStatusTheme(sourceStatus)} variant="light">
+                {sourceBusy ? '校验中' : sourceStatusLabel(sourceStatus)}
               </Tag>
             </div>
-            <div className="record-source-placeholder">
-              <span>{record.material.mediaKind === 'video' ? '视' : '图'}</span>
-              <strong>未复制源素材</strong>
-              <p>本记录只保存素材摘要；重新分析时由你选择原文件并校验指纹。</p>
+            <div
+              className={`record-source-preview ${sourceUnavailable ? 'is-unavailable' : ''}`}
+              ref={sourcePreviewRef}
+              tabIndex={-1}
+            >
+              {sourceSession && record.material.mediaKind === 'video' ? (
+                <video
+                  controls
+                  preload="metadata"
+                  ref={videoRef}
+                  src={sourceSession.previewUrl}
+                >
+                  当前系统无法播放该视频。
+                </video>
+              ) : null}
+              {sourceSession && record.material.mediaKind === 'image' ? (
+                <img alt={record.material.displayName} src={sourceSession.previewUrl} />
+              ) : null}
+              {!sourceSession ? (
+                <div className="record-source-placeholder">
+                  <span>{record.material.mediaKind === 'video' ? '视' : '图'}</span>
+                  <strong>{sourceBusy ? '正在校验本地文件' : '源素材当前不可用'}</strong>
+                  <p>应用不复制素材；重新定位仅接受与记录完整指纹一致的文件。</p>
+                  {!sourceBusy ? (
+                    <Button onClick={() => void relocateSource()} size="small" variant="outline">
+                      选择原文件
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </section>
 
@@ -541,6 +658,7 @@ export const RecordsPage = ({
 
   const returnToList = (): void => {
     setSelected(null);
+    void load();
     requestAnimationFrame(() => {
       const container = document.querySelector('.app-content');
       if (container) {

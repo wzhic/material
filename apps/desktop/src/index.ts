@@ -27,6 +27,10 @@ import { registerRecordIpc, registerUnavailableRecordIpc } from './record/ipc';
 import { ElectronRecordPdfExporter } from './record/pdf-exporter';
 import { RecordRepository } from './record/repository';
 import {
+  ElectronRecordSourceCipher,
+  RecordSourceAccessService,
+} from './record/source-access';
+import {
   TemporaryArtifactManager,
   ToolBroker,
   ToolRegistry,
@@ -102,6 +106,10 @@ app.whenReady().then(() => {
       recordRepository,
       isTrustedSender,
       new ElectronRecordPdfExporter(),
+      new RecordSourceAccessService(
+        materialSessionService,
+        new ElectronRecordSourceCipher(),
+      ),
     );
   } catch {
     registerUnavailableRecordIpc('分析记录无法打开，请检查应用数据目录权限或数据库版本');

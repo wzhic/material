@@ -47,7 +47,9 @@ const run = async <T>(operation: () => Promise<T> | T): Promise<MaterialApiResul
   }
 };
 
-const chooseFile = async (window: BrowserWindow | null): Promise<string | null> => {
+export const chooseMaterialFile = async (
+  window: BrowserWindow | null,
+): Promise<string | null> => {
   const options: Electron.OpenDialogOptions = {
     filters: FILE_FILTERS,
     message: '选择一个本地视频或图片',
@@ -62,7 +64,7 @@ const chooseFile = async (window: BrowserWindow | null): Promise<string | null> 
 export const registerMaterialIpc = (service: MaterialSessionService): void => {
   ipcMain.handle(MATERIAL_IPC_CHANNELS.select, async (event) =>
     run<MaterialSelection>(async () => {
-      const filePath = await chooseFile(BrowserWindow.fromWebContents(event.sender));
+      const filePath = await chooseMaterialFile(BrowserWindow.fromWebContents(event.sender));
       return filePath
         ? { cancelled: false, session: await service.register(filePath) }
         : { cancelled: true };
@@ -73,7 +75,7 @@ export const registerMaterialIpc = (service: MaterialSessionService): void => {
   );
   ipcMain.handle(MATERIAL_IPC_CHANNELS.relocate, async (event, sessionId: string) =>
     run<MaterialRelocation>(async () => {
-      const filePath = await chooseFile(BrowserWindow.fromWebContents(event.sender));
+      const filePath = await chooseMaterialFile(BrowserWindow.fromWebContents(event.sender));
       if (!filePath) {
         return { cancelled: true };
       }

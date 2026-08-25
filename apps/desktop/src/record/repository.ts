@@ -14,6 +14,7 @@ import {
   AnalysisRecordPage,
   AnalysisRecordQuery,
   ConfirmedRecordInput,
+  MaterialSourceStatus,
   RecordApiErrorCode,
   RecordFeedback,
   RecordFeedbackInput,
@@ -68,11 +69,26 @@ interface ConfirmationRow {
   record_json: string;
 }
 
+interface SourceReferenceRow {
+  encrypted_path: string;
+}
+
 const asRow = <T>(value: unknown): T | undefined => value as T | undefined;
 const asRows = <T>(value: unknown[]): T[] => value as T[];
 
 const escapeLike = (value: string): string =>
   value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+
+const validateEncryptedSourcePath = (value: string): string => {
+  if (
+    value.length < 8
+    || value.length > 16_384
+    || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)
+  ) {
+    throw new RecordRepositoryError('INVALID_INPUT', '源素材安全引用格式不正确');
+  }
+  return value;
+};
 
 export class RecordRepositoryError extends Error {
   readonly code: RecordApiErrorCode;
@@ -86,6 +102,7 @@ export class RecordRepositoryError extends Error {
 
 export class RecordRepository {
   private readonly database: DatabaseSync;
+  private sourceTableAvailable = false;
   private readonly writable: boolean;
 
   constructor(databasePath: string) {
@@ -211,6 +228,7 @@ export class RecordRepository {
       : null;
     return {
       ...input,
+      material: { ...input.material, sourceStatus: row.source_status },
       id: row.id,
       confirmedAt: row.confirmed_at,
       sourceRecordId: row.source_record_id,
@@ -232,12 +250,18 @@ export class RecordRepository {
     };
   }
 
-  confirmAndSave(input: ConfirmedRecordInput): AnalysisRecord {
+  confirmAndSave(
+    input: ConfirmedRecordInput,
+    encryptedSourcePath?: string,
+  ): AnalysisRecord {
     validateConfirmedRecord(input);
     if (!input.confirmationId) {
       throw new RecordRepositoryError('INVALID_INPUT', '报告确认标识不能为空');
     }
     const recordJson = JSON.stringify(input);
+    const protectedSource = encryptedSourcePath
+      ? validateEncryptedSourcePath(encryptedSourcePath)
+      : null;
     return this.transaction(() => {
       const existing = asRow<ConfirmationRow>(
         this.database
@@ -247,6 +271,9 @@ export class RecordRepository {
       if (existing) {
         if (existing.record_json !== recordJson) {
           throw new RecordRepositoryError('CONFLICT', '该报告预览已用不同内容确认');
+        }
+        if (protectedSource) {
+          this.writeSourceReference(existing.id, protectedSource);
         }
         return this.get(existing.id);
       }
@@ -281,15 +308,50 @@ export class RecordRepository {
           input.material.displayName.trim(),
           productDisplayName,
           input.report.score.total,
-          input.material.sourceStatus,
+          protectedSource ? 'available' : input.material.sourceStatus,
           input.sourceRecordId,
           confirmedAt,
           searchText,
           recordJson,
           input.confirmationId,
         );
+      if (protectedSource) {
+        this.writeSourceReference(id, protectedSource);
+      }
       return this.get(id);
     });
+  }
+
+  sourceReference(id: string): string | null {
+    this.requireRecord(id);
+    if (!this.sourceTableAvailable) return null;
+    return asRow<SourceReferenceRow>(
+      this.database
+        .prepare('SELECT encrypted_path FROM analysis_record_sources WHERE record_id = ?')
+        .get(id),
+    )?.encrypted_path ?? null;
+  }
+
+  updateSourceStatus(id: string, status: MaterialSourceStatus): AnalysisRecord {
+    if (!['available', 'mismatch', 'needs_relocation'].includes(status)) {
+      throw new RecordRepositoryError('INVALID_INPUT', '源素材状态不受支持');
+    }
+    this.transaction(() => {
+      this.requireRecord(id);
+      this.database
+        .prepare('UPDATE analysis_records SET source_status = ? WHERE id = ?')
+        .run(status, id);
+    });
+    return this.get(id);
+  }
+
+  replaceSourceReference(id: string, encryptedSourcePath: string): AnalysisRecord {
+    const protectedSource = validateEncryptedSourcePath(encryptedSourcePath);
+    this.transaction(() => {
+      this.requireRecord(id);
+      this.writeSourceReference(id, protectedSource);
+    });
+    return this.get(id);
   }
 
   saveFeedback(id: string, input: RecordFeedbackInput): RecordFeedback {
@@ -400,12 +462,25 @@ export class RecordRepository {
           weight_direction TEXT NOT NULL,
           updated_at TEXT NOT NULL
         );
-        PRAGMA user_version = 2;
+        CREATE TABLE analysis_record_sources (
+          record_id TEXT PRIMARY KEY REFERENCES analysis_records(id) ON DELETE CASCADE,
+          schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+          encrypted_path TEXT NOT NULL
+        );
+        PRAGMA user_version = 3;
         COMMIT;
       `);
+      this.sourceTableAvailable = true;
     } else if (version === 1 && this.writable) {
       this.migrateV1ToV2();
-    } else if (version !== 1 && version !== 2) {
+      this.migrateV2ToV3();
+      this.sourceTableAvailable = true;
+    } else if (version === 2 && this.writable) {
+      this.migrateV2ToV3();
+      this.sourceTableAvailable = true;
+    } else if (version === 3) {
+      this.sourceTableAvailable = true;
+    } else if (version !== 1 && version !== 2 && version !== 3) {
       throw new RecordRepositoryError(
         'DATABASE_UNAVAILABLE',
         '分析记录版本高于当前客户端，请升级客户端后重试',
@@ -486,6 +561,47 @@ export class RecordRepository {
     } finally {
       this.database.exec('PRAGMA foreign_keys = ON;');
     }
+  }
+
+  private migrateV2ToV3(): void {
+    this.database.exec('BEGIN IMMEDIATE;');
+    try {
+      this.database.exec(`
+        CREATE TABLE analysis_record_sources (
+          record_id TEXT PRIMARY KEY REFERENCES analysis_records(id) ON DELETE CASCADE,
+          schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+          encrypted_path TEXT NOT NULL
+        );
+        PRAGMA user_version = 3;
+      `);
+      const foreignKeyIssues = this.database.prepare('PRAGMA foreign_key_check').all();
+      if (foreignKeyIssues.length) {
+        throw new RecordRepositoryError(
+          'DATABASE_UNAVAILABLE',
+          '分析记录素材引用升级后关系检查失败，原数据保持不变',
+        );
+      }
+      this.database.exec('COMMIT;');
+    } catch {
+      this.database.exec('ROLLBACK;');
+      throw new RecordRepositoryError(
+        'DATABASE_UNAVAILABLE',
+        '分析记录素材引用升级失败，原数据保持不变',
+      );
+    }
+  }
+
+  private writeSourceReference(id: string, encryptedSourcePath: string): void {
+    this.database
+      .prepare(
+        `INSERT INTO analysis_record_sources (record_id, schema_version, encrypted_path)
+         VALUES (?, 1, ?)
+         ON CONFLICT(record_id) DO UPDATE SET encrypted_path = excluded.encrypted_path`,
+      )
+      .run(id, encryptedSourcePath);
+    this.database
+      .prepare("UPDATE analysis_records SET source_status = 'available' WHERE id = ?")
+      .run(id);
   }
 
   private requireRecord(id: string): void {

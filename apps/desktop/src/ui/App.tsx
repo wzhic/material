@@ -1244,7 +1244,10 @@ export const App = (): React.JSX.Element => {
         visibleConversation: activeRun.conversation,
       },
     );
-    const result = await window.materialApi.records.confirm(input);
+    const result = await window.materialApi.records.confirm(
+      input,
+      activeRun.material.sessionId,
+    );
     setConfirmingReport(false);
     if (!result.ok) {
       setConfirmReportError(result.error.message);

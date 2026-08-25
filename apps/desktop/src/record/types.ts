@@ -1,4 +1,5 @@
 import { ProductSnapshot } from '../product/types';
+import type { MaterialMismatch, MaterialSession } from '../media/types';
 
 export type RecordIndustry = 'apparel' | 'game';
 export type RecordMediaKind = 'image' | 'video';
@@ -169,12 +170,20 @@ export interface RecordPdfExportResult {
   byteSize: number | null;
 }
 
+export interface RecordSourceAccessResult {
+  cancelled: boolean;
+  mismatch: MaterialMismatch | null;
+  session: MaterialSession | null;
+  sourceStatus: MaterialSourceStatus;
+}
+
 export type RecordApiErrorCode =
   | 'CONFLICT'
   | 'DATABASE_UNAVAILABLE'
   | 'EXPORT_FAILED'
   | 'INVALID_INPUT'
   | 'NOT_FOUND'
+  | 'SOURCE_UNAVAILABLE'
   | 'UNKNOWN';
 
 export type RecordApiResult<T> =
@@ -182,9 +191,14 @@ export type RecordApiResult<T> =
   | { ok: false; error: { code: RecordApiErrorCode; message: string } };
 
 export interface RecordApi {
-  confirm: (input: ConfirmedRecordInput) => Promise<RecordApiResult<AnalysisRecord>>;
+  confirm: (
+    input: ConfirmedRecordInput,
+    materialSessionId?: string,
+  ) => Promise<RecordApiResult<AnalysisRecord>>;
   list: (query?: AnalysisRecordQuery) => Promise<RecordApiResult<AnalysisRecordPage>>;
   get: (id: string) => Promise<RecordApiResult<AnalysisRecord>>;
+  openSource: (id: string) => Promise<RecordApiResult<RecordSourceAccessResult>>;
+  relocateSource: (id: string) => Promise<RecordApiResult<RecordSourceAccessResult>>;
   saveFeedback: (
     id: string,
     input: RecordFeedbackInput,
@@ -200,6 +214,8 @@ export const RECORD_IPC_CHANNELS = {
   exportPdf: 'material:records:export-pdf',
   get: 'material:records:get',
   list: 'material:records:list',
+  openSource: 'material:records:open-source',
+  relocateSource: 'material:records:relocate-source',
   remove: 'material:records:remove',
   saveFeedback: 'material:records:save-feedback',
 } as const;

@@ -29,9 +29,12 @@ const productApi: ProductApi = {
 };
 
 const recordApi: RecordApi = {
-  confirm: (input) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.confirm, input),
+  confirm: (input, materialSessionId) =>
+    ipcRenderer.invoke(RECORD_IPC_CHANNELS.confirm, input, materialSessionId),
   list: (query) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.list, query),
   get: (id) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.get, id),
+  openSource: (id) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.openSource, id),
+  relocateSource: (id) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.relocateSource, id),
   exportPdf: (id) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.exportPdf, id),
   saveFeedback: (id, input) =>
     ipcRenderer.invoke(RECORD_IPC_CHANNELS.saveFeedback, id, input),
