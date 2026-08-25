@@ -2146,9 +2146,18 @@ def main(argv: Optional[List[str]] = None) -> int:
                 if not result.get("integrity", {}).get("unchanged")
             ]
             if integrity_failures:
+                integrity_details = []
+                for failed_result in integrity_failures:
+                    issues = failed_result.get("integrity", {}).get("issues", [])
+                    integrity_details.append(
+                        "%s (%s)" % (
+                            failed_result.get("check_id", "unknown-check"),
+                            ", ".join(str(item) for item in issues) or "integrity mismatch",
+                        )
+                    )
                 raise GovernanceError(
                     "controlled validation changed managed content or protected governance state; "
-                    "no result was recorded"
+                    "no result was recorded: %s" % "; ".join(integrity_details)
                 )
             # CI process reports remain ephemeral: the Actions job result is
             # authoritative and ordinary work does not copy Run metadata into
