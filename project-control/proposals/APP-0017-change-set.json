@@ -1,0 +1,11 @@
+{
+  "base_head": "af86f902dabfb21a2dca29a61991dfa6a4cbc2f2",
+  "paths": [
+    "docs/development/模型接入与安全存储-DEV-0010-v1.0.md",
+    "docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md",
+    "docs/requirements/单素材分析-REQ-0005/assets/prototype-add-custom-model.png",
+    "docs/requirements/单素材分析-REQ-0005/assets/prototype-model-management.png"
+  ],
+  "schema_version": 1,
+  "task_id": "APP-0017"
+}
