@@ -31,6 +31,7 @@ jobs:
             release_unit: win
     env:
       MATERIAL_RELEASE_UNIT: ${{ matrix.release_unit }}
+      PSModuleAnalysisCachePath: ${{ github.workspace }}/../PowerShell-ModuleAnalysisCache
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUTF8: "1"
 
@@ -47,10 +48,28 @@ jobs:
         with:
           python-version: "3.9"
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.5"
+          enable-cache: false
+
+      - name: Set up Node.js for desktop checks
+        if: matrix.release_unit != 'backend'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install locked desktop dependencies
+        if: matrix.release_unit != 'backend'
+        run: npm ci --prefix apps/desktop
+
       - name: Require non-empty governance test suites
         run: >-
-          python -c "import unittest; loader = unittest.defaultTestLoader; counts = {'governance': loader.discover('tools/governance/tests', pattern='test_*.py').countTestCases(), 'hooks': loader.discover('.codex/tests', pattern='test_*.py').countTestCases()}; missing = [name for name, count in counts.items() if count == 0]; print('Discovered test counts:', counts); raise SystemExit('No tests discovered: ' + ', '.join(missing) if missing else 0)"
+          python -c "import unittest; counts = {'governance': unittest.TestLoader().discover('tools/governance/tests', pattern='test_*.py').countTestCases(), 'hooks': unittest.TestLoader().discover('.codex/tests', pattern='test_*.py').countTestCases()}; missing = [name for name, count in counts.items() if count == 0]; print('Discovered test counts:', counts); raise SystemExit('No tests discovered: ' + ', '.join(missing) if missing else 0)"
 
       - name: Run current task checks through controlled runner
         run: >-
-          python -c "import json, pathlib, subprocess, sys; task_id = json.loads(pathlib.Path('project-control/current-task.json').read_text(encoding='utf-8'))['task_id']; raise SystemExit(subprocess.call([sys.executable, 'tools/governance/taskctl.py', 'run-required', task_id, '--phase', 'ci', '--release-unit', '${{ matrix.release_unit }}', '--environment', 'github-actions:${{ github.event_name }}:${{ matrix.release_unit }}', '--json']))"
+          python -c "import json, pathlib, subprocess, sys; task_id = json.loads(pathlib.Path('project-control/current-task.json').read_text(encoding='utf-8'))['task_id']; controlled_code = subprocess.call([sys.executable, 'tools/governance/taskctl.py', 'run-required', task_id, '--phase', 'ci', '--release-unit', '${{ matrix.release_unit }}', '--environment', 'github-actions:${{ github.event_name }}:${{ matrix.release_unit }}', '--json']); diagnostics = [[sys.executable, '-m', 'unittest', 'discover', '-s', 'tools/governance/tests', '-p', 'test_*.py', '-v'], [sys.executable, 'tools/governance/reconcile.py', 'static', '--json']]; controlled_code == 0 or [subprocess.call(command) for command in diagnostics]; raise SystemExit(controlled_code)"

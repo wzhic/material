@@ -105,6 +105,33 @@ class GitEncodingTests(unittest.TestCase):
         )
 
 
+class ManagedContentSubjectTests(unittest.TestCase):
+    def test_ignored_untracked_output_is_excluded_but_tracked_content_is_bound(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "generated").mkdir()
+            (root / ".gitignore").write_text("generated/\n", encoding="utf-8")
+            (root / "source.txt").write_text("source-v1\n", encoding="utf-8")
+            (root / "generated" / "tracked.txt").write_text("tracked-v1\n", encoding="utf-8")
+            for arguments in (
+                ("init",),
+                ("add", "--", ".gitignore", "source.txt"),
+                ("add", "-f", "--", "generated/tracked.txt"),
+            ):
+                _output, error = core.run_git(root, arguments)
+                self.assertIsNone(error)
+
+            task = base_task()
+            task["allowed_paths"] = [".gitignore", "source.txt", "generated/**"]
+            original = core.managed_content_subject(root, task)
+
+            (root / "generated" / "package.zip").write_bytes(b"generated-output")
+            self.assertEqual(original, core.managed_content_subject(root, task))
+
+            (root / "generated" / "tracked.txt").write_text("tracked-v2\n", encoding="utf-8")
+            self.assertNotEqual(original, core.managed_content_subject(root, task))
+
+
 class CanonicalScopeTests(unittest.TestCase):
     def test_runtime_progress_does_not_change_scope_hash(self) -> None:
         task = base_task()
