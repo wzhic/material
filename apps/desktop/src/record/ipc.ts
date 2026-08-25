@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 
 import { RecordValidationError } from './domain';
+import { RecordPdfExportError, type RecordPdfExporter } from './pdf-contract';
 import { RecordRepository, RecordRepositoryError } from './repository';
 import {
   AnalysisRecordQuery,
@@ -30,6 +31,23 @@ const safely = <T>(operation: () => T): RecordApiResult<T> => {
   }
 };
 
+const safelyAsync = async <T>(operation: () => Promise<T>): Promise<RecordApiResult<T>> => {
+  try {
+    return { ok: true, data: await operation() };
+  } catch (error) {
+    if (error instanceof RecordRepositoryError) {
+      return failure(error.code, error.message);
+    }
+    if (error instanceof RecordValidationError) {
+      return failure('INVALID_INPUT', error.message);
+    }
+    if (error instanceof RecordPdfExportError) {
+      return failure('EXPORT_FAILED', error.message);
+    }
+    return failure('EXPORT_FAILED', 'PDF 导出失败，请重试');
+  }
+};
+
 const clearRecordHandlers = (): void => {
   Object.values(RECORD_IPC_CHANNELS).forEach((channel) => ipcMain.removeHandler(channel));
 };
@@ -37,6 +55,7 @@ const clearRecordHandlers = (): void => {
 export const registerRecordIpc = (
   repository: RecordRepository,
   isTrustedSender: (webContentsId: number) => boolean,
+  pdfExporter?: RecordPdfExporter,
 ): void => {
   clearRecordHandlers();
   ipcMain.handle(RECORD_IPC_CHANNELS.confirm, (event, input: ConfirmedRecordInput) =>
@@ -54,6 +73,15 @@ export const registerRecordIpc = (
       ? safely(() => repository.get(id))
       : failure('INVALID_INPUT', '分析记录请求来源无效'),
   );
+  ipcMain.handle(RECORD_IPC_CHANNELS.exportPdf, (event, id: string) => {
+    if (!isTrustedSender(event.sender.id)) {
+      return failure('INVALID_INPUT', '分析记录请求来源无效');
+    }
+    if (!pdfExporter) {
+      return failure('EXPORT_FAILED', 'PDF 导出能力当前不可用，请重启应用后重试');
+    }
+    return safelyAsync(async () => pdfExporter.exportRecord(repository.get(id)));
+  });
   ipcMain.handle(
     RECORD_IPC_CHANNELS.saveFeedback,
     (event, id: string, input: RecordFeedbackInput) =>

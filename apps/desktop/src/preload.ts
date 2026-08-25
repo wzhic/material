@@ -32,6 +32,7 @@ const recordApi: RecordApi = {
   confirm: (input) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.confirm, input),
   list: (query) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.list, query),
   get: (id) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.get, id),
+  exportPdf: (id) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.exportPdf, id),
   saveFeedback: (id, input) =>
     ipcRenderer.invoke(RECORD_IPC_CHANNELS.saveFeedback, id, input),
   clearFeedback: (id) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.clearFeedback, id),

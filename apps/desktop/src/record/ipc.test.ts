@@ -18,6 +18,7 @@ vi.mock('electron', () => ({
 }));
 
 import { registerRecordIpc } from './ipc';
+import type { RecordPdfExporter } from './pdf-contract';
 import type { RecordRepository } from './repository';
 import type {
   AnalysisRecord,
@@ -61,5 +62,47 @@ describe('record IPC confirmation boundary', () => {
 
     expect(result).toEqual({ ok: true, data: record });
     expect(confirmAndSave).toHaveBeenCalledWith(input);
+  });
+
+  it('re-reads a trusted record in the main process before exporting it', async () => {
+    const record = { id: 'record-1' } as AnalysisRecord;
+    const get = vi.fn(() => record);
+    const exportRecord = vi.fn(async () => ({
+      byteSize: 128,
+      cancelled: false,
+      fileName: '报告.pdf',
+    }));
+    registerRecordIpc(
+      { get } as unknown as RecordRepository,
+      (id) => id === 7,
+      { exportRecord } as RecordPdfExporter,
+    );
+    const handler = electron.handlers.get(RECORD_IPC_CHANNELS.exportPdf);
+
+    const result = await handler?.({ sender: { id: 7 } }, 'record-1');
+
+    expect(result).toEqual({
+      data: { byteSize: 128, cancelled: false, fileName: '报告.pdf' },
+      ok: true,
+    });
+    expect(get).toHaveBeenCalledWith('record-1');
+    expect(exportRecord).toHaveBeenCalledWith(record);
+  });
+
+  it('rejects an untrusted PDF export before reading the record', async () => {
+    const get = vi.fn();
+    const exportRecord = vi.fn();
+    registerRecordIpc(
+      { get } as unknown as RecordRepository,
+      () => false,
+      { exportRecord } as unknown as RecordPdfExporter,
+    );
+    const handler = electron.handlers.get(RECORD_IPC_CHANNELS.exportPdf);
+
+    const result = await handler?.({ sender: { id: 8 } }, 'record-1');
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    expect(get).not.toHaveBeenCalled();
+    expect(exportRecord).not.toHaveBeenCalled();
   });
 });

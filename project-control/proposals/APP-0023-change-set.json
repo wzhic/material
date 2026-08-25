@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0023",
+  "base_head": "dc23bd827ce3e17074a05c8f7aef9905e2d7e535",
+  "paths": [
+    "apps/desktop/src/index.ts",
+    "apps/desktop/src/preload.ts",
+    "apps/desktop/src/record/ipc.test.ts",
+    "apps/desktop/src/record/ipc.ts",
+    "apps/desktop/src/record/pdf-contract.ts",
+    "apps/desktop/src/record/pdf-document.test.ts",
+    "apps/desktop/src/record/pdf-document.ts",
+    "apps/desktop/src/record/pdf-exporter.test.ts",
+    "apps/desktop/src/record/pdf-exporter.ts",
+    "apps/desktop/src/record/types.ts",
+    "apps/desktop/src/ui/RecordsPage.tsx",
+    "docs/development/PDF报告导出-DEV-0016-v1.0.md",
+    "docs/development/README.md",
+    "docs/troubleshooting/PDF报告导出-TRB-0013-v1.0.md",
+    "docs/troubleshooting/README.md",
+    "project-control/proposals/APP-0023-task.json"
+  ]
+}

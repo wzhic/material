@@ -103,6 +103,7 @@ const RecordDetail = ({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
   const [reanalysisBusy, setReanalysisBusy] = useState(false);
 
   useEffect(() => {
@@ -185,6 +186,20 @@ const RecordDetail = ({
     onReanalyze(record, selected.data.session);
   };
 
+  const exportPdf = async (): Promise<void> => {
+    setExportBusy(true);
+    setError('');
+    setSuccess('');
+    const result = await window.materialApi.records.exportPdf(record.id);
+    setExportBusy(false);
+    if (!result.ok) {
+      setError(result.error.message);
+      return;
+    }
+    if (result.data.cancelled) return;
+    setSuccess(`PDF 已导出：${result.data.fileName ?? '分析报告.pdf'}`);
+  };
+
   const sourceUnavailable = record.material.sourceStatus !== 'available';
 
   return (
@@ -205,7 +220,7 @@ const RecordDetail = ({
           >
             选择原素材并重新分析
           </Button>
-          <Button disabled theme="primary">导出 PDF · 后续接入</Button>
+          <Button loading={exportBusy} onClick={() => void exportPdf()} theme="primary">导出 PDF</Button>
           <Button onClick={() => setConfirmDelete(true)} theme="danger" variant="outline">删除</Button>
         </div>
       </header>

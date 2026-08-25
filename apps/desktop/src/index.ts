@@ -24,6 +24,7 @@ import { ElectronSafeStorageCipher, ModelCredentialVault } from './model/vault';
 import { registerProductIpc, registerUnavailableProductIpc } from './product/ipc';
 import { ProductRepository } from './product/repository';
 import { registerRecordIpc, registerUnavailableRecordIpc } from './record/ipc';
+import { ElectronRecordPdfExporter } from './record/pdf-exporter';
 import { RecordRepository } from './record/repository';
 import {
   TemporaryArtifactManager,
@@ -97,7 +98,11 @@ app.whenReady().then(() => {
   );
   try {
     recordRepository = new RecordRepository(recordDatabasePath);
-    registerRecordIpc(recordRepository, isTrustedSender);
+    registerRecordIpc(
+      recordRepository,
+      isTrustedSender,
+      new ElectronRecordPdfExporter(),
+    );
   } catch {
     registerUnavailableRecordIpc('分析记录无法打开，请检查应用数据目录权限或数据库版本');
   }

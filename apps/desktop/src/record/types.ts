@@ -163,9 +163,16 @@ export interface AnalysisRecordPage {
   offset: number;
 }
 
+export interface RecordPdfExportResult {
+  cancelled: boolean;
+  fileName: string | null;
+  byteSize: number | null;
+}
+
 export type RecordApiErrorCode =
   | 'CONFLICT'
   | 'DATABASE_UNAVAILABLE'
+  | 'EXPORT_FAILED'
   | 'INVALID_INPUT'
   | 'NOT_FOUND'
   | 'UNKNOWN';
@@ -183,12 +190,14 @@ export interface RecordApi {
     input: RecordFeedbackInput,
   ) => Promise<RecordApiResult<RecordFeedback>>;
   clearFeedback: (id: string) => Promise<RecordApiResult<null>>;
+  exportPdf: (id: string) => Promise<RecordApiResult<RecordPdfExportResult>>;
   remove: (id: string) => Promise<RecordApiResult<null>>;
 }
 
 export const RECORD_IPC_CHANNELS = {
   clearFeedback: 'material:records:clear-feedback',
   confirm: 'material:records:confirm',
+  exportPdf: 'material:records:export-pdf',
   get: 'material:records:get',
   list: 'material:records:list',
   remove: 'material:records:remove',
