@@ -95,7 +95,7 @@ describe('media evidence normalizer', () => {
         threshold: 0.32,
       },
     });
-    expect(output.evidence).toHaveLength(5);
+    expect(output.evidence).toHaveLength(6);
     expect(output.timeline.map((entry) => entry.startMs)).toEqual([0, 100, 500, 2000, 3500]);
     expect(output.evidence.find((entry) => entry.evidenceType === 'visual.shot.candidate')?.confidence).toBe(0.55);
     expect(output.limitations).toEqual([]);
@@ -115,7 +115,9 @@ describe('media evidence normalizer', () => {
       mediaKind: 'image' as const,
     };
     const missing = normalizeMediaEvidence({ mediaKind: 'image', probe: imageProbe });
-    expect(missing).toMatchObject({ evidence: [], limitations: ['未提供 OCR 结果'], timeline: [] });
+    expect(missing).toMatchObject({ limitations: ['未提供 OCR 结果'], timeline: [] });
+    expect(missing.evidence).toHaveLength(1);
+    expect(missing.evidence[0].evidenceType).toBe('metadata.media');
     const present = normalizeMediaEvidence({
       mediaKind: 'image',
       ocr: {
@@ -134,7 +136,39 @@ describe('media evidence normalizer', () => {
       },
       probe: imageProbe,
     });
-    expect(present.evidence[0].locator).toMatchObject({ kind: 'image_region', x: 0.1 });
+    expect(present.evidence.find((entry) => entry.evidenceType === 'text.ocr')?.locator)
+      .toMatchObject({ kind: 'image_region', x: 0.1 });
+  });
+
+  it('keeps representative frames as non-semantic metadata outside the timeline', () => {
+    const output = normalizeMediaEvidence({
+      frames: {
+        frames: [{
+          artifactRelativePath: 'frames/frame-1.jpg',
+          frameId: 'frame-1',
+          height: 720,
+          purpose: 'representative',
+          timeMs: 1_200,
+          width: 1280,
+        }],
+        material,
+        runtimeVersion: 'ffmpeg-test',
+        schemaVersion: 1,
+      },
+      mediaKind: 'video',
+      probe,
+    });
+    const frameEvidence = output.evidence.find(
+      (entry) => entry.evidenceType === 'metadata.frame.sample',
+    );
+    expect(frameEvidence).toMatchObject({
+      locator: { kind: 'video_time', startMs: 1_200 },
+      source: { capabilityId: 'media.frame.extract' },
+    });
+    expect(frameEvidence?.text).toContain('不包含画面语义');
+    expect(output.timeline).toEqual([]);
+    expect(output.provenance.map((entry) => entry.capabilityId))
+      .toContain('media.frame.extract');
   });
 
   it('rejects evidence from another material or outside the probed duration', () => {
@@ -149,6 +183,16 @@ describe('media evidence normalizer', () => {
       },
       probe,
     })).toThrow('media.ocr 的结果不属于当前素材');
+    expect(() => normalizeMediaEvidence({
+      frames: {
+        frames: [],
+        material: { ...material, fingerprintSha256: 'b'.repeat(64) },
+        runtimeVersion: 'ffmpeg-test',
+        schemaVersion: 1,
+      },
+      mediaKind: 'video',
+      probe,
+    })).toThrow('media.frame.extract 的结果不属于当前素材');
     expect(() => normalizeMediaEvidence({
       asr: {
         detectedLanguage: 'zh',

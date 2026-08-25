@@ -82,6 +82,19 @@ const evidenceTimeline = (evidence: StructuredEvidence): TimelineEntry => {
   };
 };
 
+const technicalDescription = (input: MediaNormalizationInput): string => {
+  const visual = input.probe.streams.find((stream) => stream.kind === 'video');
+  const dimensions = visual?.width && visual.height
+    ? `${visual.width}×${visual.height}`
+    : '分辨率未知';
+  if (input.mediaKind === 'image') {
+    return `图片技术信息：${dimensions}；该证据只证明素材可读取，不包含画面语义`;
+  }
+  return `视频技术信息：时长 ${input.probe.durationMs} ms，${dimensions}，${
+    input.probe.hasAudio ? '包含音轨' : '没有音轨'
+  }；该证据不包含画面语义`;
+};
+
 export const normalizeMediaEvidence = (
   input: MediaNormalizationInput,
 ): MediaEvidenceOutput => {
@@ -92,6 +105,7 @@ export const normalizeMediaEvidence = (
     throw new MediaToolError('RUNTIME_OUTPUT_INVALID', '素材身份与媒体类型不一致');
   }
   const material = input.probe.material;
+  if (input.frames) assertMaterial(material, 'media.frame.extract', input.frames.material);
   if (input.shots) assertMaterial(material, 'media.shot.detect', input.shots.material);
   if (input.ocr) assertMaterial(material, 'media.ocr', input.ocr.material);
   if (input.audio) assertMaterial(material, 'media.audio.extract', input.audio.material);
@@ -100,6 +114,17 @@ export const normalizeMediaEvidence = (
     assertMaterial(material, 'media.audio.event', input.audioEvents.material);
   }
   const durationMs = input.mediaKind === 'video' ? input.probe.durationMs : 0;
+  for (const frame of input.frames?.frames ?? []) {
+    if (
+      frame.width < 1 ||
+      frame.height < 1 ||
+      frame.timeMs < 0 ||
+      (input.mediaKind === 'video' && frame.timeMs > durationMs) ||
+      (input.mediaKind === 'image' && frame.timeMs !== 0)
+    ) {
+      throw new MediaToolError('RUNTIME_OUTPUT_INVALID', '代表帧元数据超出素材范围');
+    }
+  }
   if (
     input.mediaKind === 'image' &&
     (input.shots || input.audio || input.asr || input.audioEvents)
@@ -154,6 +179,34 @@ export const normalizeMediaEvidence = (
   }
   const evidence: StructuredEvidence[] = [];
   const limitations: string[] = [];
+
+  evidence.push({
+    confidence: 1,
+    evidenceId: stableId('probe', material.fingerprintSha256),
+    evidenceType: 'metadata.media',
+    locator: input.mediaKind === 'video'
+      ? { kind: 'video_time', startMs: 0 }
+      : { height: 1, kind: 'image_region', width: 1, x: 0, y: 0 },
+    mediaKind: input.mediaKind,
+    schemaVersion: 1,
+    source: source('media.probe'),
+    text: technicalDescription(input),
+  });
+
+  for (const frame of input.frames?.frames ?? []) {
+    evidence.push({
+      confidence: 1,
+      evidenceId: stableId('frame', frame.frameId),
+      evidenceType: 'metadata.frame.sample',
+      locator: input.mediaKind === 'video'
+        ? { kind: 'video_time', startMs: frame.timeMs }
+        : { height: 1, kind: 'image_region', width: 1, x: 0, y: 0 },
+      mediaKind: input.mediaKind,
+      schemaVersion: 1,
+      source: source('media.frame.extract'),
+      text: `已抽取 ${frame.width}×${frame.height} 代表帧；该证据只证明采样位置，不包含画面语义`,
+    });
+  }
 
   if (input.mediaKind === 'video') {
     if (input.shots) {
@@ -267,6 +320,11 @@ export const normalizeMediaEvidence = (
       runtimeVersion: input.probe.probeVersion,
       schemaVersion: 1,
     },
+    ...(input.frames ? [{
+      capabilityId: 'media.frame.extract' as const,
+      runtimeVersion: input.frames.runtimeVersion,
+      schemaVersion: 1 as const,
+    }] : []),
     ...(input.shots ? [{
       capabilityId: 'media.shot.detect' as const,
       runtimeVersion: input.shots.runtimeVersion,
@@ -304,6 +362,10 @@ export const normalizeMediaEvidence = (
     material,
     provenance,
     schemaVersion: 1,
-    timeline: input.mediaKind === 'video' ? evidence.map(evidenceTimeline) : [],
+    timeline: input.mediaKind === 'video'
+      ? evidence
+        .filter((item) => !item.evidenceType.startsWith('metadata.'))
+        .map(evidenceTimeline)
+      : [],
   };
 };

@@ -69,6 +69,18 @@ const validateRunInput = (input: AnalysisRunInput): void => {
   ) {
     throw new AnalysisEngineError('INPUT_INVALID', '补充转化信息超过 2000 字上限');
   }
+  if (
+    input.productSnapshot
+    && (
+      input.productSnapshot.schemaVersion !== 1
+      || input.productSnapshot.industry !== input.industry
+      || !input.productSnapshot.name.trim()
+      || input.productSnapshot.name.length > 160
+      || JSON.stringify(input.productSnapshot).length > 100_000
+    )
+  ) {
+    throw new AnalysisEngineError('INPUT_INVALID', '产品快照与本次分析上下文不一致');
+  }
 };
 
 const isCancelled = (signal: AbortSignal | undefined): boolean => signal?.aborted === true;

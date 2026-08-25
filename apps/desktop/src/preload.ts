@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+import {
+  ANALYSIS_RUNTIME_IPC_CHANNELS,
+  AnalysisRuntimeApi,
+  AnalysisRuntimeProgress,
+} from './analysis-runtime/types';
 import { MATERIAL_IPC_CHANNELS, MaterialApi } from './media/types';
 import { MODEL_IPC_CHANNELS, ModelApi } from './model/types';
 import { PRODUCT_IPC_CHANNELS, ProductApi } from './product/types';
@@ -54,7 +59,20 @@ const modelApi: ModelApi = {
     ),
 };
 
+const analysisApi: AnalysisRuntimeApi = {
+  start: (input) => ipcRenderer.invoke(ANALYSIS_RUNTIME_IPC_CHANNELS.start, input),
+  cancel: (clientRunId) =>
+    ipcRenderer.invoke(ANALYSIS_RUNTIME_IPC_CHANNELS.cancel, clientRunId),
+  onProgress: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: AnalysisRuntimeProgress): void =>
+      listener(progress);
+    ipcRenderer.on(ANALYSIS_RUNTIME_IPC_CHANNELS.progress, handler);
+    return () => ipcRenderer.removeListener(ANALYSIS_RUNTIME_IPC_CHANNELS.progress, handler);
+  },
+};
+
 contextBridge.exposeInMainWorld('materialApi', {
+  analysis: analysisApi,
   media: materialApi,
   models: modelApi,
   products: productApi,

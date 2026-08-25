@@ -15,14 +15,19 @@ import {
   Industry,
   validateDraft,
 } from '../analysis/draft';
+import type {
+  AnalysisRuntimeProgress,
+  AnalysisRuntimeResult,
+} from '../analysis-runtime/types';
 import { MaterialSession } from '../media/types';
 import { ModelConfigurationSummary } from '../model/types';
 import { ProductListItem } from '../product/types';
+import { AnalysisReportPreviewPage } from './AnalysisReportPreviewPage';
 import { ModelSettingsPage } from './ModelSettingsPage';
 import { ProductLibraryPage } from './ProductLibraryPage';
 import { RecordsPage } from './RecordsPage';
 
-type AppPage = 'new-analysis' | 'products' | 'records' | 'settings' | 'workspace';
+type AppPage = 'new-analysis' | 'products' | 'records' | 'report' | 'settings' | 'workspace';
 
 type SelectedMaterial = MaterialSession;
 
@@ -39,6 +44,12 @@ const industryLabel = (industry: Industry): string => {
   return '未选择';
 };
 
+const formatTimelineTime = (milliseconds: number): string => {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1_000));
+  const minutes = Math.floor(seconds / 60);
+  return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+};
+
 const MaterialLogo = (): React.JSX.Element => (
   <div className="brand-mark" aria-hidden="true">
     M
@@ -51,7 +62,7 @@ interface SidebarProps {
 }
 
 const Sidebar = ({ onNavigate, page }: SidebarProps): React.JSX.Element => {
-  const currentSection = page === 'workspace' ? 'new-analysis' : page;
+  const currentSection = page === 'workspace' || page === 'report' ? 'new-analysis' : page;
 
   return (
     <aside className="app-sidebar" aria-label="主导航">
@@ -111,11 +122,26 @@ const Sidebar = ({ onNavigate, page }: SidebarProps): React.JSX.Element => {
 };
 
 interface ModelSelectionOption {
+  configurationDisplayName: string;
+  configurationId: string;
   label: string;
+  modelId: string;
   value: string;
 }
 
+type RuntimeReportData = Extract<AnalysisRuntimeResult, { ok: true }>['data'];
+
+interface ActiveAnalysisRun {
+  clientRunId: string;
+  data?: RuntimeReportData;
+  error?: string;
+  materialName: string;
+  progress: AnalysisRuntimeProgress[];
+  status: 'cancelled' | 'failed' | 'running' | 'succeeded';
+}
+
 interface NewAnalysisPageProps {
+  analysisBusy: boolean;
   conversionContext: string;
   industry: Industry;
   material: SelectedMaterial | null;
@@ -129,9 +155,11 @@ interface NewAnalysisPageProps {
   onModelChange: (value: string) => void;
   onProductChange: (value: string) => void;
   onPreviewWorkspace: () => void;
+  onStartAnalysis: (material: SelectedMaterial) => void;
 }
 
 const NewAnalysisPage = ({
+  analysisBusy,
   conversionContext,
   industry,
   material,
@@ -145,6 +173,7 @@ const NewAnalysisPage = ({
   onModelChange,
   onProductChange,
   onPreviewWorkspace,
+  onStartAnalysis,
 }: NewAnalysisPageProps): React.JSX.Element => {
   const [fileError, setFileError] = useState('');
   const [fileBusy, setFileBusy] = useState(false);
@@ -172,7 +201,9 @@ const NewAnalysisPage = ({
     }
   };
 
-  const handleInspectMaterial = async (openWorkspace = false): Promise<void> => {
+  const handleInspectMaterial = async (
+    nextAction: 'none' | 'preview' | 'start' = 'none',
+  ): Promise<void> => {
     if (!material) {
       return;
     }
@@ -186,8 +217,10 @@ const NewAnalysisPage = ({
     }
     onMaterialChange(result.data);
     if (result.data.sourceStatus === 'available') {
-      if (openWorkspace) {
+      if (nextAction === 'preview') {
         onPreviewWorkspace();
+      } else if (nextAction === 'start') {
+        onStartAnalysis(result.data);
       }
       return;
     }
@@ -244,15 +277,15 @@ const NewAnalysisPage = ({
             {material ? (
               <div className="material-actions">
                 <Button
-                  disabled={fileBusy}
-                  onClick={() => void handleInspectMaterial()}
+                  disabled={fileBusy || analysisBusy}
+                  onClick={() => void handleInspectMaterial('none')}
                   size="small"
                   variant="text"
                 >
                   检查素材
                 </Button>
                 <Button
-                  disabled={fileBusy}
+                  disabled={fileBusy || analysisBusy}
                   loading={fileBusy}
                   onClick={() => void handleSelectMaterial()}
                   size="small"
@@ -305,6 +338,7 @@ const NewAnalysisPage = ({
               <button
                 aria-label="移除已选择素材"
                 className="remove-material"
+                disabled={analysisBusy}
                 onClick={() => onMaterialChange(null)}
                 type="button"
               >
@@ -314,7 +348,7 @@ const NewAnalysisPage = ({
           ) : (
             <button
               className="file-dropzone"
-              disabled={fileBusy}
+              disabled={fileBusy || analysisBusy}
               onClick={() => void handleSelectMaterial()}
               type="button"
             >
@@ -329,7 +363,7 @@ const NewAnalysisPage = ({
             <div className="material-recovery" role="status">
               <span>分析配置已保留，重新定位同一素材后可继续。</span>
               <Button
-                disabled={fileBusy}
+                disabled={fileBusy || analysisBusy}
                 loading={fileBusy}
                 onClick={() => void handleRelocateMaterial()}
                 size="small"
@@ -355,6 +389,7 @@ const NewAnalysisPage = ({
               </span>
               <select
                 aria-label="选择素材行业"
+                disabled={analysisBusy}
                 onChange={(event) =>
                   onIndustryChange(event.target.value as Industry)
                 }
@@ -371,7 +406,7 @@ const NewAnalysisPage = ({
               <span className="field-label">关联产品</span>
               <select
                 aria-label="关联产品"
-                disabled={!industry}
+                disabled={!industry || analysisBusy}
                 onChange={(event) => onProductChange(event.target.value)}
                 value={productId}
               >
@@ -395,6 +430,7 @@ const NewAnalysisPage = ({
               </span>
               <select
                 aria-label="选择分析模型"
+                disabled={analysisBusy}
                 onChange={(event) => onModelChange(event.target.value)}
                 value={modelId}
               >
@@ -415,6 +451,7 @@ const NewAnalysisPage = ({
             <label className="form-field field-span-two">
               <span className="field-label">转化依据或关注点</span>
               <Input
+                disabled={analysisBusy}
                 maxlength={240}
                 onChange={onConversionContextChange}
                 placeholder="选填，例如：突出轻薄面料与通勤场景"
@@ -468,25 +505,31 @@ const NewAnalysisPage = ({
                 <li key={error}>{error}</li>
               ))}
               {validation.errors.length === 0 ? (
-                <li>模型接入已就绪；分析编排和报告生成仍在后续工作包接入。</li>
+                <li>素材、行业和所选模型已就绪，可以启动本次分析。</li>
               ) : null}
             </ul>
           </div>
 
-          <Button block disabled theme="primary">
+          <Button
+            block
+            disabled={!validation.canStartAnalysis || fileBusy || analysisBusy}
+            loading={analysisBusy}
+            onClick={() => void handleInspectMaterial('start')}
+            theme="primary"
+          >
             开始分析
           </Button>
           <Button
             block
-            disabled={!validation.canPreviewWorkspace || fileBusy}
+            disabled={!validation.canPreviewWorkspace || fileBusy || analysisBusy}
             loading={fileBusy}
-            onClick={() => void handleInspectMaterial(true)}
+            onClick={() => void handleInspectMaterial('preview')}
             variant="outline"
           >
             预览分析工作区
           </Button>
           <p className="summary-footnote">
-            工作区预览不会调用模型、生成报告或保存分析记录。
+            分析会调用所选模型并生成待确认预览；本阶段不会保存分析记录。
           </p>
         </aside>
       </div>
@@ -499,7 +542,11 @@ interface WorkspacePageProps {
   industry: Industry;
   material: SelectedMaterial;
   onBack: () => void;
+  onCancel: () => void;
+  onRetry: () => void;
+  onViewReport: () => void;
   productName: string | null;
+  run: ActiveAnalysisRun | null;
 }
 
 const WorkspacePage = ({
@@ -507,12 +554,64 @@ const WorkspacePage = ({
   industry,
   material,
   onBack,
+  onCancel,
+  onRetry,
+  onViewReport,
   productName,
+  run,
 }: WorkspacePageProps): React.JSX.Element => {
   const stageRef = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<HTMLElement>(null);
   const [mediaPercent, setMediaPercent] = useState(58);
+  const [panelTab, setPanelTab] = useState<'conversation' | 'progress'>('conversation');
   const [timelineHeight, setTimelineHeight] = useState(292);
+  const report = run?.data?.report;
+  const durationMs = Math.max(run?.data?.media.durationMs ?? 0, 1);
+  const evidenceById = new Map(report?.evidence.map((item) => [item.evidenceId, item]) ?? []);
+  const emotionPoints = (report?.emotion ?? [])
+    .filter((item) => item.timeMs !== null && item.intensity !== null)
+    .map((item) => ({
+      ...item,
+      x: ((item.timeMs as number) / durationMs) * 1000,
+      y: 32 - ((item.intensity as number) * 22),
+    }));
+  const emotionPath = emotionPoints.map((item) => `${item.x},${item.y}`).join(' ');
+  const runtimeLabel = run?.status === 'running'
+    ? '分析运行中'
+    : run?.status === 'succeeded'
+      ? '报告待确认'
+      : run?.status === 'cancelled'
+        ? '分析已取消'
+        : run?.status === 'failed'
+          ? '分析未完成'
+          : '工作区预览';
+
+  const timelineTrack = (
+    tracks: Array<'audio' | 'ocr' | 'shot' | 'speech'>,
+  ): React.JSX.Element => {
+    const entries = report?.timeline.filter((item) => tracks.includes(item.track)) ?? [];
+    if (!entries.length) {
+      return <div className="empty-track"><span>当前没有可靠的时间证据</span></div>;
+    }
+    return (
+      <div className={`populated-track is-${tracks.join('-')}`}>
+        {entries.map((item) => {
+          const left = clamp((item.startMs / durationMs) * 100, 0, 100);
+          const end = item.endMs ?? item.startMs + Math.max(500, durationMs * 0.02);
+          const width = clamp(((end - item.startMs) / durationMs) * 100, 1.5, 100 - left);
+          return (
+            <span
+              key={item.evidenceId}
+              style={{ left: `${left}%`, width: `${width}%` }}
+              title={evidenceById.get(item.evidenceId)?.text ?? item.evidenceId}
+            >
+              {evidenceById.get(item.evidenceId)?.text ?? item.track}
+            </span>
+          );
+        })}
+      </div>
+    );
+  };
 
   const beginHorizontalResize = (
     event: ReactPointerEvent<HTMLDivElement>,
@@ -603,8 +702,11 @@ const WorkspacePage = ({
                 {productName ? ` · ${productName}` : ''}
               </span>
             </div>
-            <Tag theme="warning" variant="light">
-              工作区预览
+            <Tag
+              theme={run?.status === 'succeeded' ? 'success' : run?.status === 'failed' ? 'danger' : 'warning'}
+              variant="light"
+            >
+              {runtimeLabel}
             </Tag>
           </div>
           <div className="source-viewer">
@@ -618,6 +720,7 @@ const WorkspacePage = ({
             <span>源素材可播放</span>
             <span>{formatFileSize(material.summary.size)}</span>
             <span>未复制到应用目录</span>
+            {run?.status === 'running' ? <span>解析与模型调用进行中</span> : null}
           </div>
         </div>
 
@@ -638,33 +741,87 @@ const WorkspacePage = ({
 
         <aside className="conversation-panel">
           <div className="panel-tabs" role="tablist">
-            <button aria-selected="true" role="tab" type="button">
+            <button
+              aria-selected={panelTab === 'conversation'}
+              onClick={() => setPanelTab('conversation')}
+              role="tab"
+              type="button"
+            >
               对话分析
             </button>
-            <button aria-selected="false" disabled role="tab" type="button">
+            <button
+              aria-selected={panelTab === 'progress'}
+              onClick={() => setPanelTab('progress')}
+              role="tab"
+              type="button"
+            >
               分析进度
             </button>
           </div>
-          <div className="conversation-empty">
-            <div className="empty-orbit" aria-hidden="true">
-              <span />
-            </div>
-            <h2>等待真实分析能力接入</h2>
-            <p>
-              当前页面只验证播放器、布局和分析上下文，不会生成虚假的 AI 回复、标签或评分。
-            </p>
-            {conversionContext ? (
-              <div className="context-chip">
-                <span>本次关注点</span>
-                <strong>{conversionContext}</strong>
+          {panelTab === 'conversation' ? (
+            <div className="conversation-empty">
+              <div className={`empty-orbit ${run?.status === 'running' ? 'is-running' : ''}`} aria-hidden="true">
+                <span />
               </div>
-            ) : null}
-          </div>
+              <h2>{run ? runtimeLabel : '分析工作区已就绪'}</h2>
+              <p>
+                {run?.status === 'running'
+                  ? run.progress[run.progress.length - 1]?.message ?? '正在准备分析'
+                  : run?.status === 'succeeded'
+                    ? report?.summary ?? '待确认报告已经生成。'
+                    : run?.status === 'failed' || run?.status === 'cancelled'
+                      ? run.error ?? '本次分析没有完成，配置和本地素材仍然保留。'
+                      : '当前为工作区预览，不调用模型，也不会生成或保存分析结果。'}
+              </p>
+              {conversionContext ? (
+                <div className="context-chip">
+                  <span>本次关注点</span>
+                  <strong>{conversionContext}</strong>
+                </div>
+              ) : null}
+              <div className="runtime-actions">
+                {run?.status === 'running' ? (
+                  <Button onClick={onCancel} size="small" variant="outline">取消分析</Button>
+                ) : null}
+                {run?.status === 'failed' || run?.status === 'cancelled' ? (
+                  <Button onClick={onRetry} size="small" theme="primary">使用当前配置重试</Button>
+                ) : null}
+                {run?.status === 'succeeded' ? (
+                  <Button onClick={onViewReport} size="small" theme="primary">查看待确认报告</Button>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <div className="runtime-progress-panel" role="tabpanel">
+              <div className="runtime-progress-heading">
+                <div><span>本次运行</span><strong>{runtimeLabel}</strong></div>
+                {run?.status === 'running' ? (
+                  <Button onClick={onCancel} size="small" variant="outline">取消</Button>
+                ) : null}
+              </div>
+              {run?.progress.length ? (
+                <ol className="runtime-progress-list">
+                  {run.progress.map((item, index) => (
+                    <li className={index === run.progress.length - 1 ? 'is-current' : ''} key={`${item.stage}-${index}`}>
+                      <span />
+                      <div><strong>{item.message}</strong><small>{item.stage}</small></div>
+                    </li>
+                  ))}
+                </ol>
+              ) : <p className="runtime-progress-empty">启动真实分析后，这里会显示工具和模型的阶段进度。</p>}
+              {run?.status === 'failed' || run?.status === 'cancelled' ? (
+                <div className="runtime-recovery">
+                  <p>{run.error}</p>
+                  <Button onClick={onRetry} size="small" theme="primary">重试</Button>
+                </div>
+              ) : null}
+            </div>
+          )}
           <div className="conversation-composer">
             <textarea
               aria-label="补充分析关注点"
               disabled
-              placeholder="模型接入后可在运行中补充关注点…"
+              placeholder="运行中补充关注点将在后续增量对话阶段接入…"
             />
             <Button disabled size="small" theme="primary">
               发送
@@ -692,7 +849,7 @@ const WorkspacePage = ({
         <div className="timeline-header">
           <div>
             <strong>素材时间轴</strong>
-            <span>等待真实解析结果</span>
+            <span>{report ? `${report.timeline.length} 条时间证据` : run?.status === 'running' ? '正在解析' : '等待真实解析结果'}</span>
           </div>
           <div className="timeline-actions">
             <button disabled type="button">－</button>
@@ -715,25 +872,29 @@ const WorkspacePage = ({
           <div className="timeline-tracks">
             <div className="ruler">
               <span>00:00</span>
-              <span>等待时长</span>
-              <span>--:--</span>
+              <span>{report ? formatTimelineTime(durationMs / 2) : '等待时长'}</span>
+              <span>{report ? formatTimelineTime(durationMs) : '--:--'}</span>
             </div>
             <div className="emotion-track">
               <svg
-                aria-label="情绪曲线等待真实分析数据"
+                aria-label={emotionPoints.length ? '素材表达强度情绪曲线' : '情绪曲线等待真实分析数据'}
                 preserveAspectRatio="none"
                 role="img"
                 viewBox="0 0 1000 64"
               >
-                <path d="M0 38 C150 38 210 38 330 38 S560 38 710 38 S900 38 1000 38" />
+                {emotionPoints.length ? (
+                  <polyline points={emotionPath} />
+                ) : (
+                  <path d="M0 38 C150 38 210 38 330 38 S560 38 710 38 S900 38 1000 38" />
+                )}
               </svg>
-              <span>未生成情绪结论</span>
+              {!emotionPoints.length ? <span>未生成可靠情绪结论</span> : null}
             </div>
-            {['镜头', '画面', '字幕', '口播 / 声音', '分析标签'].map((track) => (
-              <div className="empty-track" key={track}>
-                <span>{track}结果将在分析运行后增量出现</span>
-              </div>
-            ))}
+            {timelineTrack(['shot'])}
+            <div className="empty-track"><span>代表帧仅证明采样位置，不推断画面语义</span></div>
+            {timelineTrack(['ocr'])}
+            {timelineTrack(['speech', 'audio'])}
+            <div className="empty-track"><span>{report?.tags.length ? '报告标签暂不具备可靠时间定位' : '当前没有可靠分析标签'}</span></div>
           </div>
         </div>
       </section>
@@ -750,6 +911,7 @@ export const App = (): React.JSX.Element => {
   const [modelConfigurations, setModelConfigurations] = useState<ModelConfigurationSummary[]>([]);
   const [products, setProducts] = useState<ProductListItem[]>([]);
   const [productId, setProductId] = useState('');
+  const [activeRun, setActiveRun] = useState<ActiveAnalysisRun | null>(null);
 
   const refreshProducts = useCallback(async (): Promise<void> => {
     const result = await window.materialApi.products.list({ limit: 500 });
@@ -774,9 +936,12 @@ export const App = (): React.JSX.Element => {
   }, [refreshModelConfigurations, refreshProducts]);
 
   const modelOptions = useMemo<ModelSelectionOption[]>(() =>
-    modelConfigurations.flatMap((configuration) =>
+    modelConfigurations.filter((configuration) => configuration.connectionStatus === 'ready').flatMap((configuration) =>
       configuration.availableModels.map((model) => ({
+        configurationDisplayName: configuration.displayName,
+        configurationId: configuration.id,
         label: `${configuration.displayName} · ${model.id}`,
+        modelId: model.id,
         value: `${configuration.id}::${model.id}`,
       }))), [modelConfigurations]);
 
@@ -794,7 +959,67 @@ export const App = (): React.JSX.Element => {
     };
   }, [material?.sessionId]);
 
+  useEffect(() => window.materialApi.analysis.onProgress((progress) => {
+    setActiveRun((current) => {
+      if (!current || current.clientRunId !== progress.clientRunId) return current;
+      const previous = current.progress[current.progress.length - 1];
+      if (previous?.stage === progress.stage && previous.message === progress.message) return current;
+      return { ...current, progress: [...current.progress, progress] };
+    });
+  }), []);
+
+  const handleStartAnalysis = useCallback(async (
+    verifiedMaterial: SelectedMaterial,
+  ): Promise<void> => {
+    const selectedModel = modelOptions.find((option) => option.value === modelId);
+    if (!selectedModel || !industry || verifiedMaterial.sourceStatus !== 'available') return;
+    const clientRunId = crypto.randomUUID();
+    setActiveRun({
+      clientRunId,
+      materialName: verifiedMaterial.summary.name,
+      progress: [],
+      status: 'running',
+    });
+    setPage('workspace');
+    const result = await window.materialApi.analysis.start({
+      clientRunId,
+      configurationDisplayName: selectedModel.configurationDisplayName,
+      configurationId: selectedModel.configurationId,
+      conversionContext,
+      industry,
+      modelId: selectedModel.modelId,
+      productId: productId || null,
+      sessionId: verifiedMaterial.sessionId,
+    });
+    setActiveRun((current) => {
+      if (!current || current.clientRunId !== clientRunId) return current;
+      if (result.ok) return { ...current, data: result.data, status: 'succeeded' };
+      return {
+        ...current,
+        error: result.error.message,
+        status: result.error.code === 'CANCELLED' ? 'cancelled' : 'failed',
+      };
+    });
+    if (result.ok) setPage('report');
+  }, [conversionContext, industry, modelId, modelOptions, productId]);
+
+  const handleCancelAnalysis = useCallback((): void => {
+    if (activeRun?.status === 'running') {
+      void window.materialApi.analysis.cancel(activeRun.clientRunId);
+    }
+  }, [activeRun]);
+
   const content = useMemo(() => {
+    if (page === 'report' && activeRun?.data) {
+      return (
+        <AnalysisReportPreviewPage
+          data={activeRun.data}
+          materialName={activeRun.materialName}
+          onBackToConfiguration={() => setPage('new-analysis')}
+          onBackToWorkspace={() => setPage('workspace')}
+        />
+      );
+    }
     if (page === 'workspace' && material) {
       return (
         <WorkspacePage
@@ -802,7 +1027,11 @@ export const App = (): React.JSX.Element => {
           industry={industry}
           material={material}
           onBack={() => setPage('new-analysis')}
+          onCancel={handleCancelAnalysis}
+          onRetry={() => void handleStartAnalysis(material)}
+          onViewReport={() => setPage('report')}
           productName={products.find((product) => product.id === productId)?.name ?? null}
+          run={activeRun}
         />
       );
     }
@@ -821,6 +1050,7 @@ export const App = (): React.JSX.Element => {
     }
     return (
       <NewAnalysisPage
+        analysisBusy={activeRun?.status === 'running'}
         conversionContext={conversionContext}
         industry={industry}
         material={material}
@@ -828,23 +1058,43 @@ export const App = (): React.JSX.Element => {
         modelOptions={modelOptions}
         productId={productId}
         products={products}
-        onConversionContextChange={setConversionContext}
+        onConversionContextChange={(value) => {
+          setConversionContext(value);
+          if (activeRun?.status !== 'running') setActiveRun(null);
+        }}
         onIndustryChange={(value) => {
           setIndustry(value);
+          if (activeRun?.status !== 'running') setActiveRun(null);
           setProductId((current) =>
             products.some((product) => product.id === current && product.industry === value)
               ? current
               : '',
           );
         }}
-        onMaterialChange={setMaterial}
-        onModelChange={setModelId}
-        onProductChange={setProductId}
-        onPreviewWorkspace={() => setPage('workspace')}
+        onMaterialChange={(value) => {
+          setMaterial(value);
+          if (activeRun?.status !== 'running') setActiveRun(null);
+        }}
+        onModelChange={(value) => {
+          setModelId(value);
+          if (activeRun?.status !== 'running') setActiveRun(null);
+        }}
+        onProductChange={(value) => {
+          setProductId(value);
+          if (activeRun?.status !== 'running') setActiveRun(null);
+        }}
+        onPreviewWorkspace={() => {
+          setActiveRun(null);
+          setPage('workspace');
+        }}
+        onStartAnalysis={(value) => void handleStartAnalysis(value)}
       />
     );
   }, [
+    activeRun,
     conversionContext,
+    handleCancelAnalysis,
+    handleStartAnalysis,
     industry,
     material,
     modelId,

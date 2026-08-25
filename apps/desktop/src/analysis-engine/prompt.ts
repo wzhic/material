@@ -71,6 +71,7 @@ export const buildAnalysisModelRequest = (
       goal: rule.template.goal,
       industry: input.industry,
       mediaKind: input.mediaKind,
+      productSnapshot: input.productSnapshot ?? null,
     },
     evidencePacket: {
       items: packet.items,

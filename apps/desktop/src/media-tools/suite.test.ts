@@ -92,7 +92,11 @@ describe('deterministic media tool suite', () => {
     expect(result).toMatchObject({
       ok: true,
       output: {
-        evidence: [],
+        evidence: [{
+          evidenceType: 'metadata.media',
+          source: { capabilityId: 'media.probe' },
+          text: expect.stringContaining('不包含画面语义'),
+        }],
         limitations: ['未提供 OCR 结果'],
         material,
         schemaVersion: 1,

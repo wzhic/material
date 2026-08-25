@@ -15,6 +15,7 @@ import { rendererConfig } from './webpack.renderer.config';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    extraResource: ['./runtime'],
     // The Electron npm package ships release checksums. Passing them here keeps
     // cached packaging verifiable without fetching SHASUMS256.txt on every run.
     download: {

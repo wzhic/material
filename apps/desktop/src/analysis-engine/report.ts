@@ -83,6 +83,9 @@ export const fuseAnalysisReport = (
       usage: structuredClone(input.usage),
     },
     productOrGameplay: structuredClone(input.modelOutput.productOrGameplay),
+    productSnapshot: input.runInput.productSnapshot
+      ? structuredClone(input.runInput.productSnapshot)
+      : null,
     prompt: { id: input.prompt.id, version: input.prompt.version },
     recommendations: structuredClone(input.modelOutput.recommendations),
     ruleSnapshot: input.ruleSnapshot,

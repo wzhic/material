@@ -202,6 +202,7 @@ export interface MediaNormalizationInput {
   asr?: AsrOutput;
   audio?: AudioExtractionOutput;
   audioEvents?: AudioEventOutput;
+  frames?: FrameExtractionOutput;
   mediaKind: 'image' | 'video';
   ocr?: OcrOutput;
   probe: MediaProbeOutput;

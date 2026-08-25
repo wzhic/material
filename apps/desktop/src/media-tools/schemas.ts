@@ -259,6 +259,7 @@ export const normalizeInputSchema = object(
     asr: asrOutputSchema,
     audio: audioOutputSchema,
     audioEvents: audioEventOutputSchema,
+    frames: frameOutputSchema,
     mediaKind: { enum: ['image', 'video'], type: 'string' },
     ocr: ocrOutputSchema,
     probe: probeOutputSchema,

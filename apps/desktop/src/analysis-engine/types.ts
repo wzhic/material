@@ -15,6 +15,7 @@ import type {
   ModelUsage,
 } from '../model/types';
 import type { StructuredEvidence } from '../tooling/evidence';
+import type { ProductSnapshot } from '../product/types';
 
 export type AnalysisGoalScene =
   | 'acquisition'
@@ -114,6 +115,7 @@ export interface AnalysisRunInput {
   media: MediaEvidenceOutput;
   mediaKind: AnalysisMediaKind;
   model: AnalysisModelSelection;
+  productSnapshot?: ProductSnapshot | null;
 }
 
 export type AnalysisRunStage =
@@ -155,6 +157,7 @@ export interface AnalysisReportDraft {
     usage: ModelUsage;
   };
   productOrGameplay: AnalysisClaim[];
+  productSnapshot: ProductSnapshot | null;
   prompt: Pick<AnalysisPromptPackage, 'id' | 'version'>;
   recommendations: AnalysisRecommendation[];
   ruleSnapshot: AnalysisRuleSnapshot;
