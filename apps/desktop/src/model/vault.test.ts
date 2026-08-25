@@ -65,6 +65,94 @@ describe('model credential vault', () => {
     expect(await vault.list()).toHaveLength(1);
   });
 
+  it('stores custom endpoints and declared model ids as non-secret schema v1 fields', async () => {
+    const saved = await vault.save({
+      apiKey: 'unit_test_api_key_custom_vault',
+      baseUrl: 'https://custom.example.invalid/v1',
+      displayName: '自定义模型',
+      manualModelId: 'vendor/model-v1',
+      providerId: 'openai-compatible',
+    });
+    const envelope = JSON.parse(readFileSync(filePath, 'utf8')) as {
+      configurations: Array<Record<string, unknown>>;
+      schemaVersion: number;
+    };
+
+    expect(saved).toMatchObject({
+      baseUrl: 'https://custom.example.invalid/v1',
+      manualModelId: 'vendor/model-v1',
+    });
+    expect(envelope.schemaVersion).toBe(1);
+    expect(envelope.configurations[0]).toMatchObject({
+      baseUrl: 'https://custom.example.invalid/v1',
+      manualModelId: 'vendor/model-v1',
+    });
+  });
+
+  it('reads an existing DeepSeek schema v1 envelope without requiring migration', async () => {
+    const apiKey = 'unit_test_api_key_legacy_vault';
+    const encryptedApiKey = (await cipher.encrypt(apiKey)).toString('base64');
+    const id = '11111111-1111-4111-8111-111111111111';
+    writeFileSync(filePath, `${JSON.stringify({
+      configurations: [{
+        availableModels: [{ id: 'deepseek-chat', ownedBy: 'deepseek' }],
+        connectionStatus: 'ready',
+        createdAt: '2026-08-24T00:00:00.000Z',
+        displayName: '旧 DeepSeek',
+        encryptedApiKey,
+        id,
+        lastCheckedAt: '2026-08-24T00:00:00.000Z',
+        providerId: 'deepseek',
+        selectedModelId: 'deepseek-chat',
+        updatedAt: '2026-08-24T00:00:00.000Z',
+        writeVersion: 3,
+      }],
+      schemaVersion: 1,
+    })}\n`);
+
+    expect((await vault.list())[0]).toMatchObject({
+      baseUrl: null,
+      id,
+      manualModelId: null,
+      providerId: 'deepseek',
+    });
+    expect((await vault.readCredential(id)).apiKey).toBe(apiKey);
+  });
+
+  it('invalidates discovered models when the declared model changes', async () => {
+    const saved = await vault.save({
+      apiKey: 'unit_test_api_key_manual_model_change',
+      baseUrl: 'https://custom.example.invalid/v1',
+      displayName: '自定义模型',
+      manualModelId: 'vendor/old-model',
+      providerId: 'openai-compatible',
+    });
+    const ready = await vault.updateConnection(
+      saved.id,
+      'ready',
+      [
+        { id: 'vendor/old-model', ownedBy: 'user-declared' },
+        { id: 'vendor/listed-model', ownedBy: 'remote' },
+      ],
+      saved.writeVersion,
+    );
+
+    const updated = await vault.save({
+      displayName: ready.displayName,
+      expectedWriteVersion: ready.writeVersion,
+      id: ready.id,
+      manualModelId: 'vendor/new-model',
+      providerId: ready.providerId,
+    });
+
+    expect(updated).toMatchObject({
+      availableModels: [],
+      connectionStatus: 'unchecked',
+      manualModelId: 'vendor/new-model',
+      selectedModelId: null,
+    });
+  });
+
   it('serializes concurrent writes without dropping configurations', async () => {
     await Promise.all([
       vault.save({
