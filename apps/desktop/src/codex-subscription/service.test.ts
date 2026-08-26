@@ -1729,6 +1729,85 @@ describe('Codex subscription service', () => {
       expect(JSON.stringify(result)).not.toContain('{"result":"OK"}');
     });
 
+  it('accepts sparse thread, turn, item, and usage fields allowed by the pinned schema',
+    async () => {
+      const client = new FakeClient((method, params) => {
+        if (method === 'thread/start') {
+          const full = appliedThreadStart(params);
+          const thread = full.thread as Record<string, unknown>;
+          return {
+            approvalPolicy: full.approvalPolicy,
+            approvalsReviewer: full.approvalsReviewer,
+            cwd: full.cwd,
+            model: full.model,
+            modelProvider: full.modelProvider,
+            runtimeWorkspaceRoots: [],
+            sandbox: { type: 'readOnly' },
+            thread: {
+              cliVersion: thread.cliVersion,
+              createdAt: thread.createdAt,
+              cwd: thread.cwd,
+              ephemeral: thread.ephemeral,
+              id: thread.id,
+              modelProvider: thread.modelProvider,
+              preview: thread.preview,
+              projectId: thread.projectId,
+              sessionId: thread.sessionId,
+              source: 'vscode',
+              status: thread.status,
+              turns: thread.turns,
+              updatedAt: thread.updatedAt,
+            },
+          };
+        }
+        if (method === 'turn/start') {
+          setImmediate(() => {
+            client.emit('thread/tokenUsage/updated', {
+              threadId: 'thread-1',
+              tokenUsage: {
+                last: {
+                  cachedInputTokens: 0,
+                  inputTokens: 2,
+                  outputTokens: 1,
+                  reasoningOutputTokens: 0,
+                  totalTokens: 3,
+                },
+                total: {
+                  cachedInputTokens: 0,
+                  inputTokens: 2,
+                  outputTokens: 1,
+                  reasoningOutputTokens: 0,
+                  totalTokens: 3,
+                },
+              },
+              turnId: 'turn-1',
+            });
+            const message = { id: 'item-1', text: '{"result":"OK"}', type: 'agentMessage' };
+            client.emit('item/completed', itemCompleted('thread-1', 'turn-1', message));
+            client.emit('turn/completed', {
+              threadId: 'thread-1',
+              turn: { id: 'turn-1', items: [message], status: 'completed' },
+            });
+          });
+          return { turn: { id: 'turn-1', items: [], status: 'inProgress' } };
+        }
+        return signedInHandler()(method, params);
+      });
+      const service = new CodexSubscriptionService({
+        client,
+        openExternal: vi.fn(async () => undefined),
+        settingsPath,
+      });
+      await service.getState();
+      await service.selectModel('gpt-5.6-sol');
+
+      await expect(service.testSelectedModel()).resolves.toMatchObject({
+        requestedModelId: 'gpt-5.6-sol',
+        returnedModelId: 'gpt-5.6-sol',
+      });
+      expect(client.invalidateGeneration).not.toHaveBeenCalled();
+    });
+
   it('invalidates the generation when applied thread isolation differs from the request',
     async () => {
       const client = new FakeClient((method, params) => {
@@ -2048,7 +2127,7 @@ describe('Codex subscription service', () => {
       if (method === 'thread/start') return appliedThreadStart(params);
       if (method === 'turn/start') {
         const response = turnStartResponse('turn-1');
-        delete (response.turn as Record<string, unknown>).itemsView;
+        delete (response.turn as Record<string, unknown>).items;
         return response;
       }
       return signedInHandler()(method, params);
@@ -2076,7 +2155,7 @@ describe('Codex subscription service', () => {
             'turn-1',
             [agentMessage('{"result":"done"}')],
           );
-          delete ((completed.turn as Record<string, unknown>)).durationMs;
+          delete ((completed.turn as Record<string, unknown>)).status;
           client.emit('turn/completed', completed);
         });
         return turnStartResponse('turn-1');
@@ -2326,10 +2405,23 @@ describe('Codex subscription service', () => {
       }),
     },
     {
-      label: 'non-app-server source',
+      label: 'sub-agent source',
       mutate: (response: Record<string, unknown>) => ({
         ...response,
-        thread: { ...(response.thread as Record<string, unknown>), source: 'cli' },
+        thread: {
+          ...(response.thread as Record<string, unknown>),
+          source: { subAgent: 'review' },
+        },
+      }),
+    },
+    {
+      label: 'mismatched custom service source',
+      mutate: (response: Record<string, unknown>) => ({
+        ...response,
+        thread: {
+          ...(response.thread as Record<string, unknown>),
+          source: { custom: 'another_desktop_service' },
+        },
       }),
     },
   ])('rejects a thread/start response with $label and retains its returned model',
@@ -2475,7 +2567,7 @@ describe('Codex subscription service', () => {
     expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');
   });
 
-  it('fails closed on token telemetry without cache-write count', async () => {
+  it('defaults an omitted cache-write count allowed by the pinned runtime schema', async () => {
     const client = new FakeClient((method, params) => {
       if (method === 'thread/start') return appliedThreadStart(params);
       if (method === 'turn/start') {
@@ -2521,11 +2613,19 @@ describe('Codex subscription service', () => {
     const result = await service.complete(analysisRequest());
 
     expect(result).toMatchObject({
-      audit: { status: 'failed' },
-      error: { code: 'RESPONSE_INVALID' },
-      ok: false,
+      completion: {
+        usage: {
+          available: true,
+          completionTokens: 4,
+          promptCacheHitTokens: 2,
+          promptCacheMissTokens: 8,
+          promptTokens: 10,
+          totalTokens: 14,
+        },
+      },
+      ok: true,
     });
-    expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');
+    expect(client.invalidateGeneration).not.toHaveBeenCalled();
   });
 
   it('fails closed on a model reroute and records the provider-returned model', async () => {
@@ -3248,7 +3348,7 @@ describe('Codex subscription service', () => {
     });
     await expect(service.getState()).resolves.toMatchObject({ status: 'ready' });
 
-    client.emit('account/updated', {});
+    client.emit('account/updated', { authMode: 42 });
     await flush();
 
     expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');

@@ -241,6 +241,20 @@ macOS 核对 Keychain，Windows 核对 Credential Manager/DPAPI。退出 Materia
 8. 退出应用专属会话并确认全局 CLI/IDE 会话未变化。
 9. 单独记录非代码素材分析的 OpenAI 产品/条款适配确认是否完成；官方 SDK 主要定位是 coding-focused threads，本指南不把该定位误写为条款禁止。
 
+### 13.1 2026-08-26 macOS 开发环境实测
+
+| 项目 | 结果 |
+|---|---|
+| 平台与包状态 | macOS arm64 / Darwin 25.5.0；Electron Forge 开发环境，未签名、未公证，不作为安装包证据 |
+| 客户端与 runtime | Material Desktop 1.0.0；锁定 Codex runtime 0.149.1 |
+| 登录与目录 | Material 专属 ChatGPT 会话就绪；账号标识与套餐不写入文档；可见文本目录和限额预检通过 |
+| 显式模型 | catalog selection ID `gpt-5.6-sol`；provider requested/returned slug 均为 `gpt-5.6-sol`；冻结 default effort 为 `low` |
+| 输入边界 | 固定合成 JSON 指令；没有素材、路径、原始图片、视频或音频；明确会消耗订阅额度 |
+| 运行边界 | 1 个 ephemeral thread、1 个 turn；read-only、network false、approval never；tool call、unexpected server request、重试、模型切换均为 0 |
+| 输出与用量 | 固定结构化结果校验通过；收到 token usage 通知，但连接测试结果不持久化 token 明细，记为 unavailable 而非 0 |
+| 结论与时间 | 2026-08-26 19:47（Asia/Shanghai）用户确认客户端“调用成功”；直接等价烟测也得到 completed 且只有 agentMessage |
+| 证据边界 | 仅证明当前账号、当前模型、当前未签名 macOS 开发环境；不能复制为 Windows、签名包、公证包或其他套餐证据 |
+
 同一结果不得复制成 macOS/Windows 两个平台证据。未签名开发包不得标为签名安装包通过。真实账号 smoke 或适配确认任一未完成时，Codex 仍仅能标 Beta，不设默认/稳定来源，API Key 必须可用。
 
 ## 14. 隐私或秘密泄露响应

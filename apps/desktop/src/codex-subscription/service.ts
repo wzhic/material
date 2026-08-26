@@ -205,11 +205,14 @@ const validCodexErrorInfo = (value: unknown): boolean => {
 };
 
 const validTurnError = (value: unknown): boolean => isRecord(value)
-  && hasOwnKeys(value, ['additionalDetails', 'codexErrorInfo', 'message'])
+  && hasOwn(value, 'message')
   && typeof value.message === 'string'
   && value.message.length <= 20_000
-  && nullableBoundedString(value.additionalDetails, 20_000)
-  && (value.codexErrorInfo === null || validCodexErrorInfo(value.codexErrorInfo));
+  && (!hasOwn(value, 'additionalDetails')
+    || nullableBoundedString(value.additionalDetails, 20_000))
+  && (!hasOwn(value, 'codexErrorInfo')
+    || value.codexErrorInfo === null
+    || validCodexErrorInfo(value.codexErrorInfo));
 
 interface ParsedAgentMessage {
   id: string;
@@ -219,15 +222,18 @@ interface ParsedAgentMessage {
 const parseAgentMessage = (value: unknown): ParsedAgentMessage | null => {
   if (!isRecord(value)
     || value.type !== 'agentMessage'
-    || !hasOwnKeys(value, ['delivery', 'id', 'memoryCitation', 'phase', 'text', 'type'])
+    || !hasOwnKeys(value, ['id', 'text', 'type'])
     || !safeString(value.id, 256)
     || typeof value.text !== 'string'
     || value.text.length > 1_000_000
-    || (value.phase !== null
+    || (hasOwn(value, 'phase')
+      && value.phase !== null
       && value.phase !== 'commentary'
       && value.phase !== 'final_answer')
-    || value.memoryCitation !== null
-    || (value.delivery !== null && value.delivery !== 'async')) {
+    || (hasOwn(value, 'memoryCitation') && value.memoryCitation !== null)
+    || (hasOwn(value, 'delivery')
+      && value.delivery !== null
+      && value.delivery !== 'async')) {
     return null;
   }
   return { id: String(value.id), text: value.text };
@@ -243,9 +249,9 @@ const parseSafeThreadItem = (value: unknown): ParsedAgentMessage | null => {
     return message;
   }
   if (value.type === 'userMessage') {
-    if (!hasOwnKeys(value, ['clientId', 'content', 'id', 'type'])
+    if (!hasOwnKeys(value, ['content', 'id', 'type'])
       || !safeString(value.id, 256)
-      || !nullableBoundedString(value.clientId, 256)
+      || (hasOwn(value, 'clientId') && !nullableBoundedString(value.clientId, 256))
       || !Array.isArray(value.content)
       || value.content.length === 0) {
       throw new CodexSubscriptionError('PROTOCOL_ERROR');
@@ -259,23 +265,27 @@ const parseSafeThreadItem = (value: unknown): ParsedAgentMessage | null => {
         // skill, audio, or other input proves the isolated request was widened.
         throw new CodexSubscriptionError('SECURITY_VIOLATION');
       }
-      if (!hasOwnKeys(input, ['text', 'text_elements', 'type'])
+      if (!hasOwnKeys(input, ['text', 'type'])
         || typeof input.text !== 'string'
         || input.text.length > 250_000
-        || !Array.isArray(input.text_elements)
-        || input.text_elements.length !== 0) {
+        || (hasOwn(input, 'text_elements')
+          && (!Array.isArray(input.text_elements) || input.text_elements.length !== 0))) {
         throw new CodexSubscriptionError('PROTOCOL_ERROR');
       }
     }
     return null;
   }
   if (value.type === 'reasoning') {
-    if (!hasOwnKeys(value, ['content', 'id', 'summary', 'type'])
+    if (!hasOwnKeys(value, ['id', 'type'])
       || !safeString(value.id, 256)
-      || !Array.isArray(value.summary)
-      || !Array.isArray(value.content)
-      || value.summary.some((entry) => typeof entry !== 'string' || entry.length > 50_000)
-      || value.content.some((entry) => typeof entry !== 'string' || entry.length > 50_000)) {
+      || (hasOwn(value, 'summary')
+        && (!Array.isArray(value.summary)
+          || value.summary.some((entry) =>
+            typeof entry !== 'string' || entry.length > 50_000)))
+      || (hasOwn(value, 'content')
+        && (!Array.isArray(value.content)
+          || value.content.some((entry) =>
+            typeof entry !== 'string' || entry.length > 50_000)))) {
       throw new CodexSubscriptionError('PROTOCOL_ERROR');
     }
     return null;
@@ -290,27 +300,26 @@ interface ParsedRuntimeTurn {
   status: 'completed' | 'failed' | 'inProgress' | 'interrupted';
 }
 
+const validMaterialSessionSource = (value: unknown, expectedServiceName: string): boolean =>
+  (typeof value === 'string'
+    && ['appServer', 'cli', 'exec', 'unknown', 'vscode'].includes(value))
+  || (isRecord(value)
+    && Object.keys(value).length === 1
+    && value.custom === expectedServiceName);
+
 const parseRuntimeTurn = (value: unknown): ParsedRuntimeTurn => {
   if (!isRecord(value)
-    || !hasOwnKeys(value, [
-      'completedAt',
-      'durationMs',
-      'error',
-      'id',
-      'items',
-      'itemsView',
-      'startedAt',
-      'status',
-    ])
+    || !hasOwnKeys(value, ['id', 'items', 'status'])
     || !safeString(value.id, 256)
     || !Array.isArray(value.items)
-    || !['notLoaded', 'summary', 'full'].includes(String(value.itemsView))
+    || (hasOwn(value, 'itemsView')
+      && !['notLoaded', 'summary', 'full'].includes(String(value.itemsView)))
     || !['completed', 'failed', 'inProgress', 'interrupted'].includes(String(value.status))
-    || !nullableNonnegativeNumber(value.startedAt)
-    || !nullableNonnegativeNumber(value.completedAt)
-    || !nullableNonnegativeNumber(value.durationMs)
-    || (value.error !== null && !validTurnError(value.error))
-    || (value.status === 'failed' ? value.error === null : value.error !== null)) {
+    || (hasOwn(value, 'startedAt') && !nullableNonnegativeNumber(value.startedAt))
+    || (hasOwn(value, 'completedAt') && !nullableNonnegativeNumber(value.completedAt))
+    || (hasOwn(value, 'durationMs') && !nullableNonnegativeNumber(value.durationMs))
+    || (hasOwn(value, 'error') && value.error !== null && !validTurnError(value.error))
+    || (value.status !== 'failed' && hasOwn(value, 'error') && value.error !== null)) {
     throw new CodexSubscriptionError('PROTOCOL_ERROR');
   }
   const messages: ParsedAgentMessage[] = [];
@@ -319,7 +328,7 @@ const parseRuntimeTurn = (value: unknown): ParsedRuntimeTurn => {
     if (message) messages.push(message);
   }
   return {
-    error: value.error as Record<string, unknown> | null,
+    error: hasOwn(value, 'error') ? value.error as Record<string, unknown> | null : null,
     id: String(value.id),
     messages,
     status: value.status as ParsedRuntimeTurn['status'],
@@ -329,33 +338,21 @@ const parseRuntimeTurn = (value: unknown): ParsedRuntimeTurn => {
 const parseAppliedThreadStart = (
   response: unknown,
   expectedDirectory: string,
+  expectedReasoningEffort: string,
+  expectedServiceName: string,
 ): { modelId: string; reasoningEffort: string; threadId: string } => {
   const requiredThreadKeys = [
-    'agentNickname',
-    'agentRole',
-    'canAcceptDirectInput',
     'cliVersion',
     'createdAt',
     'cwd',
     'ephemeral',
-    'extra',
-    'forkedFromId',
-    'gitInfo',
-    'historyMode',
     'id',
     'modelProvider',
-    'name',
-    'parentThreadId',
-    'path',
     'preview',
     'projectId',
-    'recencyAt',
-    'section',
-    'sectionEnteredAt',
     'sessionId',
     'source',
     'status',
-    'threadSource',
     'turns',
     'updatedAt',
   ];
@@ -368,61 +365,76 @@ const parseAppliedThreadStart = (
     || response.thread.modelProvider !== 'openai'
     || response.thread.modelProvider !== response.modelProvider
     || response.thread.cwd !== expectedDirectory
-    || response.thread.extra !== null
-    || response.thread.forkedFromId !== null
-    || response.thread.parentThreadId !== null
+    || (hasOwn(response.thread, 'extra') && response.thread.extra !== null)
+    || (hasOwn(response.thread, 'forkedFromId') && response.thread.forkedFromId !== null)
+    || (hasOwn(response.thread, 'parentThreadId') && response.thread.parentThreadId !== null)
     || typeof response.thread.preview !== 'string'
     || response.thread.preview.length > 20_000
-    || response.thread.section !== null
-    || response.thread.sectionEnteredAt !== null
+    || (hasOwn(response.thread, 'section') && response.thread.section !== null)
+    || (hasOwn(response.thread, 'sectionEnteredAt')
+      && response.thread.sectionEnteredAt !== null)
     || response.thread.projectId !== null
-    || (response.thread.historyMode !== 'legacy'
+    || (hasOwn(response.thread, 'historyMode')
+      && response.thread.historyMode !== 'legacy'
       && response.thread.historyMode !== 'paginated')
     || !nonnegativeNumber(response.thread.createdAt)
     || !nonnegativeNumber(response.thread.updatedAt)
-    || !nullableNonnegativeNumber(response.thread.recencyAt)
+    || (hasOwn(response.thread, 'recencyAt')
+      && !nullableNonnegativeNumber(response.thread.recencyAt))
     || !isRecord(response.thread.status)
     || response.thread.status.type !== 'idle'
-    || response.thread.path !== null
+    || (hasOwn(response.thread, 'path') && response.thread.path !== null)
     || !safeString(response.thread.cliVersion, 128)
-    || response.thread.source !== 'appServer'
-    || response.thread.canAcceptDirectInput !== true
-    || !nullableBoundedString(response.thread.threadSource, 256)
-    || response.thread.agentNickname !== null
-    || response.thread.agentRole !== null
-    || response.thread.gitInfo !== null
-    || response.thread.name !== null
+    || !validMaterialSessionSource(response.thread.source, expectedServiceName)
+    || (hasOwn(response.thread, 'canAcceptDirectInput')
+      && response.thread.canAcceptDirectInput !== true)
+    || (hasOwn(response.thread, 'threadSource')
+      && !nullableBoundedString(response.thread.threadSource, 256))
+    || (hasOwn(response.thread, 'agentNickname') && response.thread.agentNickname !== null)
+    || (hasOwn(response.thread, 'agentRole') && response.thread.agentRole !== null)
+    || (hasOwn(response.thread, 'gitInfo') && response.thread.gitInfo !== null)
+    || (hasOwn(response.thread, 'name') && response.thread.name !== null)
     || !Array.isArray(response.thread.turns)
     || response.thread.turns.length !== 0
     || !validIdentifier(response.model)
-    || !validIdentifier(response.reasoningEffort)
+    || (hasOwn(response, 'reasoningEffort')
+      && response.reasoningEffort !== null
+      && !validIdentifier(response.reasoningEffort))
     || response.modelProvider !== 'openai'
-    || response.serviceTier !== null
+    || (hasOwn(response, 'serviceTier') && response.serviceTier !== null)
     || response.cwd !== expectedDirectory
-    || !Array.isArray(response.runtimeWorkspaceRoots)
-    || response.runtimeWorkspaceRoots.length !== 1
-    || response.runtimeWorkspaceRoots[0] !== expectedDirectory
+    || (hasOwn(response, 'runtimeWorkspaceRoots')
+      && (!Array.isArray(response.runtimeWorkspaceRoots)
+        || (response.runtimeWorkspaceRoots.length !== 0
+          && (response.runtimeWorkspaceRoots.length !== 1
+            || response.runtimeWorkspaceRoots[0] !== expectedDirectory))))
     || response.approvalPolicy !== 'never'
     || response.approvalsReviewer !== 'user'
-    || response.multiAgentMode !== 'explicitRequestOnly'
+    || (hasOwn(response, 'multiAgentMode')
+      && response.multiAgentMode !== 'explicitRequestOnly')
     || !isRecord(response.sandbox)
     || response.sandbox.type !== 'readOnly'
-    || response.sandbox.networkAccess !== false
-    || !Array.isArray(response.instructionSources)
-    || response.instructionSources.length !== 0) {
+    || (hasOwn(response.sandbox, 'networkAccess') && response.sandbox.networkAccess !== false)
+    || (hasOwn(response, 'instructionSources')
+      && (!Array.isArray(response.instructionSources)
+        || response.instructionSources.length !== 0))) {
     throw new CodexSubscriptionError('PROTOCOL_ERROR');
   }
   const activeProfile = response.activePermissionProfile;
   if (activeProfile !== null
+    && activeProfile !== undefined
     && (!isRecord(activeProfile)
       || typeof activeProfile.id !== 'string'
       || !/^:[A-Za-z0-9._-]{1,80}$/.test(activeProfile.id)
-      || activeProfile.extends !== null)) {
+      || (hasOwn(activeProfile, 'extends') && activeProfile.extends !== null))) {
     throw new CodexSubscriptionError('PROTOCOL_ERROR');
   }
   return {
     modelId: response.model,
-    reasoningEffort: response.reasoningEffort,
+    reasoningEffort: hasOwn(response, 'reasoningEffort')
+      && response.reasoningEffort !== null
+      ? response.reasoningEffort as string
+      : expectedReasoningEffort,
     threadId: String(response.thread.id),
   };
 };
@@ -450,7 +462,9 @@ const parseTokenBreakdown = (value: unknown): ParsedTokenBreakdown | null => {
   if (!isRecord(value)) return null;
   const inputTokens = value.inputTokens;
   const cachedInputTokens = value.cachedInputTokens;
-  const cacheWriteInputTokens = value.cacheWriteInputTokens;
+  const cacheWriteInputTokens = hasOwn(value, 'cacheWriteInputTokens')
+    ? value.cacheWriteInputTokens
+    : 0;
   const outputTokens = value.outputTokens;
   const reasoningOutputTokens = value.reasoningOutputTokens;
   const totalTokens = value.totalTokens;
@@ -472,8 +486,9 @@ const parseLastTokenUsage = (value: unknown): ModelUsage | null => {
   if (!isRecord(value)
     || !Object.prototype.hasOwnProperty.call(value, 'last')
     || !Object.prototype.hasOwnProperty.call(value, 'total')
-    || !Object.prototype.hasOwnProperty.call(value, 'modelContextWindow')
-    || (value.modelContextWindow !== null && !isTokenCount(value.modelContextWindow))) {
+    || (hasOwn(value, 'modelContextWindow')
+      && value.modelContextWindow !== null
+      && !isTokenCount(value.modelContextWindow))) {
     return null;
   }
   const last = parseTokenBreakdown(value.last);
@@ -682,10 +697,11 @@ const RATE_LIMIT_RESET_TYPES = new Set(['codexRateLimits', 'unknown']);
 const RATE_LIMIT_RESET_STATUSES = new Set(['available', 'redeeming', 'redeemed', 'unknown']);
 
 const validAccountUpdatedNotification = (params: unknown): boolean => isRecord(params)
-  && hasOwnKeys(params, ['authMode', 'planType'])
-  && (params.authMode === null
+  && (!hasOwn(params, 'authMode')
+    || params.authMode === null
     || (typeof params.authMode === 'string' && AUTH_MODES.has(params.authMode)))
-  && (params.planType === null
+  && (!hasOwn(params, 'planType')
+    || params.planType === null
     || (typeof params.planType === 'string' && CHATGPT_PLAN_TYPES.has(params.planType)));
 
 const validResetCredit = (value: unknown): boolean => isRecord(value)
@@ -1451,7 +1467,12 @@ export class CodexSubscriptionService {
       if (isRecord(threadResponse) && validIdentifier(threadResponse.model)) {
         probe.returnedModelId = threadResponse.model;
       }
-      const appliedThread = parseAppliedThreadStart(threadResponse, probeDirectory);
+      const appliedThread = parseAppliedThreadStart(
+        threadResponse,
+        probeDirectory,
+        reasoningEffort,
+        'material_desktop_model_probe',
+      );
       probe.threadId = appliedThread.threadId;
       probe.returnedModelId = appliedThread.modelId;
       if (probe.returnedModelId !== providerModelId
@@ -1677,6 +1698,8 @@ export class CodexSubscriptionService {
         const appliedThread = parseAppliedThreadStart(
           threadResponse,
           analysisDirectory,
+          providerReasoningEffort,
+          'material_desktop_analysis',
         );
         probe.threadId = appliedThread.threadId;
         probe.returnedModelId = appliedThread.modelId;
