@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0026",
+  "base_head": "c61d9e8ec74e684a1c717e9436c642f7c7c657b2",
+  "paths": [
+    "apps/desktop/src/index.css",
+    "apps/desktop/src/ui/App.tsx",
+    "apps/desktop/src/ui/workspace-layout.test.ts",
+    "apps/desktop/src/ui/workspace-layout.ts",
+    "docs/development/README.md",
+    "docs/development/分析工作区时间轴与布局-DEV-0019-v1.0.md",
+    "docs/troubleshooting/README.md",
+    "docs/troubleshooting/分析工作区时间轴与布局-TRB-0016-v1.0.md",
+    "project-control/proposals/APP-0026-task.json"
+  ]
+}
