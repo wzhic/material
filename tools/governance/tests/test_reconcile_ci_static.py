@@ -388,6 +388,54 @@ class StaticProfileTests(AuthenticatedReceiptTestCase):
             )
             self.assertIn("governance tests reject an empty suite", contract["message"])
 
+    def test_workflow_bootstraps_model_stack_ci_before_controlled_checks(self) -> None:
+        workflow = (
+            REPOSITORY_ROOT / ".github" / "workflows" / "governance.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn("unittest.defaultTestLoader", workflow)
+        self.assertEqual(2, workflow.count("unittest.TestLoader().discover("))
+        self.assertIn(
+            "unittest.TestLoader().discover('tools/governance/tests'",
+            workflow,
+        )
+        self.assertIn(
+            "unittest.TestLoader().discover('.codex/tests'",
+            workflow,
+        )
+        self.assertIn(
+            "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
+            workflow,
+        )
+        self.assertIn('version: "0.12.5"', workflow)
+        self.assertIn("uses: actions/setup-node@v4", workflow)
+        self.assertIn('node-version: "24"', workflow)
+        self.assertIn(
+            "cache-dependency-path: apps/desktop/package-lock.json",
+            workflow,
+        )
+        self.assertIn("npm ci --prefix apps/desktop", workflow)
+        self.assertGreaterEqual(
+            workflow.count("if: matrix.release_unit != 'backend'"),
+            2,
+        )
+        self.assertIn(
+            "PSModuleAnalysisCachePath: ${{ github.workspace }}/../PowerShell-ModuleAnalysisCache",
+            workflow,
+        )
+        self.assertIn("controlled_code = subprocess.call(", workflow)
+        self.assertIn("controlled_code == 0 or", workflow)
+        self.assertIn("raise SystemExit(controlled_code)", workflow)
+        self.assertLess(workflow.index("- name: Install uv"), workflow.index("run-required"))
+        self.assertLess(
+            workflow.index("- name: Set up Node.js for desktop checks"),
+            workflow.index("- name: Install locked desktop dependencies"),
+        )
+        self.assertLess(
+            workflow.index("npm ci --prefix apps/desktop"),
+            workflow.index("run-required"),
+        )
+
     def test_workflow_contract_requires_controlled_three_unit_matrix(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -409,8 +457,8 @@ class StaticProfileTests(AuthenticatedReceiptTestCase):
             workflow = root / ".github" / "workflows" / "governance.yml"
             workflow.write_text(
                 workflow.read_text(encoding="utf-8").replace(
-                    ", '--json']))",
-                    "]))",
+                    "'--json'",
+                    "'--no-json'",
                 ),
                 encoding="utf-8",
             )
@@ -780,6 +828,29 @@ class TrustedCiContextTests(AuthenticatedReceiptTestCase):
             runner = next(item for item in report["checks"] if item["id"] == "ci_release_runner")
             self.assertEqual("failed", runner["status"])
             self.assertIn("Windows", runner["message"])
+
+    def test_ci_accepts_trusted_runner_for_unaffected_release_unit(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task, base_sha, _content_sha, control_sha = self.prepare_two_layer_commits(root)
+            task["release_units"] = ["mac", "win"]
+            for check in task["validation"]["required"]:
+                check["release_units"] = ["mac", "win"]
+            task["coordination"]["deployment_order"] = ["mac", "win"]
+            task["coordination"]["rollback_order"] = ["win", "mac"]
+            for field in ("unit_tasks", "unit_validation_checks", "unit_rollback_checks"):
+                task["coordination"][field].pop("backend")
+            task["validation"]["results"] = []
+            renew_test_scope_review(root, task)
+            store_controlled_local_pass(root, task)
+            write_json(root / "project-control" / "tasks" / (task["task_id"] + ".json"), task)
+            environment = github_push_environment(root, base_sha, control_sha, task["branch"])
+            with mock.patch.dict(os.environ, environment, clear=False):
+                report = run_reconcile(root, "ci")
+            runner = next(item for item in report["checks"] if item["id"] == "ci_release_runner")
+            self.assertEqual("passed", runner["status"])
+            self.assertFalse(runner["details"]["applicable"])
+            self.assertIn("not applicable", runner["message"])
 
     def test_ci_rejects_pr_target_not_bound_as_base_branch(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

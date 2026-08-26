@@ -1,0 +1,56 @@
+{
+  "task_id": "GOV-0029",
+  "summary": "将最新 main 已通过三平台验证、且为模型栈 CI 当前执行所必需的治理启动能力同步到 APP-0020 基线：独立 TestLoader、固定 uv、Node 24/npm ci、Windows 临时环境与命令 shim、忽略 npm 生成输出、未受影响 release unit 的 not_applicable 语义、GitHub Actions 测试夹具环境隔离及对应回归。仅修改治理运行时与测试，不修改 APP-0022 功能代码；不在本任务内解决 APP-0020 到 APP-0022 的受保护 current-task 栈交接，也不合并或发布。",
+  "allowed_paths": [
+    ".github/workflows/governance.yml",
+    "tools/governance/core.py",
+    "tools/governance/reconcile.py",
+    "tools/governance/taskctl.py",
+    "tools/governance/validation_runner.py",
+    "tools/governance/tests/helpers.py",
+    "tools/governance/tests/test_controlled_taskctl.py",
+    "tools/governance/tests/test_core.py",
+    "tools/governance/tests/test_projectctl.py",
+    "tools/governance/tests/test_reconcile_ci_static.py",
+    "tools/governance/tests/test_validation_runner.py",
+    "project-control/**"
+  ],
+  "assumptions": [
+    {
+      "id": "GOV-0029-ASM-001",
+      "source": "GitHub Actions run 32863694411 jobs 97853623832, 97853624201, 97853624269",
+      "statement": "APP-0022 的 Ubuntu、macOS、Windows jobs 均在 Require non-empty governance test suites 以同一 Python 3.9 TestLoader 路径断言失败，后续受控验证没有执行。",
+      "status": "confirmed"
+    },
+    {
+      "id": "GOV-0029-ASM-002",
+      "source": "main 4c20426a、post-merge run 32704841284 与提交 c2c3447/5ace6c7/3efb089/e0f2000/604c7dc",
+      "statement": "独立 TestLoader、固定 uv、Node 24/npm ci、Windows runner 隔离与 shim、忽略未跟踪构建输出及 not_applicable 是模型栈三平台 CI 进入并完成受控验证所需的已验证耦合能力。",
+      "status": "confirmed"
+    },
+    {
+      "id": "GOV-0029-ASM-003",
+      "source": "用户确认独立治理同步任务",
+      "statement": "本任务只同步当前 CI 执行链所需治理能力和回归，不把修复直接夹带进 APP-0022 功能提交；治理 PR 合并仍由用户决定。",
+      "status": "confirmed"
+    },
+    {
+      "id": "GOV-0029-ASM-004",
+      "source": "堆叠治理 merge-tree 只读审计",
+      "statement": "GOV-0029 合入 APP-0020 后，APP-0020 与 APP-0022 对 project-control/current-task.json 的双边变更无法按现有 clean base-sync 合同直接传播；后续必须新建独立受控栈交接任务，本任务不承诺更新或重跑 PR #29。",
+      "status": "confirmed"
+    },
+    {
+      "id": "GOV-0029-ASM-005",
+      "source": "本任务两次独立只读审计",
+      "statement": "GOV-0024 至 GOV-0028 的终态 PR/main 修复与当前模型栈初始 CI 执行无直接依赖，clean base-sync 能力也属于后续栈交接功能，均不纳入本任务。",
+      "status": "confirmed"
+    },
+    {
+      "id": "GOV-0029-ASM-006",
+      "source": "PR #30 run 32867594436 jobs 97866562042/97866562246/97866562329 与 APP-0018 提交 20d780017723e216c74f711b4eaba94b43490411",
+      "statement": "三平台均在受控 runner 内出现相同 4/197 失败，根因是临时治理 fixture 继承真实 Actions 上下文；仅在 AuthenticatedReceiptTestCase 中清理 GITHUB_*、MATERIAL_RELEASE_UNIT 与 RUNNER_OS 可隔离测试，同时保留生产 CI 的可信上下文门禁。",
+      "status": "confirmed"
+    }
+  ]
+}

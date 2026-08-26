@@ -64,6 +64,38 @@ class ControlledValidationRunnerTests(unittest.TestCase):
             self.assertIn("started_at", result)
             self.assertIn("finished_at", result)
 
+    def test_windows_command_shim_is_resolved_without_changing_arguments(self) -> None:
+        npm_cmd = r"C:\Program Files\nodejs\npm.CMD"
+        with mock.patch.object(validation_runner.os, "name", "nt"), mock.patch.object(
+            validation_runner.shutil,
+            "which",
+            return_value=npm_cmd,
+        ) as which_mock:
+            resolved = validation_runner._resolve_argv([
+                "npm",
+                "--prefix",
+                "apps/desktop",
+                "run",
+                "lint",
+            ])
+
+        which_mock.assert_called_once_with("npm")
+        self.assertEqual(npm_cmd, resolved[0])
+        self.assertEqual(
+            ["--prefix", "apps/desktop", "run", "lint"],
+            resolved[1:],
+        )
+
+    def test_missing_windows_command_shim_keeps_reviewed_executable_token(self) -> None:
+        with mock.patch.object(validation_runner.os, "name", "nt"), mock.patch.object(
+            validation_runner.shutil,
+            "which",
+            return_value=None,
+        ):
+            resolved = validation_runner._resolve_argv(["missing-tool", "--version"])
+
+        self.assertEqual(["missing-tool", "--version"], resolved)
+
     def test_nonzero_exit_is_failed_without_caller_status(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -190,7 +222,7 @@ class ControlledValidationRunnerTests(unittest.TestCase):
             environment = validation_runner._minimal_environment(Path(temporary), "local")
 
         self.assertEqual(
-            "/portable/bin",
+            str(Path("/portable/bin/git").resolve().parent),
             environment["PATH"].split(os.pathsep)[0],
         )
         self.assertEqual(
@@ -201,6 +233,43 @@ class ControlledValidationRunnerTests(unittest.TestCase):
             ["/portable/bin/git", "init", "--quiet"],
             run_mock.call_args_list[1].args[0][:3],
         )
+
+    def test_windows_child_profile_and_cache_paths_stay_in_temporary_home(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary).resolve()
+            git_directory = str(home / "git-bin")
+            with mock.patch.object(
+                validation_runner.os,
+                "name",
+                "nt",
+            ), mock.patch.object(
+                validation_runner,
+                "_working_git_directory",
+                return_value=git_directory,
+            ), mock.patch.dict(
+                os.environ,
+                {
+                    "APPDATA": "C:\\sensitive\\roaming",
+                    "LOCALAPPDATA": "C:\\sensitive\\local",
+                    "TEMP": "C:\\sensitive\\temp",
+                    "TMP": "C:\\sensitive\\temp",
+                    "PSModuleAnalysisCachePath": "C:\\sensitive\\cache",
+                },
+                clear=False,
+            ):
+                environment = validation_runner._minimal_environment(home, "ci")
+
+            expected = {
+                "APPDATA": home / "AppData" / "Roaming",
+                "LOCALAPPDATA": home / "AppData" / "Local",
+                "TEMP": home / "Temp",
+                "TMP": home / "Temp",
+                "PSModuleAnalysisCachePath": home / "PowerShell" / "ModuleAnalysisCache",
+            }
+            for name, path in expected.items():
+                self.assertEqual(str(path), environment[name])
+                self.assertTrue(path.parent.is_dir())
+                self.assertTrue(path == home or home in path.parents)
 
     def test_ci_gets_only_nonsecret_github_context_allowlist(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -1,0 +1,17 @@
+{
+  "base_head": "8c469b96dd0f950c38812857d44649a06825a100",
+  "paths": [
+    ".github/workflows/governance.yml",
+    "tools/governance/core.py",
+    "tools/governance/reconcile.py",
+    "tools/governance/taskctl.py",
+    "tools/governance/tests/test_controlled_taskctl.py",
+    "tools/governance/tests/test_core.py",
+    "tools/governance/tests/test_projectctl.py",
+    "tools/governance/tests/test_reconcile_ci_static.py",
+    "tools/governance/tests/test_validation_runner.py",
+    "tools/governance/validation_runner.py"
+  ],
+  "schema_version": 1,
+  "task_id": "GOV-0029"
+}
