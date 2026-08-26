@@ -148,6 +148,15 @@ const nullableNonnegativeNumber = (value: unknown): boolean => value === null
 const nonnegativeNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0;
 
+const nonnegativeSafeInteger = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+
+const nonnegativeInt32 = (value: unknown): value is number =>
+  nonnegativeSafeInteger(value) && value <= 2_147_483_647;
+
+const positiveSafeInteger = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+
 const validIdentifier = (value: unknown): value is string =>
   typeof value === 'string' && MODEL_ID_PATTERN.test(value);
 
@@ -594,25 +603,15 @@ const mapRateLimitWindow = (value: unknown): CodexRateLimitWindow | null => {
   if (!isRecord(value)
     || !Object.prototype.hasOwnProperty.call(value, 'windowDurationMins')
     || !Object.prototype.hasOwnProperty.call(value, 'resetsAt')
-    || typeof value.usedPercent !== 'number'
-    || !Number.isFinite(value.usedPercent)
-    || value.usedPercent < 0
+    || !nonnegativeInt32(value.usedPercent)
     || (value.windowDurationMins !== null
-      && (typeof value.windowDurationMins !== 'number'
-        || !Number.isFinite(value.windowDurationMins)
-        || value.windowDurationMins < 0))
+      && !nonnegativeSafeInteger(value.windowDurationMins))
     || (value.resetsAt !== null
-      && (typeof value.resetsAt !== 'number'
-        || !Number.isFinite(value.resetsAt)
-        || value.resetsAt <= 0))) return null;
+      && !positiveSafeInteger(value.resetsAt))) return null;
   return {
     resetsAt: unixSecondsToIso(value.resetsAt),
     usedPercent: Math.min(100, Math.max(0, value.usedPercent)),
-    windowDurationMins: typeof value.windowDurationMins === 'number'
-      && Number.isFinite(value.windowDurationMins)
-      && value.windowDurationMins >= 0
-      ? value.windowDurationMins
-      : null,
+    windowDurationMins: value.windowDurationMins,
   };
 };
 
@@ -692,13 +691,9 @@ const validResetCredit = (value: unknown): boolean => isRecord(value)
   && RATE_LIMIT_RESET_TYPES.has(value.resetType)
   && typeof value.status === 'string'
   && RATE_LIMIT_RESET_STATUSES.has(value.status)
-  && typeof value.grantedAt === 'number'
-  && Number.isFinite(value.grantedAt)
-  && value.grantedAt > 0
+  && positiveSafeInteger(value.grantedAt)
   && (value.expiresAt === null
-    || (typeof value.expiresAt === 'number'
-      && Number.isFinite(value.expiresAt)
-      && value.expiresAt > 0))
+    || positiveSafeInteger(value.expiresAt))
   && (value.title === null
     || (typeof value.title === 'string' && value.title.length <= 500))
   && (value.description === null
@@ -742,11 +737,9 @@ const explicitRateLimitTransition = (
     || (isRecord(snapshot.individualLimit)
       && typeof snapshot.individualLimit.limit === 'string'
       && typeof snapshot.individualLimit.used === 'string'
-      && typeof snapshot.individualLimit.remainingPercent === 'number'
-      && Number.isFinite(snapshot.individualLimit.remainingPercent)
-      && typeof snapshot.individualLimit.resetsAt === 'number'
-      && Number.isFinite(snapshot.individualLimit.resetsAt));
-  const valid = nullableText(snapshot.limitId)
+      && nonnegativeInt32(snapshot.individualLimit.remainingPercent)
+      && positiveSafeInteger(snapshot.individualLimit.resetsAt));
+  const valid = (snapshot.limitId === null || validIdentifier(snapshot.limitId))
     && nullableText(snapshot.limitName)
     && (snapshot.planType === null
       || (typeof snapshot.planType === 'string'
@@ -766,6 +759,28 @@ const explicitRateLimitTransition = (
       || (secondary?.usedPercent ?? 0) >= 100,
     valid: true,
   };
+};
+
+const sameRateLimitWindow = (left: unknown, right: unknown): boolean => {
+  if (left === null || right === null) return left === right;
+  if (!isRecord(left) || !isRecord(right)) return false;
+  return left.usedPercent === right.usedPercent
+    && left.windowDurationMins === right.windowDurationMins
+    && left.resetsAt === right.resetsAt;
+};
+
+const sameAuthoritativeRateLimitCore = (left: unknown, right: unknown): boolean =>
+  isRecord(left)
+  && isRecord(right)
+  && sameRateLimitWindow(left.primary, right.primary)
+  && sameRateLimitWindow(left.secondary, right.secondary)
+  && left.rateLimitReachedType === right.rateLimitReachedType
+  && left.spendControlReached === right.spendControlReached;
+
+const authoritativeRateLimitId = (snapshot: unknown): string | null => {
+  if (!isRecord(snapshot)) return null;
+  if (snapshot.limitId === null) return 'codex';
+  return validIdentifier(snapshot.limitId) ? snapshot.limitId : null;
 };
 
 const codexErrorType = (value: unknown): string | null => {
@@ -2465,11 +2480,18 @@ export class CodexSubscriptionService {
     if (!authoritativeTransition.valid) {
       this.throwSidecarTrustFailure(generation, 'PROTOCOL_ERROR', probe === undefined);
     }
+    const legacyLimitId = authoritativeRateLimitId(response.rateLimits);
+    if (!legacyLimitId) {
+      this.throwSidecarTrustFailure(generation, 'PROTOCOL_ERROR', probe === undefined);
+    }
     const buckets: CodexRateLimitBucket[] = [];
     const byLimitId = response.rateLimitsByLimitId;
+    let matchingLegacySnapshot: unknown = null;
     if (isRecord(byLimitId)) {
-      Object.entries(byLimitId).forEach(([limitId, value]) => {
+      for (const [limitId, value] of Object.entries(byLimitId)) {
+        const snapshotLimitId = authoritativeRateLimitId(value);
         if (!validIdentifier(limitId)
+          || snapshotLimitId !== limitId
           || !explicitRateLimitTransition({ rateLimits: value }).valid) {
           this.throwSidecarTrustFailure(generation, 'PROTOCOL_ERROR', probe === undefined);
         }
@@ -2478,7 +2500,13 @@ export class CodexSubscriptionService {
           this.throwSidecarTrustFailure(generation, 'PROTOCOL_ERROR', probe === undefined);
         }
         buckets.push(bucket);
-      });
+        if (limitId === legacyLimitId) matchingLegacySnapshot = value;
+      }
+    }
+    if (buckets.length > 0
+      && (matchingLegacySnapshot === null
+        || !sameAuthoritativeRateLimitCore(response.rateLimits, matchingLegacySnapshot))) {
+      this.throwSidecarTrustFailure(generation, 'PROTOCOL_ERROR', probe === undefined);
     }
     if (buckets.length === 0) {
       const fallback = mapRateLimitBucket(response.rateLimits);
@@ -2496,11 +2524,8 @@ export class CodexSubscriptionService {
         this.throwSidecarTrustFailure(generation, 'PROTOCOL_ERROR', probe === undefined);
       }
       const count = response.rateLimitResetCredits.availableCount;
-      if (typeof count === 'number' && Number.isSafeInteger(count) && count >= 0) {
+      if (nonnegativeSafeInteger(count)) {
         resetCreditsAvailable = count;
-      } else if (typeof count === 'string' && /^\d{1,15}$/.test(count)) {
-        const parsed = Number(count);
-        if (Number.isSafeInteger(parsed)) resetCreditsAvailable = parsed;
       } else {
         this.throwSidecarTrustFailure(generation, 'PROTOCOL_ERROR', probe === undefined);
       }

@@ -725,6 +725,82 @@ describe('Codex subscription service', () => {
     expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');
   });
 
+  it('accepts matching legacy and keyed authoritative rate-limit snapshots', async () => {
+    const client = new FakeClient((method, params) => {
+      if (method === 'account/rateLimits/read') {
+        const response = signedInHandler()(method, params) as Record<string, unknown>;
+        return {
+          ...response,
+          rateLimitsByLimitId: { codex: response.rateLimits },
+        };
+      }
+      return signedInHandler()(method, params);
+    });
+    const service = new CodexSubscriptionService({
+      client,
+      openExternal: vi.fn(async () => undefined),
+      settingsPath,
+    });
+
+    await expect(service.getState()).resolves.toMatchObject({
+      rateLimits: { buckets: [{ limitId: 'codex' }] },
+      status: 'ready',
+    });
+    expect(client.invalidateGeneration).not.toHaveBeenCalled();
+  });
+
+  it('rejects conflicting legacy and keyed authoritative rate-limit snapshots', async () => {
+    const client = new FakeClient((method, params) => {
+      if (method === 'account/rateLimits/read') {
+        const response = signedInHandler()(method, params) as Record<string, unknown>;
+        const rateLimits = response.rateLimits as Record<string, unknown>;
+        const primary = rateLimits.primary as Record<string, unknown>;
+        return {
+          ...response,
+          rateLimitsByLimitId: {
+            codex: {
+              ...rateLimits,
+              primary: { ...primary, usedPercent: 99 },
+            },
+          },
+        };
+      }
+      return signedInHandler()(method, params);
+    });
+    const service = new CodexSubscriptionService({
+      client,
+      openExternal: vi.fn(async () => undefined),
+      settingsPath,
+    });
+
+    await expect(service.getState()).resolves.toMatchObject({ status: 'unavailable' });
+    expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');
+  });
+
+  it('rejects a keyed rate-limit map without the legacy snapshot id', async () => {
+    const client = new FakeClient((method, params) => {
+      if (method === 'account/rateLimits/read') {
+        const response = signedInHandler()(method, params) as Record<string, unknown>;
+        const rateLimits = response.rateLimits as Record<string, unknown>;
+        return {
+          ...response,
+          rateLimitsByLimitId: {
+            secondary: { ...rateLimits, limitId: 'secondary' },
+          },
+        };
+      }
+      return signedInHandler()(method, params);
+    });
+    const service = new CodexSubscriptionService({
+      client,
+      openExternal: vi.fn(async () => undefined),
+      settingsPath,
+    });
+
+    await expect(service.getState()).resolves.toMatchObject({ status: 'unavailable' });
+    expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');
+  });
+
   it('rejects a malformed bucket in the authoritative rate-limit map', async () => {
     const client = new FakeClient((method, params) => {
       if (method === 'account/rateLimits/read') {
@@ -746,6 +822,90 @@ describe('Codex subscription service', () => {
     expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');
   });
 
+  it('fails closed before analysis when legacy and mapped rate windows contradict', async () => {
+    let rateReadCount = 0;
+    const client = new FakeClient((method, params) => {
+      if (method === 'account/rateLimits/read') {
+        rateReadCount += 1;
+        const response = signedInHandler(rateReadCount === 1 ? 20 : 100)(
+          method,
+          params,
+        ) as Record<string, unknown>;
+        if (rateReadCount === 1) return response;
+        const legacy = response.rateLimits as Record<string, unknown>;
+        return {
+          ...response,
+          rateLimitsByLimitId: {
+            codex: {
+              ...legacy,
+              primary: {
+                ...(legacy.primary as Record<string, unknown>),
+                usedPercent: 42,
+              },
+            },
+          },
+        };
+      }
+      return signedInHandler()(method, params);
+    });
+    const service = new CodexSubscriptionService({
+      client,
+      openExternal: vi.fn(async () => undefined),
+      settingsPath,
+    });
+
+    const result = await service.complete(analysisRequest());
+
+    expect(result).toMatchObject({ error: { code: 'RESPONSE_INVALID' }, ok: false });
+    expect(client.calls.filter((call) => call.method === 'thread/start')).toHaveLength(0);
+    expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');
+  });
+
+  it('rejects a rate map whose key differs from the snapshot limit id', async () => {
+    const client = new FakeClient((method, params) => {
+      if (method === 'account/rateLimits/read') {
+        const response = signedInHandler()(method, params) as Record<string, unknown>;
+        return {
+          ...response,
+          rateLimitsByLimitId: { secondary: response.rateLimits },
+        };
+      }
+      return signedInHandler()(method, params);
+    });
+    const service = new CodexSubscriptionService({
+      client,
+      openExternal: vi.fn(async () => undefined),
+      settingsPath,
+    });
+
+    await expect(service.getState()).resolves.toMatchObject({ status: 'unavailable' });
+    expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');
+  });
+
+  it('accepts a consistent legacy and mapped rate snapshot', async () => {
+    const client = new FakeClient((method, params) => {
+      if (method === 'account/rateLimits/read') {
+        const response = signedInHandler(42)(method, params) as Record<string, unknown>;
+        return {
+          ...response,
+          rateLimitsByLimitId: { codex: response.rateLimits },
+        };
+      }
+      return signedInHandler()(method, params);
+    });
+    const service = new CodexSubscriptionService({
+      client,
+      openExternal: vi.fn(async () => undefined),
+      settingsPath,
+    });
+
+    await expect(service.getState()).resolves.toMatchObject({
+      rateLimits: { buckets: [{ limitId: 'codex', primary: { usedPercent: 42 } }] },
+      status: 'ready',
+    });
+    expect(client.invalidateGeneration).not.toHaveBeenCalled();
+  });
+
   it('rejects a malformed reset-credit row in the authoritative rate response', async () => {
     const client = new FakeClient((method, params) => {
       if (method === 'account/rateLimits/read') {
@@ -755,6 +915,85 @@ describe('Codex subscription service', () => {
           rateLimitResetCredits: {
             availableCount: 1,
             credits: [{ id: 'missing-required-fields' }],
+          },
+        };
+      }
+      return signedInHandler()(method, params);
+    });
+    const service = new CodexSubscriptionService({
+      client,
+      openExternal: vi.fn(async () => undefined),
+      settingsPath,
+    });
+
+    await expect(service.getState()).resolves.toMatchObject({ status: 'unavailable' });
+    expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');
+  });
+
+  it('rejects a non-integer reset-credit count from the pinned response', async () => {
+    const client = new FakeClient((method, params) => {
+      if (method === 'account/rateLimits/read') {
+        const response = signedInHandler()(method, params) as Record<string, unknown>;
+        return {
+          ...response,
+          rateLimitResetCredits: { availableCount: 2.5, credits: null },
+        };
+      }
+      return signedInHandler()(method, params);
+    });
+    const service = new CodexSubscriptionService({
+      client,
+      openExternal: vi.fn(async () => undefined),
+      settingsPath,
+    });
+
+    await expect(service.getState()).resolves.toMatchObject({ status: 'unavailable' });
+    expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');
+  });
+
+  it('rejects a rate-window percentage outside the pinned int32 range', async () => {
+    const client = new FakeClient((method, params) => {
+      if (method === 'account/rateLimits/read') {
+        const response = signedInHandler()(method, params) as Record<string, unknown>;
+        const limits = response.rateLimits as Record<string, unknown>;
+        return {
+          ...response,
+          rateLimits: {
+            ...limits,
+            primary: {
+              ...(limits.primary as Record<string, unknown>),
+              usedPercent: 2_147_483_648,
+            },
+          },
+        };
+      }
+      return signedInHandler()(method, params);
+    });
+    const service = new CodexSubscriptionService({
+      client,
+      openExternal: vi.fn(async () => undefined),
+      settingsPath,
+    });
+
+    await expect(service.getState()).resolves.toMatchObject({ status: 'unavailable' });
+    expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');
+  });
+
+  it('rejects a spend-control percentage outside the pinned int32 range', async () => {
+    const client = new FakeClient((method, params) => {
+      if (method === 'account/rateLimits/read') {
+        const response = signedInHandler()(method, params) as Record<string, unknown>;
+        const limits = response.rateLimits as Record<string, unknown>;
+        return {
+          ...response,
+          rateLimits: {
+            ...limits,
+            individualLimit: {
+              limit: '100',
+              remainingPercent: 2_147_483_648,
+              resetsAt: 1_787_654_400,
+              used: '0',
+            },
           },
         };
       }
@@ -2791,7 +3030,36 @@ describe('Codex subscription service', () => {
       expect(client.calls.filter((call) => call.method === 'turn/interrupt')).toHaveLength(0);
     });
 
-  it('keeps a turn running on ordinary rate telemetry and refreshes it after success',
+  it('fails closed on fractional rate telemetry from the pinned runtime', async () => {
+    const client = new FakeClient((method, params) => {
+      if (method === 'thread/start') {
+        return appliedThreadStart(params, 'analysis-thread-1');
+      }
+      if (method === 'turn/start') return turnStartResponse('analysis-turn-1');
+      return signedInHandler()(method, params);
+    });
+    const service = new CodexSubscriptionService({
+      client,
+      openExternal: vi.fn(async () => undefined),
+      settingsPath,
+    });
+
+    const invocation = service.complete(analysisRequest());
+    await vi.waitFor(() => {
+      expect(client.calls.filter((call) => call.method === 'turn/start')).toHaveLength(1);
+    });
+    client.emit('account/rateLimits/updated', rateLimitUpdate(42.5));
+
+    await expect(invocation).resolves.toMatchObject({
+      error: { code: 'RESPONSE_INVALID' },
+      ok: false,
+    });
+    expect(client.calls.filter((call) => call.method === 'turn/interrupt')).toHaveLength(1);
+    expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');
+    expect(await service.getState()).toMatchObject({ status: 'unavailable' });
+  });
+
+  it('keeps a turn running on ordinary integer rate telemetry and refreshes after success',
     async () => {
       let rateUsedPercent = 20;
       const client = new FakeClient((method, params) => {
@@ -2811,8 +3079,8 @@ describe('Codex subscription service', () => {
       await vi.waitFor(() => {
         expect(client.calls.filter((call) => call.method === 'turn/start')).toHaveLength(1);
       });
-      rateUsedPercent = 42.5;
-      client.emit('account/rateLimits/updated', rateLimitUpdate(42.5));
+      rateUsedPercent = 42;
+      client.emit('account/rateLimits/updated', rateLimitUpdate(42));
       await flush();
       expect(client.calls.filter((call) => call.method === 'turn/interrupt')).toHaveLength(0);
 
@@ -2830,7 +3098,7 @@ describe('Codex subscription service', () => {
 
       await expect(invocation).resolves.toMatchObject({ ok: true });
       expect((await service.getState()).rateLimits?.buckets[0].primary?.usedPercent)
-        .toBe(42.5);
+        .toBe(42);
       expect(client.calls.filter((call) => call.method === 'turn/interrupt')).toHaveLength(0);
     });
 
