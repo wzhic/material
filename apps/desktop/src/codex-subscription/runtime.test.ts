@@ -51,8 +51,12 @@ const asChildProcess = (child: FakeVersionChild): ChildProcessWithoutNullStreams
   child as unknown as ChildProcessWithoutNullStreams;
 
 afterEach(async () => {
-  await Promise.all(directories.splice(0).map((directory) =>
-    rm(directory, { force: true, recursive: true })));
+  // Preserve creation order so a tree that contains a Windows junction is
+  // removed before the separately tracked junction target. Concurrent removal
+  // can invalidate the target while fs.rm is still walking the containing tree.
+  for (const directory of directories.splice(0)) {
+    await rm(directory, { force: true, recursive: true });
+  }
 });
 
 describe('Codex sidecar runtime', () => {
