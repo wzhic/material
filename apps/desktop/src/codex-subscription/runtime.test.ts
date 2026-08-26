@@ -8,6 +8,7 @@ import {
   rm,
   stat,
   symlink,
+  unlink,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -26,6 +27,7 @@ import {
 } from './runtime';
 
 const directories: string[] = [];
+const symbolicLinks: string[] = [];
 
 const temporaryDirectory = async (): Promise<string> => {
   const directory = await mkdtemp(path.join(tmpdir(), 'material-codex-runtime-test-'));
@@ -51,9 +53,12 @@ const asChildProcess = (child: FakeVersionChild): ChildProcessWithoutNullStreams
   child as unknown as ChildProcessWithoutNullStreams;
 
 afterEach(async () => {
-  // Preserve creation order so a tree that contains a Windows junction is
-  // removed before the separately tracked junction target. Concurrent removal
-  // can invalidate the target while fs.rm is still walking the containing tree.
+  // Windows recursive removal can follow or inspect multiple junctions that
+  // share one target. Remove every reparse point explicitly before either the
+  // containing tree or its separately tracked target is deleted.
+  for (const symbolicLink of symbolicLinks.splice(0).reverse()) {
+    await unlink(symbolicLink);
+  }
   for (const directory of directories.splice(0)) {
     await rm(directory, { force: true, recursive: true });
   }
@@ -166,6 +171,7 @@ describe('Codex sidecar runtime', () => {
       : 'dir';
     const linkedRoot = path.join(base, 'linked-root');
     await symlink(outside, linkedRoot, directoryLinkType);
+    symbolicLinks.push(linkedRoot);
     await expect(prepareCodexHome(path.join(linkedRoot, 'codex-home')))
       .rejects.toMatchObject({ code: 'SECURITY_VIOLATION' });
 
@@ -173,6 +179,7 @@ describe('Codex sidecar runtime', () => {
     await mkdir(realRoot);
     const linkedHome = path.join(realRoot, 'codex-home');
     await symlink(outside, linkedHome, directoryLinkType);
+    symbolicLinks.push(linkedHome);
     await expect(prepareCodexHome(linkedHome))
       .rejects.toMatchObject({ code: 'SECURITY_VIOLATION' });
 
@@ -183,9 +190,13 @@ describe('Codex sidecar runtime', () => {
     if (process.platform === 'win32') {
       // A directory junction exercises the same lstat fail-close path without
       // requiring the elevated privilege needed for file symlinks on Windows.
-      await symlink(outside, path.join(safeHome, 'config.toml'), 'junction');
+      const linkedConfig = path.join(safeHome, 'config.toml');
+      await symlink(outside, linkedConfig, 'junction');
+      symbolicLinks.push(linkedConfig);
     } else {
-      await symlink(outsideConfig, path.join(safeHome, 'config.toml'));
+      const linkedConfig = path.join(safeHome, 'config.toml');
+      await symlink(outsideConfig, linkedConfig);
+      symbolicLinks.push(linkedConfig);
     }
     await expect(prepareCodexHome(safeHome))
       .rejects.toMatchObject({ code: 'SECURITY_VIOLATION' });
