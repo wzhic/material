@@ -211,7 +211,7 @@ export class AnalysisRuntimeService {
       });
       invocationIds.push(result.invocationId);
       if (result.ok) return toolOutput<T>(result);
-      if (result.error.code === 'CANCELLED' || controller.signal.aborted) {
+      if (result.error.code === 'CANCELLED') {
         throw new AnalysisRuntimeError('CANCELLED', '分析已取消');
       }
       if (required) {
@@ -382,7 +382,7 @@ export class AnalysisRuntimeService {
         productSnapshot,
       }, controller.signal, (event) => emit('generating_report', engineStageMessage(event)));
       if (!engineResult.ok) {
-        if (engineResult.error.code === 'CANCELLED' || controller.signal.aborted) {
+        if (engineResult.error.code === 'CANCELLED') {
           throw new AnalysisRuntimeError('CANCELLED', '分析已取消');
         }
         throw new AnalysisRuntimeError('MODEL_FAILED', engineResult.error.message);
@@ -502,7 +502,7 @@ export class AnalysisRuntimeService {
         (event) => emit('generating_report', engineStageMessage(event)),
       );
       if (!engineResult.ok) {
-        if (engineResult.error.code === 'CANCELLED' || controller.signal.aborted) {
+        if (engineResult.error.code === 'CANCELLED') {
           throw new AnalysisRuntimeError('CANCELLED', '重新分析已取消');
         }
         throw new AnalysisRuntimeError('MODEL_FAILED', engineResult.error.message);

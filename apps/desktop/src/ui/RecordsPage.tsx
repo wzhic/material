@@ -42,6 +42,17 @@ const industryLabel = (industry: RecordIndustry): string =>
 const mediaLabel = (media: RecordMediaKind): string =>
   media === 'video' ? '视频' : '图片';
 
+const recordUsageLabel = (record: AnalysisRecord): string => {
+  const usage = record.run.usage;
+  if (!usage || record.run.usageAvailable !== true || usage.available !== true) {
+    return '暂不可用';
+  }
+  return `输入 ${usage.promptTokens} · 缓存命中 ${usage.promptCacheHitTokens} · 输出 ${usage.completionTokens} · 总计 ${usage.totalTokens}`;
+};
+
+const providerRequestedModelLabel = (record: AnalysisRecord): string =>
+  record.run.providerRequestedModelId ?? record.run.modelId;
+
 const sourceStatusLabel = (status: MaterialSourceStatus): string => {
   if (status === 'available') {
     return '可用';
@@ -695,6 +706,32 @@ const RecordDetail = ({
               <div><dt>行业 / 媒体</dt><dd>{industryLabel(record.industry)} · {mediaLabel(record.material.mediaKind)}</dd></div>
               <div><dt>产品快照</dt><dd>{record.productSnapshot?.name ?? '未绑定产品'}</dd></div>
               <div><dt>模型配置</dt><dd>{record.run.modelConfigurationName}</dd></div>
+              <div><dt>模型来源</dt><dd>{record.run.providerId ?? '旧记录未保存'}</dd></div>
+              <div><dt>目录选择</dt><dd>{record.run.modelId}</dd></div>
+              <div><dt>请求模型</dt><dd>{providerRequestedModelLabel(record)}</dd></div>
+              <div>
+                <dt>实际模型</dt>
+                <dd>
+                  {record.run.providerReturnedModelId ?? '暂未返回 / 旧记录未保存'}
+                  {record.run.providerReturnedModelId
+                    && record.run.providerReturnedModelId !== providerRequestedModelLabel(record)
+                    ? '（与请求不同）' : ''}
+                </dd>
+              </div>
+              <div>
+                <dt>推理强度</dt>
+                <dd>{record.run.providerReasoningEffort ?? '不适用 / 旧记录未保存'}</dd>
+              </div>
+              <div><dt>适配器 / 运行时</dt><dd>{record.run.adapterVersion ?? '旧记录未保存'}</dd></div>
+              <div>
+                <dt>配置版本</dt>
+                <dd>
+                  {record.run.modelConfigurationId ?? '旧记录未保存'} · v{
+                    record.run.modelConfigurationVersion ?? '—'
+                  }
+                </dd>
+              </div>
+              <div><dt>Token 用量</dt><dd>{recordUsageLabel(record)}</dd></div>
               <div><dt>确认时间</dt><dd>{formatLocalTime(record.confirmedAt)}</dd></div>
               <div><dt>本地大小</dt><dd>{Math.max(0, record.material.byteSize / 1024 / 1024).toFixed(1)} MB</dd></div>
             </dl>

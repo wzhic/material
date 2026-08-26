@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, shell } from 'electron';
 import path from 'node:path';
 
 import { AnalysisEngine } from './analysis-engine';
@@ -6,6 +6,18 @@ import {
   AnalysisRuntimeService,
   registerAnalysisRuntimeIpc,
 } from './analysis-runtime';
+import { CodexAppServerClient } from './codex-subscription/client';
+import { registerCodexSubscriptionIpc } from './codex-subscription/ipc';
+import { isTrustedMainWindowSender } from './codex-subscription/ipc-trust';
+import { CodexSubscriptionModelRouter } from './codex-subscription/model-router';
+import {
+  buildCodexEnvironment,
+  EXPECTED_CODEX_RUNTIME_VERSION,
+  prepareCodexHome,
+  resolveCodexRuntimePath,
+  verifyCodexRuntimeVersion,
+} from './codex-subscription/runtime';
+import { CodexSubscriptionService } from './codex-subscription/service';
 import { registerMaterialIpc } from './media/ipc';
 import { registerMaterialProtocol } from './media/protocol';
 import { MaterialSessionService } from './media/session';
@@ -17,6 +29,7 @@ import { registerModelIpc } from './model/ipc';
 import {
   createCustomOpenAiCompatibleProvider,
   createDeepSeekProvider,
+  createOpenAiProvider,
 } from './model/provider';
 import { ModelProviderRegistry } from './model/registry';
 import { ModelService } from './model/service';
@@ -49,14 +62,15 @@ if (require('electron-squirrel-startup')) {
 let productRepository: ProductRepository | null = null;
 let recordRepository: RecordRepository | null = null;
 let analysisRuntimeService: AnalysisRuntimeService | null = null;
+let codexSubscriptionService: CodexSubscriptionService | null = null;
+let unregisterCodexSubscriptionIpc: (() => void) | null = null;
+let mainWindow: BrowserWindow | null = null;
 const materialSessionService = new MaterialSessionService();
 const isTrustedSender = (webContentsId: number): boolean =>
-  BrowserWindow.getAllWindows().some(
-    (window) => window.webContents.id === webContentsId,
-  );
+  isTrustedMainWindowSender(mainWindow, webContentsId);
 
 const createWindow = (): void => {
-  const mainWindow = new BrowserWindow({
+  const window = new BrowserWindow({
     backgroundColor: '#f3f6fb',
     height: 900,
     minHeight: 720,
@@ -71,7 +85,11 @@ const createWindow = (): void => {
     },
   });
 
-  mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+  mainWindow = window;
+  window.on('closed', () => {
+    if (mainWindow === window) mainWindow = null;
+  });
+  window.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 };
 
 // This method will be called when Electron has finished
@@ -81,6 +99,7 @@ app.whenReady().then(() => {
   registerMaterialProtocol(materialSessionService);
   registerMaterialIpc(materialSessionService);
   const modelRegistry = new ModelProviderRegistry();
+  modelRegistry.register(createOpenAiProvider());
   modelRegistry.register(createDeepSeekProvider());
   modelRegistry.register(createCustomOpenAiCompatibleProvider());
   const modelVault = new ModelCredentialVault(
@@ -88,6 +107,30 @@ app.whenReady().then(() => {
     new ElectronSafeStorageCipher(),
   );
   const modelService = new ModelService(modelRegistry, modelVault);
+  const codexDataDirectory = path.join(app.getPath('userData'), 'codex-subscription');
+  const createCodexClient = async (): Promise<CodexAppServerClient> => {
+    const command = await resolveCodexRuntimePath({
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    });
+    const codexHome = await prepareCodexHome(
+      path.join(codexDataDirectory, `codex-home-v${EXPECTED_CODEX_RUNTIME_VERSION}`),
+    );
+    const environment = buildCodexEnvironment(codexHome);
+    await verifyCodexRuntimeVersion({ codexHome, command, environment });
+    return new CodexAppServerClient({
+      appVersion: app.getVersion(),
+      codexHome,
+      command,
+      environment,
+    });
+  };
+  codexSubscriptionService = new CodexSubscriptionService({
+    client: null,
+    clientFactory: createCodexClient,
+    openExternal: (url) => shell.openExternal(url),
+    settingsPath: path.join(codexDataDirectory, 'settings.json'),
+  });
   const databasePath = path.join(app.getPath('userData'), 'material-products.sqlite3');
   const backupDirectory = path.join(app.getPath('userData'), 'backups', 'products');
   try {
@@ -162,12 +205,24 @@ app.whenReady().then(() => {
   analysisRuntimeService = new AnalysisRuntimeService(
     toolBroker,
     materialSessionService,
-    new AnalysisEngine(modelService),
+    new AnalysisEngine(new CodexSubscriptionModelRouter(
+      modelService,
+      codexSubscriptionService,
+    )),
     productRepository,
   );
   registerModelIpc(
     modelService,
     isTrustedSender,
+  );
+  unregisterCodexSubscriptionIpc = registerCodexSubscriptionIpc(
+    codexSubscriptionService,
+    isTrustedSender,
+    (channel, payload) => {
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send(channel, payload);
+      }
+    },
   );
   registerAnalysisRuntimeIpc(analysisRuntimeService, isTrustedSender);
   createWindow();
@@ -185,7 +240,7 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
-  if (BrowserWindow.getAllWindows().length === 0) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
     createWindow();
   }
 });
@@ -193,6 +248,10 @@ app.on('activate', () => {
 app.on('before-quit', () => {
   analysisRuntimeService?.cancelAll();
   analysisRuntimeService = null;
+  unregisterCodexSubscriptionIpc?.();
+  unregisterCodexSubscriptionIpc = null;
+  codexSubscriptionService?.stop();
+  codexSubscriptionService = null;
   materialSessionService.clear();
   productRepository?.close();
   productRepository = null;

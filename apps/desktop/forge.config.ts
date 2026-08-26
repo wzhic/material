@@ -1,4 +1,9 @@
-import type { ForgeConfig } from '@electron-forge/shared-types';
+import type {
+  ForgeArch,
+  ForgeConfig,
+  ForgePlatform,
+  ResolvedForgeConfig,
+} from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
@@ -8,9 +13,94 @@ import { WebpackPlugin } from '@electron-forge/plugin-webpack';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import electronChecksums from 'electron/checksums.json';
+import { createRequire } from 'node:module';
+import path from 'node:path';
 
 import { mainConfig } from './webpack.main.config';
 import { rendererConfig } from './webpack.renderer.config';
+
+const forgeRequire = createRequire(__filename);
+
+const codexPackageForTarget = (
+  platform: ForgePlatform,
+  arch: ForgeArch,
+): { packageName: string; triple: string } => {
+  const key = `${platform}:${arch}`;
+  const targets: Record<string, { packageName: string; triple: string }> = {
+    'darwin:arm64': {
+      packageName: '@openai/codex-darwin-arm64',
+      triple: 'aarch64-apple-darwin',
+    },
+    'darwin:x64': {
+      packageName: '@openai/codex-darwin-x64',
+      triple: 'x86_64-apple-darwin',
+    },
+    'linux:arm64': {
+      packageName: '@openai/codex-linux-arm64',
+      triple: 'aarch64-unknown-linux-musl',
+    },
+    'linux:x64': {
+      packageName: '@openai/codex-linux-x64',
+      triple: 'x86_64-unknown-linux-musl',
+    },
+    'win32:arm64': {
+      packageName: '@openai/codex-win32-arm64',
+      triple: 'aarch64-pc-windows-msvc',
+    },
+    'win32:x64': {
+      packageName: '@openai/codex-win32-x64',
+      triple: 'x86_64-pc-windows-msvc',
+    },
+  };
+  const target = targets[key];
+  if (!target) throw new Error(`Unsupported Codex runtime target: ${key}`);
+  return target;
+};
+
+export const codexExtraResources = (
+  platform: ForgePlatform,
+  arch: ForgeArch,
+  resolveModule: (specifier: string) => string = (specifier) =>
+    forgeRequire.resolve(specifier),
+): string[] => {
+  const target = codexPackageForTarget(platform, arch);
+  let packageJsonPath: string;
+  try {
+    packageJsonPath = resolveModule(`${target.packageName}/package.json`);
+  } catch {
+    throw new Error(`Codex runtime package unavailable for target: ${platform}:${arch}`);
+  }
+  const executableName = platform === 'win32' ? 'codex.exe' : 'codex';
+  const executablePath = path.join(
+    path.dirname(packageJsonPath),
+    'vendor',
+    target.triple,
+    'bin',
+    executableName,
+  );
+  const sdkLicense = path.resolve(
+    path.dirname(packageJsonPath),
+    '..',
+    'codex-sdk',
+    'LICENSE',
+  );
+  return [executablePath, sdkLicense];
+};
+
+export const configureCodexResourcesForTarget = async (
+  forgeConfig: ResolvedForgeConfig,
+  platform: ForgePlatform,
+  arch: ForgeArch,
+): Promise<void> => {
+  const existing = forgeConfig.packagerConfig.extraResource;
+  const existingResources = Array.isArray(existing)
+    ? existing
+    : existing ? [existing] : [];
+  forgeConfig.packagerConfig.extraResource = [
+    ...existingResources,
+    ...codexExtraResources(platform, arch),
+  ];
+};
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -22,6 +112,9 @@ const config: ForgeConfig = {
       cacheRoot: `${__dirname}/.electron-cache`,
       checksums: electronChecksums,
     },
+  },
+  hooks: {
+    prePackage: configureCodexResourcesForTarget,
   },
   rebuildConfig: {},
   makers: [

@@ -64,6 +64,12 @@ export const AnalysisReportPreviewPage = ({
   const [feedback, setFeedback] = useState('');
   const [feedbackError, setFeedbackError] = useState('');
   const { report } = data;
+  const providerRequestedModelId = report.model.providerRequestedModelId
+    ?? report.model.modelId;
+  const returnedModelId = report.model.providerReturnedModelId;
+  const modelUsage = report.model.usage.available
+    ? `Token：输入 ${report.model.usage.promptTokens} · 缓存命中 ${report.model.usage.promptCacheHitTokens} · 输出 ${report.model.usage.completionTokens} · 总计 ${report.model.usage.totalTokens}`
+    : 'Token 用量暂不可用';
   const scoreDimensions = report.score.dimensions;
   const maximumTime = Math.max(
     data.media.durationMs,
@@ -204,7 +210,16 @@ export const AnalysisReportPreviewPage = ({
         <div className="report-model-audit">
           <span>本次模型</span>
           <strong>{report.model.configurationDisplayName}</strong>
-          <small>{report.model.providerId} · {report.model.modelId}</small>
+          <small>来源 {report.model.providerId} · 目录选择 {report.model.modelId}</small>
+          <small>请求模型 {providerRequestedModelId}</small>
+          <small>
+            实际 {returnedModelId ?? '暂未返回'}
+            {returnedModelId && returnedModelId !== providerRequestedModelId
+              ? '（与请求不同）' : ''}
+          </small>
+          <small>推理强度 {report.model.providerReasoningEffort ?? '不适用'}</small>
+          <small>运行时 {report.model.adapterVersion} · 配置 v{report.model.configurationVersion}</small>
+          <small>{modelUsage}</small>
           <small>规则 {report.ruleSnapshot.package.packageVersion}</small>
         </div>
       </section>

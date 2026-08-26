@@ -8,13 +8,16 @@ import React, {
 } from 'react';
 import { Button, Tag } from 'tdesign-react';
 
+import { CodexSubscriptionApi } from '../codex-subscription/types';
 import {
   ModelConfigurationSummary,
   ModelProviderInfo,
   ModelSettingsSnapshot,
 } from '../model/types';
+import { CodexSubscriptionPanel } from './CodexSubscriptionPanel';
 
 interface ModelSettingsPageProps {
+  codexSubscriptionApi?: CodexSubscriptionApi;
   onChanged: () => void;
 }
 
@@ -38,7 +41,11 @@ const emptyForm = (providers: ModelProviderInfo[] = []): ConfigurationForm => ({
   providerId: providers[0]?.id ?? '',
 });
 
-const statusLabel = (configuration: ModelConfigurationSummary): string => {
+const statusLabel = (
+  configuration: ModelConfigurationSummary,
+  providerAvailable: boolean,
+): string => {
+  if (!providerAvailable) return 'Provider 不可用';
   if (configuration.connectionStatus === 'ready') return '连接正常';
   if (configuration.connectionStatus === 'error') return '验证失败';
   return '待验证';
@@ -53,6 +60,7 @@ const focusableSelector = [
 ].join(',');
 
 export const ModelSettingsPage = ({
+  codexSubscriptionApi,
   onChanged,
 }: ModelSettingsPageProps): React.JSX.Element => {
   const [snapshot, setSnapshot] = useState<ModelSettingsSnapshot | null>(null);
@@ -187,7 +195,7 @@ export const ModelSettingsPage = ({
     setError('');
     setMessage('');
     const result = await window.materialApi.models.saveConfiguration({
-      apiKey: form.apiKey.trim() || undefined,
+      apiKey: form.apiKey || undefined,
       baseUrl: selectedProvider.customBaseUrl ? form.baseUrl.trim() : undefined,
       displayName: form.displayName.trim(),
       expectedWriteVersion: form.expectedWriteVersion ?? undefined,
@@ -210,7 +218,7 @@ export const ModelSettingsPage = ({
     if (!refreshResult.ok) {
       setError(
         `配置已安全保存，但 /models 验证失败：${refreshResult.error.message}。`
-        + '可编辑配置后重试，或使用“测试并刷新”。',
+        + '可编辑配置后重试，或使用“刷新模型”。',
       );
     } else if (loaded) {
       setMessage(
@@ -256,6 +264,46 @@ export const ModelSettingsPage = ({
     if (loaded) setMessage('模型配置和对应凭据已删除');
   };
 
+  const handleTestModel = async (
+    configuration: ModelConfigurationSummary,
+  ): Promise<void> => {
+    const provider = snapshot?.providers.find(
+      (item) => item.id === configuration.providerId,
+    );
+    if (
+      !provider
+      || configuration.connectionStatus !== 'ready'
+      || !configuration.selectedModelId
+    ) {
+      return;
+    }
+    const confirmed = window.confirm(
+      `将使用配置“${configuration.displayName}”和模型“${configuration.selectedModelId}”`
+      + `向 ${provider.capabilities.dataDestination} 发送固定测试文本（仅要求模型回复 OK），`
+      + '不会发送用户素材，但供应商可能收取少量调用费用。是否继续？',
+    );
+    if (!confirmed) return;
+    setBusyAction(`test:${configuration.id}`);
+    setError('');
+    setMessage('');
+    const result = await window.materialApi.models.testModel(
+      configuration.id,
+      configuration.selectedModelId,
+    );
+    setBusyAction(null);
+    if (!result.ok) {
+      setError(`测试调用失败：${result.error.message}`);
+      return;
+    }
+    const returnedModel = result.data.returnedModelId === result.data.requestedModelId
+      ? ''
+      : `；供应商报告实际模型 ${result.data.returnedModelId}，请核对是否为别名或版本快照`;
+    setMessage(
+      `测试调用成功：${configuration.providerName} / 请求模型 `
+      + `${result.data.requestedModelId}${returnedModel}；耗时 ${result.data.durationMs} 毫秒`,
+    );
+  };
+
   const handleDefaultModel = async (
     configuration: ModelConfigurationSummary,
     selectedModelId: string,
@@ -293,44 +341,57 @@ export const ModelSettingsPage = ({
     <main className="page-shell model-settings-page">
       <header className="page-header model-settings-header">
         <div>
-          <span className="eyebrow">BYOK · 用户自有 Key</span>
+          <span className="eyebrow">模型接入 · 订阅与 API Key</span>
           <h1>模型管理</h1>
-          <p>添加并管理模型配置；每次分析仍由你明确选择，不会静默切换。</p>
-        </div>
-        <div className="model-settings-header-actions">
-          <Tag
-            theme={secureStorageReady ? 'success' : 'danger'}
-            variant="light"
-          >
-            {snapshot?.secureStorage.message ?? '正在检查系统安全存储'}
-          </Tag>
-          <Button
-            disabled={loading || !snapshot?.providers.length || anyActionBusy}
-            onClick={openAddDialog}
-            theme="primary"
-          >
-            ＋ 添加模型
-          </Button>
+          <p>分别管理 Codex 订阅与 API Key 模型；两种额度和凭据互不替代。</p>
         </div>
       </header>
 
       <div className="model-validation-boundary">
-        <strong>验证边界</strong>
+        <strong>分析与数据边界</strong>
         <span>
-          保存和“测试并刷新”只请求供应商的 /models；不会自动发起完成请求、生成分析或切换模型。
+          Codex 登录使用 ChatGPT 订阅额度或 credits；API Key 使用对应平台账号计费。
+          每次分析都由你显式选择，失败后不会自动切换或回退。
+          V1 只向所选模型发送本地提取的结构化文本证据，不发送原始视频、图片或音频。
         </span>
       </div>
 
-      {error ? <div className="settings-message is-error" role="alert">{error}</div> : null}
-      {message ? <div className="settings-message is-success" role="status">{message}</div> : null}
+      {error ? (
+        <div aria-live="assertive" className="settings-message is-error" role="alert">
+          {error}
+        </div>
+      ) : null}
+      {message ? (
+        <div aria-live="polite" className="settings-message is-success" role="status">
+          {message}
+        </div>
+      ) : null}
 
-      <section className="model-config-list" aria-labelledby="saved-models-heading">
+      <CodexSubscriptionPanel api={codexSubscriptionApi} />
+
+      <section className="model-config-list" aria-labelledby="api-key-models-heading">
         <div className="settings-section-heading">
           <div>
-            <h2 id="saved-models-heading">已保存模型</h2>
-            <p>页面只显示配置摘要，API Key 不会从安全存储回传。</p>
+            <h2 id="api-key-models-heading">API Key 模型</h2>
+            <p>按 API 或第三方账号规则计费；页面不会从安全存储回传 Key。</p>
           </div>
-          <Tag variant="light">{snapshot?.configurations.length ?? 0} 个配置</Tag>
+          <div className="settings-section-heading-actions">
+            <Tag
+              theme={secureStorageReady ? 'success' : 'danger'}
+              variant="light"
+            >
+              {snapshot?.secureStorage.message ?? '正在检查系统安全存储'}
+            </Tag>
+            <Tag variant="light">{snapshot?.configurations.length ?? 0} 个配置</Tag>
+            <Button
+              disabled={loading || !snapshot?.providers.length || anyActionBusy}
+              onClick={openAddDialog}
+              size="small"
+              theme="primary"
+            >
+              ＋ 添加 API Key 模型
+            </Button>
+          </div>
         </div>
 
         {loading && !snapshot ? (
@@ -347,7 +408,7 @@ export const ModelSettingsPage = ({
           </div>
         ) : snapshot.configurations.length === 0 ? (
           <div className="model-settings-empty">
-            <strong>还没有模型配置</strong>
+            <strong>还没有 API Key 模型配置</strong>
             <span>添加用户自有 API Key，通过 /models 验证后即可用于分析。</span>
             <Button
               disabled={!snapshot.providers.length}
@@ -355,7 +416,7 @@ export const ModelSettingsPage = ({
               size="small"
               theme="primary"
             >
-              添加第一个模型
+              添加第一个 API Key 模型
             </Button>
           </div>
         ) : (
@@ -377,14 +438,16 @@ export const ModelSettingsPage = ({
                       <span>{configuration.providerName}</span>
                     </div>
                     <Tag
-                      theme={configuration.connectionStatus === 'ready'
-                        ? 'success'
-                        : configuration.connectionStatus === 'error'
-                          ? 'danger'
-                          : 'warning'}
+                      theme={!providerAvailable
+                        ? 'danger'
+                        : configuration.connectionStatus === 'ready'
+                          ? 'success'
+                          : configuration.connectionStatus === 'error'
+                            ? 'danger'
+                            : 'warning'}
                       variant="light"
                     >
-                      {statusLabel(configuration)}
+                      {statusLabel(configuration, providerAvailable)}
                     </Tag>
                   </div>
                   <div className="model-config-meta">
@@ -408,6 +471,7 @@ export const ModelSettingsPage = ({
                     <select
                       disabled={
                         configuration.availableModels.length === 0
+                        || !providerAvailable
                         || configuration.connectionStatus !== 'ready'
                         || anyActionBusy
                       }
@@ -431,13 +495,28 @@ export const ModelSettingsPage = ({
                   </label>
                   <div className="model-config-actions">
                     <Button
-                      disabled={anyActionBusy && busyAction !== `refresh:${configuration.id}`}
+                      disabled={!providerAvailable || !secureStorageReady || anyActionBusy}
                       loading={busyAction === `refresh:${configuration.id}`}
                       onClick={() => void handleRefresh(configuration.id)}
                       size="small"
                       variant="outline"
                     >
-                      测试并刷新
+                      刷新模型
+                    </Button>
+                    <Button
+                      disabled={
+                        !providerAvailable
+                        || !secureStorageReady
+                        || configuration.connectionStatus !== 'ready'
+                        || !configuration.selectedModelId
+                        || anyActionBusy
+                      }
+                      loading={busyAction === `test:${configuration.id}`}
+                      onClick={() => void handleTestModel(configuration)}
+                      size="small"
+                      variant="outline"
+                    >
+                      测试调用
                     </Button>
                     <Button
                       disabled={!providerAvailable || anyActionBusy}
@@ -478,8 +557,10 @@ export const ModelSettingsPage = ({
           >
             <div className="model-dialog-header">
               <div>
-                <h2 id="model-dialog-title">{form.id ? '编辑模型' : '添加模型'}</h2>
-                <p id="model-dialog-description">仅支持当前列出的 OpenAI 兼容接入方式。</p>
+                <h2 id="model-dialog-title">
+                  {form.id ? '编辑 API Key 模型' : '添加 API Key 模型'}
+                </h2>
+                <p id="model-dialog-description">支持当前列出的 OpenAI 及兼容接入方式。</p>
               </div>
               <button
                 aria-label="关闭模型配置弹窗"
@@ -576,7 +657,7 @@ export const ModelSettingsPage = ({
                       autoComplete="new-password"
                       disabled={busyAction === 'save'}
                       id="model-api-key"
-                      maxLength={4_096}
+                      maxLength={512}
                       onChange={(event) => setForm((current) => ({
                         ...current,
                         apiKey: event.target.value,
@@ -626,7 +707,8 @@ export const ModelSettingsPage = ({
               <div className="model-form-notice">
                 <strong>保存与调用边界</strong>
                 <span>
-                  保存后只请求 /models 验证连接，不会调用 /chat/completions 或生成分析。
+                  保存后只请求 /models 验证连接，不会发起模型生成或产生测试调用费用。
+                  只有之后明确点击“测试调用”并再次确认，才会发送固定测试文本。
                   {selectedProvider
                     ? ` 后续明确运行分析时，文本与结构化证据会发送至 ${selectedProvider.capabilities.dataDestination}；不会直接上传原始视频或图片。`
                     : ''}

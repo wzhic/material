@@ -123,6 +123,76 @@ export const validateConfirmedRecord = (input: ConfirmedRecordInput): void => {
   requireText(input.run.modelConfigurationName, '模型配置显示名');
   requireText(input.run.modelId, '模型标识');
   requireText(input.run.capabilityVersion, '能力版本');
+  if (input.run.adapterVersion !== undefined) {
+    requireText(input.run.adapterVersion, '模型适配器版本');
+  }
+  if (input.run.modelConfigurationId !== undefined) {
+    requireText(input.run.modelConfigurationId, '模型配置标识');
+  }
+  if (input.run.providerId !== undefined) {
+    requireText(input.run.providerId, '模型提供方标识');
+  }
+  if (input.run.providerRequestedModelId !== undefined
+    && input.run.providerRequestedModelId !== null) {
+    requireText(input.run.providerRequestedModelId, '提供方请求模型标识');
+  }
+  if (input.run.providerReturnedModelId !== undefined
+    && input.run.providerReturnedModelId !== null) {
+    requireText(input.run.providerReturnedModelId, '实际返回模型标识');
+  }
+  if (input.run.providerReasoningEffort !== undefined
+    && input.run.providerReasoningEffort !== null) {
+    requireText(input.run.providerReasoningEffort, '提供方推理强度');
+  }
+  if (input.run.modelConfigurationVersion !== undefined) {
+    validateFiniteRange(
+      input.run.modelConfigurationVersion,
+      0,
+      Number.MAX_SAFE_INTEGER,
+      '模型配置版本',
+    );
+  }
+  if (input.run.usageAvailable !== undefined
+    && typeof input.run.usageAvailable !== 'boolean') {
+    throw new RecordValidationError('模型用量可用状态格式不正确');
+  }
+  if (input.run.usageAvailable === true
+    && (!input.run.usage || input.run.usage.available !== true)) {
+    throw new RecordValidationError('模型用量可用状态与数据不一致');
+  }
+  if (input.run.usageAvailable === undefined && input.run.usage !== undefined) {
+    throw new RecordValidationError('模型用量缺少可用状态');
+  }
+  if (input.run.usageAvailable === false && input.run.usage !== undefined) {
+    throw new RecordValidationError('未知模型用量不得伪造计数');
+  }
+  if (input.run.usage !== undefined) {
+    if (typeof input.run.usage.available !== 'boolean') {
+      throw new RecordValidationError('模型用量可用状态格式不正确');
+    }
+    [
+      input.run.usage.completionTokens,
+      input.run.usage.promptCacheHitTokens,
+      input.run.usage.promptCacheMissTokens,
+      input.run.usage.promptTokens,
+      input.run.usage.totalTokens,
+    ].forEach((value) => validateFiniteRange(
+      value,
+      0,
+      Number.MAX_SAFE_INTEGER,
+      '模型用量',
+    ));
+    if (input.run.usageAvailable !== undefined
+      && input.run.usageAvailable !== input.run.usage.available) {
+      throw new RecordValidationError('模型用量可用状态不一致');
+    }
+    if (input.run.usage.promptCacheHitTokens
+        + input.run.usage.promptCacheMissTokens !== input.run.usage.promptTokens
+      || input.run.usage.promptTokens
+        + input.run.usage.completionTokens !== input.run.usage.totalTokens) {
+      throw new RecordValidationError('模型用量计数不一致');
+    }
+  }
   if (Number.isNaN(new Date(input.run.completedAt).getTime())) {
     throw new RecordValidationError('分析完成时间格式不正确');
   }

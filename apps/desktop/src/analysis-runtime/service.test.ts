@@ -240,6 +240,79 @@ describe('analysis runtime service', () => {
     expect(tools.release).toHaveBeenCalledTimes(8);
   });
 
+  it('preserves engine success when cancellation arrives before the result continuation',
+    async () => {
+      const tools = {
+        invoke: vi.fn(async ({ capabilityId }: { capabilityId: string }) =>
+          success(capabilityId, toolOutputs[capabilityId])),
+        release: vi.fn(async () => undefined),
+      };
+      let service: AnalysisRuntimeService | null = null;
+      const engine = {
+        run: vi.fn(async (): Promise<AnalysisRunResult> => {
+          service?.cancel(input.clientRunId);
+          return {
+            events: [],
+            modelAudit: {} as never,
+            ok: true,
+            report,
+            runId: 'engine-success-before-cancel',
+          };
+        }),
+      };
+      service = new AnalysisRuntimeService(
+        tools,
+        { inspect: vi.fn(async () => materialSession) },
+        engine,
+        { snapshot: vi.fn(() => snapshot) },
+      );
+
+      const result = await service.run(input);
+
+      expect(result).toMatchObject({ ok: true });
+      expect(engine.run).toHaveBeenCalledTimes(1);
+    });
+
+  it('preserves engine non-cancel failure when cancellation arrives before continuation',
+    async () => {
+      const tools = {
+        invoke: vi.fn(async ({ capabilityId }: { capabilityId: string }) =>
+          success(capabilityId, toolOutputs[capabilityId])),
+        release: vi.fn(async () => undefined),
+      };
+      let service: AnalysisRuntimeService | null = null;
+      const engine = {
+        run: vi.fn(async (): Promise<AnalysisRunResult> => {
+          service?.cancel(input.clientRunId);
+          return {
+            error: {
+              code: 'MODEL_FAILED',
+              message: '模型调用失败（RATE_LIMITED）',
+              modelErrorCode: 'RATE_LIMITED',
+            },
+            events: [],
+            modelAudit: {} as never,
+            ok: false,
+            runId: 'engine-failure-before-cancel',
+          };
+        }),
+      };
+      service = new AnalysisRuntimeService(
+        tools,
+        { inspect: vi.fn(async () => materialSession) },
+        engine,
+        { snapshot: vi.fn(() => snapshot) },
+      );
+
+      const result = await service.run(input);
+
+      expect(result).toMatchObject({
+        error: { code: 'MODEL_FAILED', message: '模型调用失败（RATE_LIMITED）' },
+        ok: false,
+      });
+      expect(engine.run).toHaveBeenCalledTimes(1);
+    });
+
   it('reuses normalized evidence and the original model for explicit report refinement', async () => {
     const tools = {
       invoke: vi.fn(async ({ capabilityId }: { capabilityId: string }) =>
@@ -335,6 +408,35 @@ describe('analysis runtime service', () => {
     expect(engine.run).not.toHaveBeenCalled();
     expect(tools.release).toHaveBeenCalledTimes(4);
   });
+
+  it('preserves a required tool failure when cancellation arrives before continuation',
+    async () => {
+      let service: AnalysisRuntimeService | null = null;
+      const tools = {
+        invoke: vi.fn(async ({ capabilityId }: { capabilityId: string }) => {
+          expect(service?.cancel(input.clientRunId)).toBe(true);
+          return failure(capabilityId, 'EXECUTION_FAILED');
+        }),
+        release: vi.fn(async () => undefined),
+      };
+      const engine = { run: vi.fn() };
+      service = new AnalysisRuntimeService(
+        tools,
+        { inspect: vi.fn(async () => materialSession) },
+        engine,
+        { snapshot: vi.fn(() => snapshot) },
+      );
+
+      const result = await service.run(input);
+
+      expect(result).toMatchObject({
+        error: { code: 'REQUIRED_TOOL_FAILED' },
+        ok: false,
+      });
+      expect(engine.run).not.toHaveBeenCalled();
+      expect(tools.invoke).toHaveBeenCalledTimes(1);
+      expect(tools.release).toHaveBeenCalledTimes(1);
+    });
 
   it('cancels the active tool request without retrying', async () => {
     const tools = {

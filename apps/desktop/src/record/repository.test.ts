@@ -31,7 +31,58 @@ describe('RecordRepository', () => {
 
     expect(readBack.report.summary).toContain('卖点证据');
     expect(readBack.report.score.total).toBe(82);
+    expect(readBack.run).toMatchObject({
+      adapterVersion: 'codex-app-server@0.149.1',
+      modelConfigurationId: 'codex-subscription',
+      modelConfigurationVersion: 1,
+      providerId: 'codex-subscription',
+      providerReasoningEffort: 'medium',
+      providerRequestedModelId: 'provider-model-slug',
+      providerReturnedModelId: 'provider-model-slug',
+      usage: { available: true, totalTokens: 300 },
+      usageAvailable: true,
+    });
     expect(repository.list().items).toHaveLength(1);
+  });
+
+  it('continues to read records written before invocation audit fields existed', () => {
+    const legacy = confirmedInput('旧版模型快照.mp4');
+    delete legacy.run.adapterVersion;
+    delete legacy.run.modelConfigurationId;
+    delete legacy.run.modelConfigurationVersion;
+    delete legacy.run.providerId;
+    delete legacy.run.providerReasoningEffort;
+    delete legacy.run.providerRequestedModelId;
+    delete legacy.run.providerReturnedModelId;
+    delete legacy.run.usage;
+    delete legacy.run.usageAvailable;
+
+    const saved = repository.confirmAndSave(legacy);
+    const readBack = repository.get(saved.id);
+
+    expect(readBack.run.modelId).toBe('configured-model');
+    expect(readBack.run.providerId).toBeUndefined();
+    expect(readBack.run.usage).toBeUndefined();
+  });
+
+  it('rejects a modern usage snapshot that claims availability without counters', () => {
+    const malformed = confirmedInput();
+    malformed.run.usageAvailable = true;
+    delete malformed.run.usage;
+
+    expect(() => repository.confirmAndSave(malformed)).toThrow(RecordValidationError);
+  });
+
+  it('rejects inconsistent or zero-like counters attached to unavailable usage', () => {
+    const inconsistent = confirmedInput();
+    if (!inconsistent.run.usage) throw new Error('usage fixture missing');
+    inconsistent.run.usage.totalTokens += 1;
+    expect(() => repository.confirmAndSave(inconsistent)).toThrow(RecordValidationError);
+
+    const unavailable = confirmedInput();
+    unavailable.run.usageAvailable = false;
+    if (unavailable.run.usage) unavailable.run.usage.available = false;
+    expect(() => repository.confirmAndSave(unavailable)).toThrow(RecordValidationError);
   });
 
   it('returns the same record when one report preview is confirmed twice', () => {

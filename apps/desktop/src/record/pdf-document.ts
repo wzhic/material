@@ -46,6 +46,25 @@ const industryLabel = (record: AnalysisRecord): string =>
 const mediaLabel = (record: AnalysisRecord): string =>
   record.material.mediaKind === 'video' ? '视频' : '图片';
 
+const usageLabel = (record: AnalysisRecord): string => {
+  const usage = record.run.usage;
+  if (!usage || record.run.usageAvailable !== true || usage.available !== true) {
+    return '用量暂不可用';
+  }
+  return `输入 ${usage.promptTokens} · 缓存命中 ${usage.promptCacheHitTokens} · 输出 ${usage.completionTokens} · 总计 ${usage.totalTokens}`;
+};
+
+const providerRequestedModelLabel = (record: AnalysisRecord): string =>
+  record.run.providerRequestedModelId ?? record.run.modelId;
+
+const providerReturnedModelLabel = (record: AnalysisRecord): string => {
+  const returned = record.run.providerReturnedModelId;
+  if (!returned) return '暂未返回 / 旧记录未保存';
+  return returned === providerRequestedModelLabel(record)
+    ? returned
+    : `${returned}（与请求不同）`;
+};
+
 export const buildRecordPdfHtml = (record: AnalysisRecord): string => {
   const score = record.report.score.total === null ? '未评分' : `${record.report.score.total} / 100`;
   const dimensions = record.report.score.dimensions.map((dimension) => `
@@ -89,6 +108,9 @@ export const buildRecordPdfHtml = (record: AnalysisRecord): string => {
     .eyebrow { color: #0052d9; font-weight: 700; letter-spacing: .08em; }
     .meta { display: flex; flex-wrap: wrap; gap: 6px 18px; color: #5f6b7a; }
     .summary { margin-top: 14px; padding: 14px 16px; border-radius: 8px; background: #f3f6fb; font-size: 13px; }
+    .model-audit { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 16px; padding: 12px; border: 1px solid #d7dce5; border-radius: 7px; }
+    .model-audit div { display: grid; gap: 2px; }
+    .model-audit small { color: #66758c; }
     .overview { display: grid; grid-template-columns: 120px 1fr; gap: 14px; align-items: stretch; }
     .total-score { display: grid; place-items: center; padding: 14px; border-radius: 8px; color: #fff; background: #0052d9; text-align: center; }
     .total-score strong { display: block; font-size: 22px; }
@@ -119,6 +141,21 @@ export const buildRecordPdfHtml = (record: AnalysisRecord): string => {
   </header>
 
   <div class="summary">${escapeHtml(record.report.summary)}</div>
+
+  <section>
+    <h2>模型调用来源</h2>
+    <div class="model-audit">
+      <div><small>配置</small><strong>${escapeHtml(record.run.modelConfigurationName)}</strong></div>
+      <div><small>提供方</small><strong>${escapeHtml(record.run.providerId ?? '旧记录未保存')}</strong></div>
+      <div><small>目录选择</small><strong>${escapeHtml(record.run.modelId)}</strong></div>
+      <div><small>请求模型</small><strong>${escapeHtml(providerRequestedModelLabel(record))}</strong></div>
+      <div><small>实际模型</small><strong>${escapeHtml(providerReturnedModelLabel(record))}</strong></div>
+      <div><small>推理强度</small><strong>${escapeHtml(record.run.providerReasoningEffort ?? '不适用 / 旧记录未保存')}</strong></div>
+      <div><small>适配器 / 运行时</small><strong>${escapeHtml(record.run.adapterVersion ?? '旧记录未保存')}</strong></div>
+      <div><small>配置版本</small><strong>${escapeHtml(record.run.modelConfigurationId ?? '旧记录未保存')} · v${escapeHtml(record.run.modelConfigurationVersion ?? '—')}</strong></div>
+      <div><small>Token 用量</small><strong>${escapeHtml(usageLabel(record))}</strong></div>
+    </div>
+  </section>
 
   <section>
     <h2>素材评分</h2>
