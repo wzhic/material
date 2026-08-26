@@ -17,11 +17,9 @@ const commonArgs = [
 
 const run = (args, stdio) => spawnSync(process.execPath, args, {
   cwd: packageRoot,
+  maxBuffer: 16 * 1024 * 1024,
   stdio,
 });
-
-const fullSuite = run(commonArgs, 'inherit');
-if (fullSuite.status === 0) process.exit(0);
 
 const findTests = (directory) => readdirSync(directory, { withFileTypes: true })
   .flatMap((entry) => {
@@ -34,22 +32,71 @@ const findTests = (directory) => readdirSync(directory, { withFileTypes: true })
   });
 
 const testFiles = findTests(sourceRoot).sort();
-for (const [index, testFile] of testFiles.entries()) {
-  const isolated = run([
-    vitestCli,
-    'run',
-    testFile,
-    '--reporter=verbose',
-    '--no-file-parallelism',
-  ], 'ignore');
-  if (isolated.status !== 0) {
-    const diagnosticExitCode = 10 + index;
-    console.error(`[vitest-diagnostic] exit=${diagnosticExitCode} file=${testFile}`);
-    process.exit(diagnosticExitCode);
-  }
+const fullSuite = run(commonArgs, 'pipe');
+if (fullSuite.status === 0) {
+  process.stdout.write(fullSuite.stdout ?? Buffer.alloc(0));
+  process.stderr.write(fullSuite.stderr ?? Buffer.alloc(0));
+  process.exit(0);
 }
 
-// The full suite failed while every file passed alone, which proves a
-// cross-file interaction without allowing the validation to turn green.
-console.error('[vitest-diagnostic] exit=90 cross-file-interaction');
-process.exit(90);
+let diagnosticRuns = 0;
+const diagnosticBudget = 24;
+const fails = (files) => {
+  if (diagnosticRuns >= diagnosticBudget) return false;
+  diagnosticRuns += 1;
+  return run([
+    vitestCli,
+    'run',
+    ...files,
+    '--reporter=dot',
+    '--no-file-parallelism',
+  ], 'ignore').status !== 0;
+};
+
+const partition = (items, count) => {
+  const chunks = [];
+  for (let index = 0; index < count; index += 1) {
+    const start = Math.floor((index * items.length) / count);
+    const end = Math.floor(((index + 1) * items.length) / count);
+    if (start < end) chunks.push(items.slice(start, end));
+  }
+  return chunks;
+};
+
+let minimal = [...testFiles];
+let granularity = 2;
+while (minimal.length >= 2 && diagnosticRuns < diagnosticBudget) {
+  const chunks = partition(minimal, granularity);
+  let reduced = false;
+
+  for (const chunk of chunks) {
+    if (fails(chunk)) {
+      minimal = chunk;
+      granularity = 2;
+      reduced = true;
+      break;
+    }
+  }
+  if (reduced) continue;
+
+  for (const chunk of chunks) {
+    const excluded = new Set(chunk);
+    const complement = minimal.filter((file) => !excluded.has(file));
+    if (complement.length > 0 && fails(complement)) {
+      minimal = complement;
+      granularity = Math.max(2, granularity - 1);
+      reduced = true;
+      break;
+    }
+  }
+  if (reduced) continue;
+
+  if (granularity >= minimal.length) break;
+  granularity = Math.min(minimal.length, granularity * 2);
+}
+
+// The controlled runner records byte count and SHA-256, not raw stderr. A
+// deterministic list lets maintainers recover the subset from the known test
+// inventory without exposing arbitrary test output or turning the gate green.
+process.stderr.write(`[vitest-minimal-subset runs=${diagnosticRuns}]\n${minimal.join('\n')}\n`);
+process.exit(91);
