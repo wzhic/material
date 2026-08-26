@@ -260,15 +260,24 @@ export const prepareCodexHome = async (requestedPath: string): Promise<string> =
       await configHandle.writeFile(CODEX_APP_SERVER_CONFIG, { encoding: 'utf8' });
       await configHandle.chmod(0o600);
     } catch (error) {
-      if (!isMissingPathError(error)
-        && (!isRecordWithCode(error) || error.code !== 'EEXIST')) throw error;
       if (isMissingPathError(error)) throw error;
-      const configMetadata = await lstat(configPath);
+      let configMetadata;
+      try {
+        configMetadata = await lstat(configPath);
+      } catch (metadataError) {
+        if (isMissingPathError(metadataError)) throw error;
+        throw metadataError;
+      }
       if (configMetadata.isSymbolicLink()
         || !configMetadata.isFile()
         || configMetadata.size > 16 * 1024) {
         throw new CodexSubscriptionError('SECURITY_VIOLATION');
       }
+      // Windows may report EPERM/EISDIR instead of EEXIST for a junction or
+      // directory planted at config.toml. The metadata check above must run
+      // before preserving genuine I/O failures so every reparse/non-file
+      // occupant still fails closed without weakening ordinary error handling.
+      if (!isRecordWithCode(error) || error.code !== 'EEXIST') throw error;
       const existingHandle = await open(configPath, 'r');
       try {
         const existingMetadata = await existingHandle.stat();
