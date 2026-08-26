@@ -601,17 +601,20 @@ const unixSecondsToIso = (value: unknown): string | null => {
 
 const mapRateLimitWindow = (value: unknown): CodexRateLimitWindow | null => {
   if (!isRecord(value)
-    || !Object.prototype.hasOwnProperty.call(value, 'windowDurationMins')
-    || !Object.prototype.hasOwnProperty.call(value, 'resetsAt')
+    || !hasOwn(value, 'usedPercent')
     || !nonnegativeInt32(value.usedPercent)
-    || (value.windowDurationMins !== null
+    || (hasOwn(value, 'windowDurationMins')
+      && value.windowDurationMins !== null
       && !nonnegativeSafeInteger(value.windowDurationMins))
-    || (value.resetsAt !== null
+    || (hasOwn(value, 'resetsAt')
+      && value.resetsAt !== null
       && !positiveSafeInteger(value.resetsAt))) return null;
   return {
-    resetsAt: unixSecondsToIso(value.resetsAt),
+    resetsAt: unixSecondsToIso(hasOwn(value, 'resetsAt') ? value.resetsAt : null),
     usedPercent: Math.min(100, Math.max(0, value.usedPercent)),
-    windowDurationMins: value.windowDurationMins,
+    windowDurationMins: hasOwn(value, 'windowDurationMins')
+      ? value.windowDurationMins as number | null
+      : null,
   };
 };
 
@@ -692,11 +695,14 @@ const validResetCredit = (value: unknown): boolean => isRecord(value)
   && typeof value.status === 'string'
   && RATE_LIMIT_RESET_STATUSES.has(value.status)
   && positiveSafeInteger(value.grantedAt)
-  && (value.expiresAt === null
+  && (!hasOwn(value, 'expiresAt')
+    || value.expiresAt === null
     || positiveSafeInteger(value.expiresAt))
-  && (value.title === null
+  && (!hasOwn(value, 'title')
+    || value.title === null
     || (typeof value.title === 'string' && value.title.length <= 500))
-  && (value.description === null
+  && (!hasOwn(value, 'description')
+    || value.description === null
     || (typeof value.description === 'string' && value.description.length <= 2_000));
 
 const explicitRateLimitTransition = (
@@ -706,49 +712,45 @@ const explicitRateLimitTransition = (
     return { limited: false, valid: false };
   }
   const snapshot = params.rateLimits;
-  const requiredKeys = [
-    'credits',
-    'individualLimit',
-    'limitId',
-    'limitName',
-    'planType',
-    'primary',
-    'rateLimitReachedType',
-    'secondary',
-    'spendControlReached',
-  ];
-  if (!requiredKeys.every((key) => Object.prototype.hasOwnProperty.call(snapshot, key))) {
-    return { limited: false, valid: false };
-  }
   const nullableText = (value: unknown): boolean => value === null
     || (typeof value === 'string' && value.length <= 256);
-  const primary = snapshot.primary === null ? null : mapRateLimitWindow(snapshot.primary);
-  const secondary = snapshot.secondary === null ? null : mapRateLimitWindow(snapshot.secondary);
-  const reachedTypeValid = snapshot.rateLimitReachedType === null
+  const primary = !hasOwn(snapshot, 'primary') || snapshot.primary === null
+    ? null : mapRateLimitWindow(snapshot.primary);
+  const secondary = !hasOwn(snapshot, 'secondary') || snapshot.secondary === null
+    ? null : mapRateLimitWindow(snapshot.secondary);
+  const reachedTypeValid = !hasOwn(snapshot, 'rateLimitReachedType')
+    || snapshot.rateLimitReachedType === null
     || (typeof snapshot.rateLimitReachedType === 'string'
       && RATE_LIMIT_REACHED_TYPES.has(snapshot.rateLimitReachedType));
-  const creditsValid = snapshot.credits === null
+  const creditsValid = !hasOwn(snapshot, 'credits')
+    || snapshot.credits === null
     || (isRecord(snapshot.credits)
       && typeof snapshot.credits.hasCredits === 'boolean'
       && typeof snapshot.credits.unlimited === 'boolean'
-      && (snapshot.credits.balance === null
+      && (!hasOwn(snapshot.credits, 'balance')
+        || snapshot.credits.balance === null
         || typeof snapshot.credits.balance === 'string'));
-  const individualLimitValid = snapshot.individualLimit === null
+  const individualLimitValid = !hasOwn(snapshot, 'individualLimit')
+    || snapshot.individualLimit === null
     || (isRecord(snapshot.individualLimit)
       && typeof snapshot.individualLimit.limit === 'string'
       && typeof snapshot.individualLimit.used === 'string'
       && nonnegativeInt32(snapshot.individualLimit.remainingPercent)
       && positiveSafeInteger(snapshot.individualLimit.resetsAt));
-  const valid = (snapshot.limitId === null || validIdentifier(snapshot.limitId))
-    && nullableText(snapshot.limitName)
-    && (snapshot.planType === null
+  const valid = (!hasOwn(snapshot, 'limitId')
+      || snapshot.limitId === null
+      || validIdentifier(snapshot.limitId))
+    && (!hasOwn(snapshot, 'limitName') || nullableText(snapshot.limitName))
+    && (!hasOwn(snapshot, 'planType')
+      || snapshot.planType === null
       || (typeof snapshot.planType === 'string'
         && CHATGPT_PLAN_TYPES.has(snapshot.planType)))
-    && (snapshot.primary === null || primary !== null)
-    && (snapshot.secondary === null || secondary !== null)
+    && (!hasOwn(snapshot, 'primary') || snapshot.primary === null || primary !== null)
+    && (!hasOwn(snapshot, 'secondary') || snapshot.secondary === null || secondary !== null)
     && creditsValid
     && individualLimitValid
-    && (snapshot.spendControlReached === null
+    && (!hasOwn(snapshot, 'spendControlReached')
+      || snapshot.spendControlReached === null
       || typeof snapshot.spendControlReached === 'boolean')
     && reachedTypeValid;
   if (!valid) return { limited: false, valid: false };
@@ -761,25 +763,38 @@ const explicitRateLimitTransition = (
   };
 };
 
-const sameRateLimitWindow = (left: unknown, right: unknown): boolean => {
+const sameKnownScalar = (
+  left: JsonObject,
+  right: JsonObject,
+  key: string,
+): boolean => !hasOwn(left, key) || !hasOwn(right, key) || left[key] === right[key];
+
+const sameKnownRateLimitWindow = (
+  leftSnapshot: JsonObject,
+  rightSnapshot: JsonObject,
+  key: 'primary' | 'secondary',
+): boolean => {
+  if (!hasOwn(leftSnapshot, key) || !hasOwn(rightSnapshot, key)) return true;
+  const left = leftSnapshot[key];
+  const right = rightSnapshot[key];
   if (left === null || right === null) return left === right;
   if (!isRecord(left) || !isRecord(right)) return false;
-  return left.usedPercent === right.usedPercent
-    && left.windowDurationMins === right.windowDurationMins
-    && left.resetsAt === right.resetsAt;
+  return sameKnownScalar(left, right, 'usedPercent')
+    && sameKnownScalar(left, right, 'windowDurationMins')
+    && sameKnownScalar(left, right, 'resetsAt');
 };
 
 const sameAuthoritativeRateLimitCore = (left: unknown, right: unknown): boolean =>
   isRecord(left)
   && isRecord(right)
-  && sameRateLimitWindow(left.primary, right.primary)
-  && sameRateLimitWindow(left.secondary, right.secondary)
-  && left.rateLimitReachedType === right.rateLimitReachedType
-  && left.spendControlReached === right.spendControlReached;
+  && sameKnownRateLimitWindow(left, right, 'primary')
+  && sameKnownRateLimitWindow(left, right, 'secondary')
+  && sameKnownScalar(left, right, 'rateLimitReachedType')
+  && sameKnownScalar(left, right, 'spendControlReached');
 
 const authoritativeRateLimitId = (snapshot: unknown): string | null => {
   if (!isRecord(snapshot)) return null;
-  if (snapshot.limitId === null) return 'codex';
+  if (!hasOwn(snapshot, 'limitId') || snapshot.limitId === null) return 'codex';
   return validIdentifier(snapshot.limitId) ? snapshot.limitId : null;
 };
 
@@ -2468,10 +2483,12 @@ export class CodexSubscriptionService {
       this.throwSidecarTrustFailure(generation, 'PROTOCOL_ERROR', probe === undefined);
     }
     if (!Object.prototype.hasOwnProperty.call(response, 'rateLimits')
-      || !Object.prototype.hasOwnProperty.call(response, 'rateLimitsByLimitId')
-      || !Object.prototype.hasOwnProperty.call(response, 'rateLimitResetCredits')
-      || (response.rateLimitsByLimitId !== null && !isRecord(response.rateLimitsByLimitId))
-      || (response.rateLimitResetCredits !== null && !isRecord(response.rateLimitResetCredits))) {
+      || (hasOwn(response, 'rateLimitsByLimitId')
+        && response.rateLimitsByLimitId !== null
+        && !isRecord(response.rateLimitsByLimitId))
+      || (hasOwn(response, 'rateLimitResetCredits')
+        && response.rateLimitResetCredits !== null
+        && !isRecord(response.rateLimitResetCredits))) {
       this.throwSidecarTrustFailure(generation, 'PROTOCOL_ERROR', probe === undefined);
     }
     const authoritativeTransition = explicitRateLimitTransition({
@@ -2485,11 +2502,16 @@ export class CodexSubscriptionService {
       this.throwSidecarTrustFailure(generation, 'PROTOCOL_ERROR', probe === undefined);
     }
     const buckets: CodexRateLimitBucket[] = [];
-    const byLimitId = response.rateLimitsByLimitId;
+    const byLimitId = hasOwn(response, 'rateLimitsByLimitId')
+      ? response.rateLimitsByLimitId
+      : null;
     let matchingLegacySnapshot: unknown = null;
     if (isRecord(byLimitId)) {
       for (const [limitId, value] of Object.entries(byLimitId)) {
-        const snapshotLimitId = authoritativeRateLimitId(value);
+        const snapshotLimitId = isRecord(value) && hasOwn(value, 'limitId')
+          && value.limitId !== null
+          ? authoritativeRateLimitId(value)
+          : limitId;
         if (!validIdentifier(limitId)
           || snapshotLimitId !== limitId
           || !explicitRateLimitTransition({ rateLimits: value }).valid) {
@@ -2503,20 +2525,20 @@ export class CodexSubscriptionService {
         if (limitId === legacyLimitId) matchingLegacySnapshot = value;
       }
     }
-    if (buckets.length > 0
-      && (matchingLegacySnapshot === null
-        || !sameAuthoritativeRateLimitCore(response.rateLimits, matchingLegacySnapshot))) {
+    if (matchingLegacySnapshot !== null
+      && !sameAuthoritativeRateLimitCore(response.rateLimits, matchingLegacySnapshot)) {
       this.throwSidecarTrustFailure(generation, 'PROTOCOL_ERROR', probe === undefined);
     }
-    if (buckets.length === 0) {
+    if (matchingLegacySnapshot === null) {
       const fallback = mapRateLimitBucket(response.rateLimits);
       if (fallback) buckets.push(fallback);
     }
     let resetCreditsAvailable: number | null = null;
-    if (isRecord(response.rateLimitResetCredits)) {
+    if (hasOwn(response, 'rateLimitResetCredits')
+      && isRecord(response.rateLimitResetCredits)) {
       if (!Object.prototype.hasOwnProperty.call(response.rateLimitResetCredits, 'availableCount')
-        || !Object.prototype.hasOwnProperty.call(response.rateLimitResetCredits, 'credits')
-        || (response.rateLimitResetCredits.credits !== null
+        || (hasOwn(response.rateLimitResetCredits, 'credits')
+          && response.rateLimitResetCredits.credits !== null
           && (!Array.isArray(response.rateLimitResetCredits.credits)
             || response.rateLimitResetCredits.credits.length > 1_000
             || response.rateLimitResetCredits.credits.some((credit) =>

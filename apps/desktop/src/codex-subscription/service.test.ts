@@ -725,6 +725,36 @@ describe('Codex subscription service', () => {
     expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');
   });
 
+  it('accepts the sparse rate-limit response allowed by the pinned runtime schema', async () => {
+    const client = new FakeClient((method, params) => {
+      if (method === 'account/rateLimits/read') {
+        return { rateLimits: { primary: { usedPercent: 7 } } };
+      }
+      return signedInHandler()(method, params);
+    });
+    const service = new CodexSubscriptionService({
+      client,
+      openExternal: vi.fn(async () => undefined),
+      settingsPath,
+    });
+
+    await expect(service.getState()).resolves.toMatchObject({
+      rateLimits: {
+        buckets: [{
+          limitId: 'codex',
+          primary: {
+            resetsAt: null,
+            usedPercent: 7,
+            windowDurationMins: null,
+          },
+        }],
+        resetCreditsAvailable: null,
+      },
+      status: 'ready',
+    });
+    expect(client.invalidateGeneration).not.toHaveBeenCalled();
+  });
+
   it('accepts matching legacy and keyed authoritative rate-limit snapshots', async () => {
     const client = new FakeClient((method, params) => {
       if (method === 'account/rateLimits/read') {
@@ -777,7 +807,7 @@ describe('Codex subscription service', () => {
     expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');
   });
 
-  it('rejects a keyed rate-limit map without the legacy snapshot id', async () => {
+  it('keeps the legacy snapshot when a keyed rate-limit map omits its id', async () => {
     const client = new FakeClient((method, params) => {
       if (method === 'account/rateLimits/read') {
         const response = signedInHandler()(method, params) as Record<string, unknown>;
@@ -797,11 +827,19 @@ describe('Codex subscription service', () => {
       settingsPath,
     });
 
-    await expect(service.getState()).resolves.toMatchObject({ status: 'unavailable' });
-    expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');
+    await expect(service.getState()).resolves.toMatchObject({
+      rateLimits: {
+        buckets: [
+          { limitId: 'secondary' },
+          { limitId: 'codex' },
+        ],
+      },
+      status: 'ready',
+    });
+    expect(client.invalidateGeneration).not.toHaveBeenCalled();
   });
 
-  it('rejects a malformed bucket in the authoritative rate-limit map', async () => {
+  it('accepts a sparse keyed bucket allowed by the pinned runtime schema', async () => {
     const client = new FakeClient((method, params) => {
       if (method === 'account/rateLimits/read') {
         const response = signedInHandler()(method, params) as Record<string, unknown>;
@@ -818,8 +856,16 @@ describe('Codex subscription service', () => {
       settingsPath,
     });
 
-    await expect(service.getState()).resolves.toMatchObject({ status: 'unavailable' });
-    expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');
+    await expect(service.getState()).resolves.toMatchObject({
+      rateLimits: {
+        buckets: [
+          { limitId: 'secondary', primary: null, secondary: null },
+          { limitId: 'codex' },
+        ],
+      },
+      status: 'ready',
+    });
+    expect(client.invalidateGeneration).not.toHaveBeenCalled();
   });
 
   it('fails closed before analysis when legacy and mapped rate windows contradict', async () => {

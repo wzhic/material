@@ -129,9 +129,14 @@ describe('Codex sidecar runtime', () => {
     expect(config).toContain('view_image = false');
     expect(config).toMatch(/\[features\][\s\S]*view_image = false/);
     expect(config).not.toContain('[tools]');
-    expect(metadata.mode & 0o777).toBe(0o600);
-    expect((await stat(parent)).mode & 0o777).toBe(0o700);
-    expect((await stat(canonicalHome)).mode & 0o777).toBe(0o700);
+    // Windows exposes ACLs rather than POSIX group/other mode bits through
+    // chmod/stat. The creation and reuse checks above remain cross-platform;
+    // exact 0600/0700 enforcement is asserted only where those bits exist.
+    if (process.platform !== 'win32') {
+      expect(metadata.mode & 0o777).toBe(0o600);
+      expect((await stat(parent)).mode & 0o777).toBe(0o700);
+      expect((await stat(canonicalHome)).mode & 0o777).toBe(0o700);
+    }
   });
 
   it('reuses only the exact managed config and never overwrites an existing file', async () => {
@@ -152,15 +157,18 @@ describe('Codex sidecar runtime', () => {
   it('rejects planted symlinks for the app root, CODEX_HOME, and managed config', async () => {
     const base = await temporaryDirectory();
     const outside = await temporaryDirectory();
+    const directoryLinkType: 'dir' | 'junction' = process.platform === 'win32'
+      ? 'junction'
+      : 'dir';
     const linkedRoot = path.join(base, 'linked-root');
-    await symlink(outside, linkedRoot, 'dir');
+    await symlink(outside, linkedRoot, directoryLinkType);
     await expect(prepareCodexHome(path.join(linkedRoot, 'codex-home')))
       .rejects.toMatchObject({ code: 'SECURITY_VIOLATION' });
 
     const realRoot = path.join(base, 'real-root');
     await mkdir(realRoot);
     const linkedHome = path.join(realRoot, 'codex-home');
-    await symlink(outside, linkedHome, 'dir');
+    await symlink(outside, linkedHome, directoryLinkType);
     await expect(prepareCodexHome(linkedHome))
       .rejects.toMatchObject({ code: 'SECURITY_VIOLATION' });
 
@@ -168,7 +176,13 @@ describe('Codex sidecar runtime', () => {
     await mkdir(safeHome, { recursive: true });
     const outsideConfig = path.join(outside, 'config.toml');
     await writeFile(outsideConfig, 'do-not-overwrite');
-    await symlink(outsideConfig, path.join(safeHome, 'config.toml'));
+    if (process.platform === 'win32') {
+      // A directory junction exercises the same lstat fail-close path without
+      // requiring the elevated privilege needed for file symlinks on Windows.
+      await symlink(outside, path.join(safeHome, 'config.toml'), 'junction');
+    } else {
+      await symlink(outsideConfig, path.join(safeHome, 'config.toml'));
+    }
     await expect(prepareCodexHome(safeHome))
       .rejects.toMatchObject({ code: 'SECURITY_VIOLATION' });
     expect(await readFile(outsideConfig, 'utf8')).toBe('do-not-overwrite');
