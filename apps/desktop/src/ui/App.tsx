@@ -29,6 +29,15 @@ import { AnalysisReportPreviewPage } from './AnalysisReportPreviewPage';
 import { ModelSettingsPage } from './ModelSettingsPage';
 import { ProductLibraryPage } from './ProductLibraryPage';
 import { RecordsPage } from './RecordsPage';
+import {
+  clampLayoutValue,
+  DEFAULT_WORKSPACE_LAYOUT,
+  nextTimelineZoom,
+  parseWorkspaceLayout,
+  serializeWorkspaceLayout,
+  WORKSPACE_LAYOUT_STORAGE_KEY,
+} from './workspace-layout';
+import type { WorkspaceLayout } from './workspace-layout';
 
 type AppPage = 'new-analysis' | 'products' | 'records' | 'report' | 'settings' | 'workspace';
 
@@ -36,6 +45,25 @@ type SelectedMaterial = MaterialSession;
 
 const clamp = (value: number, minimum: number, maximum: number): number =>
   Math.min(maximum, Math.max(minimum, value));
+
+const loadWorkspaceLayout = (): WorkspaceLayout => {
+  try {
+    return parseWorkspaceLayout(window.localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY));
+  } catch {
+    return { ...DEFAULT_WORKSPACE_LAYOUT };
+  }
+};
+
+const persistWorkspaceLayout = (layout: WorkspaceLayout): void => {
+  try {
+    window.localStorage.setItem(
+      WORKSPACE_LAYOUT_STORAGE_KEY,
+      serializeWorkspaceLayout(layout),
+    );
+  } catch {
+    // A denied storage area must not make the analysis workspace unusable.
+  }
+};
 
 const industryLabel = (industry: Industry): string => {
   if (industry === 'apparel') {
@@ -580,10 +608,13 @@ interface WorkspacePageProps {
   conversation: VisibleConversationItem[];
   conversionContext: string;
   industry: Industry;
+  layout: WorkspaceLayout;
   material: SelectedMaterial;
   onBack: () => void;
   onCancel: () => void;
   onRetry: () => void;
+  onLayoutChange: (updates: Partial<WorkspaceLayout>) => void;
+  onResetLayout: () => void;
   onSubmitConversation: (text: string, reference: ConversationReference | null) => void;
   onViewReport: () => void;
   productName: string | null;
@@ -594,10 +625,13 @@ const WorkspacePage = ({
   conversation,
   conversionContext,
   industry,
+  layout,
   material,
   onBack,
   onCancel,
   onRetry,
+  onLayoutChange,
+  onResetLayout,
   onSubmitConversation,
   onViewReport,
   productName,
@@ -605,13 +639,17 @@ const WorkspacePage = ({
 }: WorkspacePageProps): React.JSX.Element => {
   const stageRef = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<HTMLElement>(null);
-  const [mediaPercent, setMediaPercent] = useState(58);
+  const timelineScrollRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [panelTab, setPanelTab] = useState<'conversation' | 'progress'>('conversation');
   const [conversationText, setConversationText] = useState('');
   const [conversationReference, setConversationReference] = useState<ConversationReference | null>(null);
-  const [timelineHeight, setTimelineHeight] = useState(292);
+  const [playbackDurationMs, setPlaybackDurationMs] = useState(0);
+  const [playbackTimeMs, setPlaybackTimeMs] = useState(0);
+  const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null);
+  const [timelineZoom, setTimelineZoom] = useState(100);
   const report = run?.data?.report;
-  const durationMs = Math.max(run?.data?.media.durationMs ?? 0, 1);
+  const durationMs = Math.max(run?.data?.media.durationMs ?? playbackDurationMs, 1);
   const evidenceById = new Map(report?.evidence.map((item) => [item.evidenceId, item]) ?? []);
   const emotionPoints = (report?.emotion ?? [])
     .filter((item) => item.timeMs !== null && item.intensity !== null)
@@ -633,6 +671,35 @@ const WorkspacePage = ({
   const conversationEnabled = Boolean(
     run && (run.status === 'succeeded' || (run.status === 'running' && !run.data)),
   );
+  const selectedEvidenceText = selectedEvidenceId
+    ? evidenceById.get(selectedEvidenceId)?.text ?? null
+    : null;
+
+  const seekToTime = (
+    timeMs: number,
+    label: string,
+    evidenceId: string | null,
+  ): void => {
+    const nextTime = clamp(timeMs, 0, durationMs);
+    if (videoRef.current) {
+      videoRef.current.currentTime = nextTime / 1_000;
+    }
+    setPlaybackTimeMs(nextTime);
+    setSelectedEvidenceId(evidenceId);
+    setConversationReference({ label, timeMs: nextTime });
+  };
+
+  const seekFromTimeline = (event: React.MouseEvent<HTMLDivElement>): void => {
+    if ((event.target as HTMLElement).closest('button')) {
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (!rect.width) {
+      return;
+    }
+    const percentage = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+    seekToTime(percentage * durationMs, '时间轴位置', null);
+  };
 
   const timelineTrack = (
     tracks: Array<'audio' | 'ocr' | 'shot' | 'speech'>,
@@ -650,11 +717,13 @@ const WorkspacePage = ({
           return (
             <button
               aria-label={`引用 ${formatTimelineTime(item.startMs)} ${evidenceById.get(item.evidenceId)?.text ?? item.track}`}
+              className={selectedEvidenceId === item.evidenceId ? 'is-selected' : ''}
               key={item.evidenceId}
-              onClick={() => setConversationReference({
-                label: evidenceById.get(item.evidenceId)?.text ?? item.track,
-                timeMs: item.startMs,
-              })}
+              onClick={() => seekToTime(
+                item.startMs,
+                evidenceById.get(item.evidenceId)?.text ?? item.track,
+                item.evidenceId,
+              )}
               style={{ left: `${left}%`, width: `${width}%` }}
               title={evidenceById.get(item.evidenceId)?.text ?? item.evidenceId}
               type="button"
@@ -678,7 +747,7 @@ const WorkspacePage = ({
 
     const move = (moveEvent: PointerEvent): void => {
       const percentage = ((moveEvent.clientX - rect.left) / rect.width) * 100;
-      setMediaPercent(clamp(percentage, 38, 72));
+      onLayoutChange({ mediaPercent: clampLayoutValue('mediaPercent', percentage) });
     };
     const stop = (): void => {
       window.removeEventListener('pointermove', move);
@@ -698,9 +767,12 @@ const WorkspacePage = ({
     event.preventDefault();
 
     const move = (moveEvent: PointerEvent): void => {
-      setTimelineHeight(
-        clamp(rect.bottom - moveEvent.clientY, 220, Math.min(440, rect.height * 0.55)),
-      );
+      onLayoutChange({
+        timelineHeight: clampLayoutValue(
+          'timelineHeight',
+          Math.min(rect.bottom - moveEvent.clientY, rect.height * 0.55),
+        ),
+      });
     };
     const stop = (): void => {
       window.removeEventListener('pointermove', move);
@@ -715,9 +787,12 @@ const WorkspacePage = ({
   ): void => {
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
       event.preventDefault();
-      setMediaPercent((current) =>
-        clamp(current + (event.key === 'ArrowLeft' ? -2 : 2), 38, 72),
-      );
+      onLayoutChange({
+        mediaPercent: clampLayoutValue(
+          'mediaPercent',
+          layout.mediaPercent + (event.key === 'ArrowLeft' ? -2 : 2),
+        ),
+      });
     }
   };
 
@@ -726,9 +801,12 @@ const WorkspacePage = ({
   ): void => {
     if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
       event.preventDefault();
-      setTimelineHeight((current) =>
-        clamp(current + (event.key === 'ArrowUp' ? 16 : -16), 220, 440),
-      );
+      onLayoutChange({
+        timelineHeight: clampLayoutValue(
+          'timelineHeight',
+          layout.timelineHeight + (event.key === 'ArrowUp' ? 16 : -16),
+        ),
+      });
     }
   };
 
@@ -744,12 +822,16 @@ const WorkspacePage = ({
     <main
       ref={workspaceRef}
       className="workspace-page"
-      style={{ gridTemplateRows: `minmax(300px, 1fr) 8px ${timelineHeight}px` }}
+      style={{
+        gridTemplateRows: material.summary.kind === 'video'
+          ? `minmax(300px, 1fr) 8px ${layout.timelineHeight}px`
+          : 'minmax(300px, 1fr)',
+      }}
     >
       <section
         ref={stageRef}
         className="workspace-stage"
-        style={{ gridTemplateColumns: `${mediaPercent}% 8px minmax(300px, 1fr)` }}
+        style={{ gridTemplateColumns: `${layout.mediaPercent}% 8px minmax(300px, 1fr)` }}
       >
         <div className="source-panel">
           <div className="workspace-toolbar">
@@ -773,7 +855,30 @@ const WorkspacePage = ({
           </div>
           <div className="source-viewer">
             {material.summary.kind === 'video' ? (
-              <video controls preload="metadata" src={material.previewUrl} />
+              <video
+                controls
+                onLoadedMetadata={(event) => {
+                  const nextDuration = event.currentTarget.duration * 1_000;
+                  const nextTime = event.currentTarget.currentTime * 1_000;
+                  setPlaybackDurationMs(Number.isFinite(nextDuration) ? Math.max(0, nextDuration) : 0);
+                  setPlaybackTimeMs(Number.isFinite(nextTime) ? Math.max(0, nextTime) : 0);
+                }}
+                onTimeUpdate={(event) => {
+                  const nextTime = event.currentTarget.currentTime * 1_000;
+                  if (!Number.isFinite(nextTime)) return;
+                  const boundedTime = Math.max(0, nextTime);
+                  setPlaybackTimeMs(boundedTime);
+                  setSelectedEvidenceId(
+                    report?.timeline.find((item) => (
+                      boundedTime >= item.startMs
+                      && boundedTime <= (item.endMs ?? item.startMs + 500)
+                    ))?.evidenceId ?? null,
+                  );
+                }}
+                preload="metadata"
+                ref={videoRef}
+                src={material.previewUrl}
+              />
             ) : (
               <img alt={material.summary.name} src={material.previewUrl} />
             )}
@@ -791,7 +896,7 @@ const WorkspacePage = ({
           aria-orientation="vertical"
           aria-valuemax={72}
           aria-valuemin={38}
-          aria-valuenow={Math.round(mediaPercent)}
+          aria-valuenow={Math.round(layout.mediaPercent)}
           className="panel-resizer is-horizontal"
           onKeyDown={resizeHorizontalByKeyboard}
           onPointerDown={beginHorizontalResize}
@@ -915,74 +1020,140 @@ const WorkspacePage = ({
         </aside>
       </section>
 
-      <div
-        aria-label="调整时间轴区域高度"
-        aria-orientation="horizontal"
-        aria-valuemax={440}
-        aria-valuemin={220}
-        aria-valuenow={Math.round(timelineHeight)}
-        className="panel-resizer is-vertical"
-        onKeyDown={resizeVerticalByKeyboard}
-        onPointerDown={beginVerticalResize}
-        role="separator"
-        tabIndex={0}
-      >
-        <span />
-      </div>
+      {material.summary.kind === 'video' ? (
+        <>
+          <div
+            aria-label="调整时间轴区域高度"
+            aria-orientation="horizontal"
+            aria-valuemax={440}
+            aria-valuemin={220}
+            aria-valuenow={Math.round(layout.timelineHeight)}
+            className="panel-resizer is-vertical"
+            onKeyDown={resizeVerticalByKeyboard}
+            onPointerDown={beginVerticalResize}
+            role="separator"
+            tabIndex={0}
+          >
+            <span />
+          </div>
 
-      <section className="timeline-panel" aria-label="分析时间轴">
-        <div className="timeline-header">
-          <div>
-            <strong>素材时间轴</strong>
-            <span>{report ? `${report.timeline.length} 条时间证据` : run?.status === 'running' ? '正在解析' : '等待真实解析结果'}</span>
-          </div>
-          <div className="timeline-actions">
-            <button disabled type="button">－</button>
-            <span>100%</span>
-            <button disabled type="button">＋</button>
-            <Button disabled size="small" variant="outline">
-              适应全片
-            </Button>
-          </div>
-        </div>
-        <div className="timeline-chart">
-          <div className="timeline-labels">
-            <span>情绪变化</span>
-            <span>镜头</span>
-            <span>画面</span>
-            <span>字幕</span>
-            <span>口播 / 声音</span>
-            <span>分析标签</span>
-          </div>
-          <div className="timeline-tracks">
-            <div className="ruler">
-              <span>00:00</span>
-              <span>{report ? formatTimelineTime(durationMs / 2) : '等待时长'}</span>
-              <span>{report ? formatTimelineTime(durationMs) : '--:--'}</span>
+          <section className="timeline-panel" aria-label="分析时间轴">
+            <div className="timeline-header">
+              <div>
+                <strong>素材时间轴</strong>
+                <span>
+                  {formatTimelineTime(playbackTimeMs)} / {formatTimelineTime(durationMs)}
+                  {' · '}
+                  {report
+                    ? `${report.timeline.length} 条时间证据`
+                    : run?.status === 'running'
+                      ? '正在解析'
+                      : '等待真实解析结果'}
+                  {selectedEvidenceText ? ` · 当前片段 ${selectedEvidenceText}` : ''}
+                </span>
+              </div>
+              <div className="timeline-actions">
+                <button
+                  aria-label="缩小时间轴"
+                  disabled={timelineZoom === 100}
+                  onClick={() => setTimelineZoom((current) => nextTimelineZoom(current, 'out'))}
+                  type="button"
+                >
+                  －
+                </button>
+                <span>{timelineZoom}%</span>
+                <button
+                  aria-label="放大时间轴"
+                  disabled={timelineZoom === 400}
+                  onClick={() => setTimelineZoom((current) => nextTimelineZoom(current, 'in'))}
+                  type="button"
+                >
+                  ＋
+                </button>
+                <Button
+                  onClick={() => {
+                    setTimelineZoom(100);
+                    if (timelineScrollRef.current) timelineScrollRef.current.scrollLeft = 0;
+                  }}
+                  size="small"
+                  variant="outline"
+                >
+                  适应全片
+                </Button>
+                <Button onClick={onResetLayout} size="small" variant="text">
+                  恢复默认布局
+                </Button>
+              </div>
             </div>
-            <div className="emotion-track">
-              <svg
-                aria-label={emotionPoints.length ? '素材表达强度情绪曲线' : '情绪曲线等待真实分析数据'}
-                preserveAspectRatio="none"
-                role="img"
-                viewBox="0 0 1000 64"
+            <div className="timeline-chart" ref={timelineScrollRef}>
+              <div className="timeline-labels">
+                <span>情绪变化</span>
+                <span>镜头</span>
+                <span>画面</span>
+                <span>字幕</span>
+                <span>口播 / 声音</span>
+                <span>分析标签</span>
+              </div>
+              <div
+                className="timeline-tracks"
+                onClick={seekFromTimeline}
+                style={{ width: `${timelineZoom}%` }}
               >
-                {emotionPoints.length ? (
-                  <polyline points={emotionPath} />
-                ) : (
-                  <path d="M0 38 C150 38 210 38 330 38 S560 38 710 38 S900 38 1000 38" />
-                )}
-              </svg>
-              {!emotionPoints.length ? <span>未生成可靠情绪结论</span> : null}
+                <div className="ruler">
+                  {[0, 0.25, 0.5, 0.75, 1].map((position) => (
+                    <span key={position}>{formatTimelineTime(durationMs * position)}</span>
+                  ))}
+                </div>
+                <div className="emotion-track">
+                  <svg
+                    aria-label={emotionPoints.length ? '素材表达强度情绪曲线' : '情绪曲线等待真实分析数据'}
+                    preserveAspectRatio="none"
+                    role="img"
+                    viewBox="0 0 1000 64"
+                  >
+                    {emotionPoints.length ? (
+                      <polyline points={emotionPath} />
+                    ) : (
+                      <path d="M0 38 C150 38 210 38 330 38 S560 38 710 38 S900 38 1000 38" />
+                    )}
+                  </svg>
+                  {emotionPoints.map((item, index) => (
+                    <button
+                      aria-label={`定位到 ${formatTimelineTime(item.timeMs as number)} ${item.text}`}
+                      className="emotion-timeline-node"
+                      key={`${item.timeMs}-${index}`}
+                      onClick={() => seekToTime(
+                        item.timeMs as number,
+                        item.text,
+                        item.evidenceIds[0] ?? null,
+                      )}
+                      style={{
+                        left: `${clamp(((item.timeMs as number) / durationMs) * 100, 0, 100)}%`,
+                        top: `${clamp((item.y / 64) * 100, 0, 100)}%`,
+                      }}
+                      title={item.text}
+                      type="button"
+                    />
+                  ))}
+                  {!emotionPoints.length ? <span>未生成可靠情绪结论</span> : null}
+                </div>
+                {timelineTrack(['shot'])}
+                <div className="empty-track"><span>代表帧仅证明采样位置，不推断画面语义</span></div>
+                {timelineTrack(['ocr'])}
+                {timelineTrack(['speech', 'audio'])}
+                <div className="empty-track"><span>{report?.tags.length ? '报告标签暂不具备可靠时间定位' : '当前没有可靠分析标签'}</span></div>
+                <div
+                  aria-hidden="true"
+                  className="timeline-playhead"
+                  style={{ left: `${clamp((playbackTimeMs / durationMs) * 100, 0, 100)}%` }}
+                >
+                  <span />
+                </div>
+              </div>
             </div>
-            {timelineTrack(['shot'])}
-            <div className="empty-track"><span>代表帧仅证明采样位置，不推断画面语义</span></div>
-            {timelineTrack(['ocr'])}
-            {timelineTrack(['speech', 'audio'])}
-            <div className="empty-track"><span>{report?.tags.length ? '报告标签暂不具备可靠时间定位' : '当前没有可靠分析标签'}</span></div>
-          </div>
-        </div>
-      </section>
+          </section>
+        </>
+      ) : null}
     </main>
   );
 };
@@ -1004,6 +1175,56 @@ export const App = (): React.JSX.Element => {
   const [reanalysisOrigin, setReanalysisOrigin] = useState<ReanalysisOrigin | null>(null);
   const [recordToOpenId, setRecordToOpenId] = useState<string | null>(null);
   const [sourceRecordId, setSourceRecordId] = useState<string | null>(null);
+  const appFrameRef = useRef<HTMLDivElement>(null);
+  const [workspaceLayout, setWorkspaceLayout] = useState<WorkspaceLayout>(loadWorkspaceLayout);
+
+  useEffect(() => persistWorkspaceLayout(workspaceLayout), [workspaceLayout]);
+
+  const updateWorkspaceLayout = useCallback((updates: Partial<WorkspaceLayout>): void => {
+    setWorkspaceLayout((current) => ({
+      mediaPercent: clampLayoutValue(
+        'mediaPercent',
+        updates.mediaPercent ?? current.mediaPercent,
+      ),
+      sidebarWidth: clampLayoutValue(
+        'sidebarWidth',
+        updates.sidebarWidth ?? current.sidebarWidth,
+      ),
+      timelineHeight: clampLayoutValue(
+        'timelineHeight',
+        updates.timelineHeight ?? current.timelineHeight,
+      ),
+    }));
+  }, []);
+
+  const resetWorkspaceLayout = useCallback((): void => {
+    setWorkspaceLayout({ ...DEFAULT_WORKSPACE_LAYOUT });
+  }, []);
+
+  const beginSidebarResize = useCallback((event: ReactPointerEvent<HTMLDivElement>): void => {
+    const rect = appFrameRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    event.preventDefault();
+    const move = (moveEvent: PointerEvent): void => {
+      updateWorkspaceLayout({
+        sidebarWidth: clampLayoutValue('sidebarWidth', moveEvent.clientX - rect.left),
+      });
+    };
+    const stop = (): void => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop);
+  }, [updateWorkspaceLayout]);
+
+  const resizeSidebarByKeyboard = useCallback((event: KeyboardEvent<HTMLDivElement>): void => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    updateWorkspaceLayout({
+      sidebarWidth: workspaceLayout.sidebarWidth + (event.key === 'ArrowLeft' ? -8 : 8),
+    });
+  }, [updateWorkspaceLayout, workspaceLayout.sidebarWidth]);
 
   const updateActiveRun = useCallback((
     updater: (current: ActiveAnalysisRun | null) => ActiveAnalysisRun | null,
@@ -1348,9 +1569,12 @@ export const App = (): React.JSX.Element => {
           conversation={activeRun?.conversation ?? []}
           conversionContext={conversionContext}
           industry={industry}
+          layout={workspaceLayout}
           material={material}
           onBack={() => setPage('new-analysis')}
           onCancel={handleCancelAnalysis}
+          onLayoutChange={updateWorkspaceLayout}
+          onResetLayout={resetWorkspaceLayout}
           onRetry={() => void handleStartAnalysis(material)}
           onSubmitConversation={handleSubmitConversation}
           onViewReport={() => setPage('report')}
@@ -1461,11 +1685,32 @@ export const App = (): React.JSX.Element => {
     reportVersions,
     selectedReportData,
     updateActiveRun,
+    updateWorkspaceLayout,
+    resetWorkspaceLayout,
+    workspaceLayout,
   ]);
 
   return (
-    <div className="app-frame">
+    <div
+      className="app-frame"
+      ref={appFrameRef}
+      style={{ gridTemplateColumns: `${workspaceLayout.sidebarWidth}px 8px minmax(0, 1fr)` }}
+    >
       <Sidebar onNavigate={navigate} page={page} />
+      <div
+        aria-label="调整主导航栏宽度"
+        aria-orientation="vertical"
+        aria-valuemax={280}
+        aria-valuemin={168}
+        aria-valuenow={workspaceLayout.sidebarWidth}
+        className="panel-resizer is-horizontal app-sidebar-resizer"
+        onKeyDown={resizeSidebarByKeyboard}
+        onPointerDown={beginSidebarResize}
+        role="separator"
+        tabIndex={0}
+      >
+        <span />
+      </div>
       <div className="app-content">{content}</div>
     </div>
   );

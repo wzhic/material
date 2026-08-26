@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0024",
-  "reason": "APP-0024 已提交并推送，切换到分析记录备份恢复",
+  "previous_task_id": "APP-0025",
+  "reason": "APP-0025 已提交并推送，继续时间轴联动与布局持久化",
   "schema_version": 1,
-  "selected_at": "2026-08-26T01:28:02+00:00",
+  "selected_at": "2026-08-26T02:02:18+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0025"
+  "task_id": "APP-0026"
 }
