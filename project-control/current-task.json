@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0023",
-  "reason": "APP-0023 已提交并推送，切换到下一项独立的历史素材恢复功能",
+  "previous_task_id": "APP-0024",
+  "reason": "APP-0024 已提交并推送，切换到分析记录备份恢复",
   "schema_version": 1,
-  "selected_at": "2026-08-25T15:57:00+00:00",
+  "selected_at": "2026-08-26T01:28:02+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0024"
+  "task_id": "APP-0025"
 }
