@@ -54,6 +54,22 @@ const safelyAsync = async <T>(operation: () => Promise<T>): Promise<RecordApiRes
   }
 };
 
+const safelyRecordAsync = async <T>(
+  operation: () => Promise<T>,
+): Promise<RecordApiResult<T>> => {
+  try {
+    return { ok: true, data: await operation() };
+  } catch (error) {
+    if (error instanceof RecordRepositoryError) {
+      return failure(error.code, error.message);
+    }
+    if (error instanceof RecordValidationError) {
+      return failure('INVALID_INPUT', error.message);
+    }
+    return failure('UNKNOWN', '分析记录操作失败，请重试');
+  }
+};
+
 const safelySource = async <T>(operation: () => Promise<T>): Promise<RecordApiResult<T>> => {
   try {
     return { ok: true, data: await operation() };
@@ -211,6 +227,26 @@ export const registerRecordIpc = (
         repository.remove(id);
         return null;
       })
+      : failure('INVALID_INPUT', '分析记录请求来源无效'),
+  );
+  ipcMain.handle(RECORD_IPC_CHANNELS.storageStatus, (event) =>
+    isTrustedSender(event.sender.id)
+      ? safely(() => repository.storageStatus())
+      : failure('INVALID_INPUT', '分析记录请求来源无效'),
+  );
+  ipcMain.handle(RECORD_IPC_CHANNELS.listBackups, (event) =>
+    isTrustedSender(event.sender.id)
+      ? safely(() => repository.listBackups())
+      : failure('INVALID_INPUT', '分析记录请求来源无效'),
+  );
+  ipcMain.handle(RECORD_IPC_CHANNELS.createBackup, (event) =>
+    isTrustedSender(event.sender.id)
+      ? safelyRecordAsync(() => repository.createBackup())
+      : failure('INVALID_INPUT', '分析记录请求来源无效'),
+  );
+  ipcMain.handle(RECORD_IPC_CHANNELS.restoreBackup, (event, id: string) =>
+    isTrustedSender(event.sender.id)
+      ? safelyRecordAsync(() => repository.restoreBackup(id))
       : failure('INVALID_INPUT', '分析记录请求来源无效'),
   );
 };

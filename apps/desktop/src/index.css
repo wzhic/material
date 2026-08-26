@@ -3041,6 +3041,8 @@ textarea:focus-visible,
   margin-bottom: 16px;
 }
 
+.record-storage-status { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+
 .storage-status-grid > div {
   background: white;
   border: 1px solid #e2e7ef;
@@ -3078,6 +3080,11 @@ textarea:focus-visible,
   gap: 12px;
   grid-template-columns: minmax(145px, 1fr) minmax(120px, 0.85fr) 70px 90px 90px 60px;
   padding: 0 13px;
+}
+
+.backup-list-head.record-backup-list-row,
+.backup-row.record-backup-list-row {
+  grid-template-columns: minmax(145px, 1fr) minmax(120px, 0.85fr) 60px 90px 72px 90px 52px;
 }
 
 .backup-list-head {
@@ -3119,6 +3126,8 @@ textarea:focus-visible,
   .storage-status-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .backup-list-head,
   .backup-row { grid-template-columns: minmax(130px, 1fr) minmax(105px, 0.85fr) 58px 76px 78px 52px; }
+  .backup-list-head.record-backup-list-row,
+  .backup-row.record-backup-list-row { grid-template-columns: minmax(125px, 1fr) minmax(100px, 0.8fr) 52px 76px 64px 78px 48px; }
   .model-settings-grid { grid-template-columns: minmax(0, 1fr) 310px; }
   .report-hero-card { grid-template-columns: 96px minmax(0, 1fr) 175px; }
   .score-dimension-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

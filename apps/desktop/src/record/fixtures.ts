@@ -1,0 +1,78 @@
+import { ConfirmedRecordInput } from './types';
+
+export const confirmedInput = (
+  name = 'fashion_video_01.mp4',
+  overrides: Partial<ConfirmedRecordInput> = {},
+): ConfirmedRecordInput => ({
+  confirmationId: `confirmation-${Buffer.from(name).toString('hex')}`,
+  industry: 'apparel',
+  material: {
+    schemaVersion: 1,
+    displayName: name,
+    mediaKind: 'video',
+    byteSize: 1024,
+    fingerprintSha256: 'a'.repeat(64),
+    durationMs: 27_000,
+    width: 1080,
+    height: 1920,
+    sourceStatus: 'available',
+  },
+  productSnapshot: null,
+  report: {
+    schemaVersion: 1,
+    title: '服饰视频素材分析',
+    summary: '开场具备转化基础，但卖点证据出现偏晚。',
+    scriptStructure: ['开场钩子', '商品展示', '行动引导'],
+    shotSummary: ['近景开场', '全身展示'],
+    visualSummary: ['竖屏真人出镜'],
+    subtitleSummary: ['字幕与口播同步'],
+    voiceAndSoundSummary: ['真人口播'],
+    sellingPoints: ['通勤剪裁'],
+    emotionSummary: ['焦虑切入后转向期待'],
+    ctaSummary: ['结尾引导下单'],
+    score: {
+      total: 82,
+      dimensions: [{ id: 'emotion', label: '情绪转化', score: 78 }],
+    },
+    tags: [{ label: '真人口播', source: 'fixed', evidenceIds: ['evidence-1'] }],
+    diagnoses: [
+      {
+        problem: '利益点出现偏晚',
+        suggestion: '在首次商品完整露出时同步给出利益点',
+        evidenceIds: ['evidence-1'],
+      },
+    ],
+    limitations: ['未取得投放转化数据'],
+    evidence: [
+      {
+        id: 'evidence-1',
+        label: '商品完整露出',
+        summary: '首次完整展示商品',
+        startMs: 5_000,
+        endMs: 11_000,
+        source: 'fusion',
+      },
+    ],
+  },
+  rules: {
+    schemaVersion: 1,
+    templateId: 'apparel-video',
+    templateVersion: '1.0.0',
+    scoringRuleId: 'apparel-video-score',
+    scoringRuleVersion: '1.0.0',
+    tagPackageVersion: '1.0.0',
+  },
+  run: {
+    schemaVersion: 1,
+    modelConfigurationName: '用户配置 A',
+    modelId: 'configured-model',
+    capabilityVersion: 'broker-1',
+    completedAt: '2026-08-24T06:00:00.000Z',
+  },
+  visibleConversation: [
+    { role: 'user', text: '重点判断情绪转化', timeReferenceMs: null },
+  ],
+  conversionContext: '判断转化基础',
+  sourceRecordId: null,
+  ...overrides,
+});

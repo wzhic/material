@@ -40,6 +40,10 @@ const recordApi: RecordApi = {
     ipcRenderer.invoke(RECORD_IPC_CHANNELS.saveFeedback, id, input),
   clearFeedback: (id) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.clearFeedback, id),
   remove: (id) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.remove, id),
+  storageStatus: () => ipcRenderer.invoke(RECORD_IPC_CHANNELS.storageStatus),
+  listBackups: () => ipcRenderer.invoke(RECORD_IPC_CHANNELS.listBackups),
+  createBackup: () => ipcRenderer.invoke(RECORD_IPC_CHANNELS.createBackup),
+  restoreBackup: (id) => ipcRenderer.invoke(RECORD_IPC_CHANNELS.restoreBackup, id),
 };
 
 const materialApi: MaterialApi = {

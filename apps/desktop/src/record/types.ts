@@ -177,6 +177,36 @@ export interface RecordSourceAccessResult {
   sourceStatus: MaterialSourceStatus;
 }
 
+export type RecordBackupKind = 'manual' | 'pre-migration' | 'pre-restore';
+
+export interface RecordBackupInfo {
+  id: string;
+  kind: RecordBackupKind;
+  createdAt: string;
+  size: number;
+  schemaVersion: number | null;
+  recordCount: number | null;
+  feedbackCount: number | null;
+  sourceReferenceCount: number | null;
+  integrity: 'failed' | 'ok';
+}
+
+export interface RecordStorageStatus {
+  schemaVersion: number;
+  integrity: 'failed' | 'ok';
+  writable: boolean;
+  recordCount: number;
+  feedbackCount: number;
+  sourceReferenceCount: number;
+  backupCount: number;
+}
+
+export interface RecordRestoreResult {
+  restoredBackupId: string;
+  safetyBackup: RecordBackupInfo;
+  status: RecordStorageStatus;
+}
+
 export type RecordApiErrorCode =
   | 'CONFLICT'
   | 'DATABASE_UNAVAILABLE'
@@ -206,6 +236,10 @@ export interface RecordApi {
   clearFeedback: (id: string) => Promise<RecordApiResult<null>>;
   exportPdf: (id: string) => Promise<RecordApiResult<RecordPdfExportResult>>;
   remove: (id: string) => Promise<RecordApiResult<null>>;
+  storageStatus: () => Promise<RecordApiResult<RecordStorageStatus>>;
+  listBackups: () => Promise<RecordApiResult<RecordBackupInfo[]>>;
+  createBackup: () => Promise<RecordApiResult<RecordBackupInfo>>;
+  restoreBackup: (id: string) => Promise<RecordApiResult<RecordRestoreResult>>;
 }
 
 export const RECORD_IPC_CHANNELS = {
@@ -214,8 +248,12 @@ export const RECORD_IPC_CHANNELS = {
   exportPdf: 'material:records:export-pdf',
   get: 'material:records:get',
   list: 'material:records:list',
+  listBackups: 'material:records:list-backups',
   openSource: 'material:records:open-source',
   relocateSource: 'material:records:relocate-source',
   remove: 'material:records:remove',
   saveFeedback: 'material:records:save-feedback',
+  storageStatus: 'material:records:storage-status',
+  createBackup: 'material:records:create-backup',
+  restoreBackup: 'material:records:restore-backup',
 } as const;

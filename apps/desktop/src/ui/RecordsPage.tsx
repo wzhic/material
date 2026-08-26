@@ -1,16 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Input, Tag } from 'tdesign-react';
 
+import { formatFileSize } from '../analysis/draft';
 import type { MaterialSession } from '../media/types';
 import {
   AnalysisRecord,
   AnalysisRecordListItem,
   AnalysisRecordQuery,
   MaterialSourceStatus,
+  RecordBackupInfo,
   RecordFeedbackState,
   RecordIndustry,
   RecordMediaKind,
   RecordSort,
+  RecordStorageStatus,
 } from '../record/types';
 
 interface RecordsPageProps {
@@ -59,6 +62,192 @@ const sourceStatusTheme = (
     return 'danger';
   }
   return 'warning';
+};
+
+const backupKindLabel = (backup: RecordBackupInfo): string => {
+  if (backup.kind === 'pre-restore') {
+    return '恢复前安全备份';
+  }
+  if (backup.kind === 'pre-migration') {
+    return '迁移前备份';
+  }
+  return '手动备份';
+};
+
+const RecordMaintenance = ({
+  onBack,
+  onRestored,
+}: {
+  onBack: () => void;
+  onRestored: () => void;
+}): React.JSX.Element => {
+  const [status, setStatus] = useState<RecordStorageStatus | null>(null);
+  const [backups, setBackups] = useState<RecordBackupInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [restoreTarget, setRestoreTarget] = useState<RecordBackupInfo | null>(null);
+
+  const load = useCallback(async (): Promise<void> => {
+    setLoading(true);
+    const [statusResult, backupResult] = await Promise.all([
+      window.materialApi.records.storageStatus(),
+      window.materialApi.records.listBackups(),
+    ]);
+    if (!statusResult.ok) {
+      setError(statusResult.error.message);
+    } else if (!backupResult.ok) {
+      setError(backupResult.error.message);
+    } else {
+      setStatus(statusResult.data);
+      setBackups(backupResult.data);
+      setError('');
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const createBackup = async (): Promise<void> => {
+    setBusy(true);
+    setError('');
+    setSuccess('');
+    const result = await window.materialApi.records.createBackup();
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error.message);
+      return;
+    }
+    setSuccess(
+      `已创建并验证备份，包含 ${result.data.recordCount ?? 0} 条记录、${result.data.feedbackCount ?? 0} 条反馈。`,
+    );
+    await load();
+  };
+
+  const restore = async (): Promise<void> => {
+    if (!restoreTarget) {
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setSuccess('');
+    const result = await window.materialApi.records.restoreBackup(restoreTarget.id);
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error.message);
+      setRestoreTarget(null);
+      return;
+    }
+    setRestoreTarget(null);
+    setSuccess(
+      `已恢复到 ${formatLocalTime(restoreTarget.createdAt)} 的备份；恢复前数据已另存为安全备份。`,
+    );
+    onRestored();
+    await load();
+  };
+
+  return (
+    <main className="page-shell product-maintenance-page">
+      <header className="page-header">
+        <div>
+          <button className="text-back" onClick={onBack} type="button">← 返回分析记录</button>
+          <h1>分析记录数据维护</h1>
+          <p>检查本地数据库状态，并创建由客户端完整性校验过的备份。</p>
+        </div>
+        <Button
+          disabled={busy || !status?.writable}
+          loading={busy}
+          onClick={() => void createBackup()}
+          theme="primary"
+        >
+          创建备份
+        </Button>
+      </header>
+
+      {error ? <div className="page-alert is-error" role="alert">{error}</div> : null}
+      {success ? <div className="page-alert is-success" role="status">{success}</div> : null}
+
+      <section className="record-storage-status storage-status-grid" aria-label="分析记录库状态">
+        <div>
+          <span>完整性</span>
+          <strong className={status?.integrity === 'ok' ? 'is-healthy' : 'is-unhealthy'}>
+            {loading ? '检查中' : status?.integrity === 'ok' ? '正常' : '需要处理'}
+          </strong>
+        </div>
+        <div><span>Schema</span><strong>v{status?.schemaVersion ?? '—'}</strong></div>
+        <div><span>写入状态</span><strong>{status?.writable ? '可读写' : '只读'}</strong></div>
+        <div><span>确认记录</span><strong>{status?.recordCount ?? '—'}</strong></div>
+        <div><span>反馈 / 素材引用</span><strong>{status ? `${status.feedbackCount} / ${status.sourceReferenceCount}` : '—'}</strong></div>
+        <div><span>已保留备份</span><strong>{status?.backupCount ?? '—'}</strong></div>
+      </section>
+
+      <section className="backup-section">
+        <div className="section-heading">
+          <div>
+            <h2>备份记录</h2>
+            <p>备份保存在应用管理目录，不复制源素材、模型凭据或已导出的 PDF。</p>
+          </div>
+          <Button disabled={busy} onClick={() => void load()} size="small" variant="outline">刷新</Button>
+        </div>
+        {loading ? <div className="backup-empty">正在读取备份…</div> : null}
+        {!loading && !backups.length ? (
+          <div className="backup-empty">尚无备份。创建后可在这里核对版本、数量和完整性。</div>
+        ) : null}
+        {!loading && backups.length ? (
+          <div className="backup-list">
+            <div className="backup-list-head record-backup-list-row">
+              <span>创建时间</span><span>类型</span><span>记录数</span><span>反馈 / 引用</span><span>大小</span><span>校验</span><span />
+            </div>
+            {backups.map((item) => (
+              <div className="backup-row record-backup-list-row" key={item.id}>
+                <time dateTime={item.createdAt}>{formatLocalTime(item.createdAt)}</time>
+                <span>{backupKindLabel(item)}</span>
+                <span>{item.recordCount ?? '—'}</span>
+                <span>{item.feedbackCount ?? '—'} / {item.sourceReferenceCount ?? '—'}</span>
+                <span>{formatFileSize(item.size)}</span>
+                <Tag theme={item.integrity === 'ok' ? 'success' : 'danger'} variant="light">
+                  {item.integrity === 'ok' ? `v${item.schemaVersion} 可用` : '校验失败'}
+                </Tag>
+                <Button
+                  disabled={busy || item.integrity !== 'ok' || !status?.writable}
+                  onClick={() => setRestoreTarget(item)}
+                  size="small"
+                  variant="text"
+                >
+                  恢复
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="maintenance-note">
+        <strong>恢复与数据边界</strong>
+        <p>恢复前会复验目标并自动备份当前记录；替换失败会回滚原库。备份不复制源素材、模型凭据或外部 PDF。</p>
+      </section>
+
+      {restoreTarget ? (
+        <div className="modal-backdrop" role="presentation">
+          <section aria-labelledby="record-restore-title" aria-modal="true" className="app-modal" role="dialog">
+            <Tag theme="warning" variant="light">将替换当前分析记录</Tag>
+            <h2 id="record-restore-title">恢复 {formatLocalTime(restoreTarget.createdAt)} 的备份？</h2>
+            <p>
+              当前记录库将替换为包含 {restoreTarget.recordCount ?? '未知数量'} 条确认记录的已验证备份。
+              恢复前会自动创建当前数据的安全备份；源素材和外部 PDF 不会被删除。
+            </p>
+            <div className="modal-actions">
+              <Button disabled={busy} onClick={() => setRestoreTarget(null)} variant="outline">取消</Button>
+              <Button loading={busy} onClick={() => void restore()} theme="warning">确认恢复</Button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </main>
+  );
 };
 
 const DetailSection = ({
@@ -582,6 +771,7 @@ export const RecordsPage = ({
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<AnalysisRecord | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [maintenance, setMaintenance] = useState(false);
   const listScrollTop = useRef(0);
 
   const listQuery: AnalysisRecordQuery = {
@@ -686,6 +876,19 @@ export const RecordsPage = ({
     setOffset(0);
   };
 
+  if (maintenance) {
+    return (
+      <RecordMaintenance
+        onBack={() => setMaintenance(false)}
+        onRestored={() => {
+          setSelected(null);
+          setOffset(0);
+          void load();
+        }}
+      />
+    );
+  }
+
   if (selected) {
     return (
       <RecordDetail
@@ -716,7 +919,10 @@ export const RecordsPage = ({
           <h1>分析记录</h1>
           <p>在本地查找、查看和管理已确认保存的素材分析报告。</p>
         </div>
-        <Button onClick={onCreate} theme="primary">新建分析</Button>
+        <div className="header-actions">
+          <Button onClick={() => setMaintenance(true)} variant="outline">数据维护</Button>
+          <Button onClick={onCreate} theme="primary">新建分析</Button>
+        </div>
       </header>
 
       <section className="records-toolbar" aria-label="分析记录筛选">

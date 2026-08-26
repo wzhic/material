@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0025",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "requirement": {
+    "id": "单素材分析-REQ-0005",
+    "name": "分析记录备份恢复与迁移保护",
+    "version": "v1.0",
+    "interaction_kind": "mixed"
+  },
+  "summary": "为本地分析记录数据库实现应用管理的备份、恢复和迁移保护：用户可在分析记录页进入数据维护，查看 schema、完整性、读写状态、记录/反馈/加密素材引用数量和备份清单，创建并验证手动备份；恢复前二次确认、重新校验目标并自动创建当前库的恢复前安全备份，再同目录暂存、原子替换和复验，任一步失败恢复原库。文件型 v1/v2 schema 在迁移到 v3 前创建并验证 pre-migration 备份；旧备份可由当前客户端恢复后重新迁移。备份包含确认报告、规则/产品快照、反馈、关系和加密素材引用，不包含源素材字节、API Key、模型安全存储秘密或外部 PDF。Renderer 只接收不可预测备份 ID和有限元数据，不接收绝对路径、SQL或记录正文。V1 不提供任意文件导入导出、云备份、跨设备同步、自动删除、备份合并、密码包、批量报告导出、部署、发布或最终合并。",
+  "release_units": ["mac", "win"],
+  "branch": "codex/req-0005-app-0025-record-backup-restore",
+  "base_branch": "codex/req-0005-app-0024-record-source-recovery",
+  "allowed_paths": [
+    "apps/desktop/**",
+    "docs/development/分析记录备份恢复-DEV-0018-v1.0.md",
+    "docs/development/历史记录源素材恢复-DEV-0017-v1.0.md",
+    "docs/development/README.md",
+    "docs/troubleshooting/分析记录备份恢复-TRB-0015-v1.0.md",
+    "docs/troubleshooting/README.md",
+    "project-control/**"
+  ],
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py docs --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/reconcile.py precommit --json",
+    "python3 tools/governance/taskctl.py begin APP-0025",
+    "python3 tools/governance/taskctl.py run-validation APP-0025",
+    "python3 tools/governance/taskctl.py run-required APP-0025",
+    "python3 tools/governance/taskctl.py commit-task APP-0025",
+    "python3 tools/governance/taskctl.py push-task APP-0025",
+    "python3 tools/governance/taskctl.py open-pr APP-0025",
+    "npm --prefix apps/desktop run lint",
+    "npm --prefix apps/desktop run typecheck",
+    "npm --prefix apps/desktop run test",
+    "npm --prefix apps/desktop run package"
+  ],
+  "allowed_tools": ["apply_patch", "ApplyPatch", "Bash", "Read", "Glob", "Grep", "view_image", "codex_app__read_thread_terminal"],
+  "dependencies": [],
+  "required_docs": ["docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md"],
+  "validation": {
+    "required": [
+      {"id":"docs_reconcile","argv":["python3","tools/governance/reconcile.py","docs","--json"],"timeout_seconds":120,"gates":["LOCAL_VERIFIED","CI_VERIFIED","POST_MERGE_VERIFIED"],"release_units":["mac","win"]},
+      {"id":"repository_reconcile","argv":["python3","tools/governance/reconcile.py","static","--json"],"timeout_seconds":120,"gates":["LOCAL_VERIFIED","CI_VERIFIED","POST_MERGE_VERIFIED"],"release_units":["mac","win"]},
+      {"id":"desktop_lint","argv":["npm","--prefix","apps/desktop","run","lint"],"timeout_seconds":300,"gates":["LOCAL_VERIFIED","CI_VERIFIED","POST_MERGE_VERIFIED"],"release_units":["mac","win"]},
+      {"id":"desktop_typecheck","argv":["npm","--prefix","apps/desktop","run","typecheck"],"timeout_seconds":300,"gates":["LOCAL_VERIFIED","CI_VERIFIED","POST_MERGE_VERIFIED"],"release_units":["mac","win"]},
+      {"id":"desktop_tests","argv":["npm","--prefix","apps/desktop","run","test"],"timeout_seconds":900,"gates":["LOCAL_VERIFIED","CI_VERIFIED","POST_MERGE_VERIFIED"],"release_units":["mac","win"]},
+      {"id":"desktop_package","argv":["npm","--prefix","apps/desktop","run","package"],"timeout_seconds":1200,"gates":["LOCAL_VERIFIED","CI_VERIFIED","POST_MERGE_VERIFIED"],"release_units":["mac","win"]},
+      {"id":"governance_unit_tests","argv":["python3","-m","unittest","discover","-s","tools/governance/tests","-p","test_*.py","-v"],"timeout_seconds":1200,"gates":["LOCAL_VERIFIED","CI_VERIFIED","POST_MERGE_VERIFIED"],"release_units":["mac","win"]}
+    ],
+    "results": []
+  },
+  "assumptions": [
+    {"id":"APP-0025-ASM-001","statement":"V1 备份只保存在 Electron userData 下的应用管理目录，不提供任意路径导入导出或跨设备迁移格式。","status":"confirmed","source":"REQ-0005 的本地优先、无云同步和应用升级备份边界"},
+    {"id":"APP-0025-ASM-002","statement":"备份包含分析记录数据库中的报告、反馈、关系和 safeStorage 密文引用，但不复制源素材、API Key、模型凭据文件或用户导出的 PDF。","status":"confirmed","source":"REQ-0005 数据生命周期与隐私边界"},
+    {"id":"APP-0025-ASM-003","statement":"恢复必须由用户在客户端二次确认；执行前生成并验证 pre-restore 安全备份，替换或复验失败自动回滚原库。","status":"confirmed","source":"REQ-0005 恢复与回退要求"},
+    {"id":"APP-0025-ASM-004","statement":"V1 不自动清理备份；备份保留策略和永久删除另立需求，避免静默数据损失。","status":"confirmed","source":"现有产品库备份治理的一致本地默认"}
+  ],
+  "open_questions": [],
+  "blockers": [],
+  "review_authority": {
+    "scheme":"ssh-keygen-y-v1",
+    "identity":"material-project-owner",
+    "namespace":"material-governance-review",
+    "public_key":"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "key_fingerprint":"SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E"
+  },
+  "ci_trust": {
+    "provider":"github_actions_rest_v1",
+    "repository":"wzhic/material",
+    "workflow_path":".github/workflows/governance.yml",
+    "api_base":"https://api.github.com",
+    "api_version":"2026-03-10",
+    "private":true,
+    "token_env":"MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "ci_events":["pull_request","push"],
+    "post_merge_events":["push"],
+    "required_jobs":{"pull_request":["Governance (ubuntu-latest)","Governance (macos-latest)","Governance (windows-latest)"],"push":["Governance (ubuntu-latest)","Governance (macos-latest)","Governance (windows-latest)"]}
+  },
+  "coordination": {
+    "mode":"coordinated-multi",
+    "coordinator_task":"APP-0025",
+    "unit_tasks":{"mac":"APP-0025","win":"APP-0025"},
+    "compatibility_matrix_doc":"docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md",
+    "deployment_order":["mac","win"],
+    "rollback_order":["win","mac"],
+    "unit_validation_checks":{"mac":["desktop_lint","desktop_typecheck","desktop_tests","desktop_package"],"win":["desktop_lint","desktop_typecheck","desktop_tests","desktop_package"]},
+    "unit_rollback_checks":{"mac":["desktop_tests","desktop_package"],"win":["desktop_tests","desktop_package"]}
+  }
+}

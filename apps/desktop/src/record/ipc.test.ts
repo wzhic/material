@@ -205,4 +205,47 @@ describe('record IPC confirmation boundary', () => {
     expect(get).not.toHaveBeenCalled();
     expect(exportRecord).not.toHaveBeenCalled();
   });
+
+  it('exposes storage status, backup creation and restore only to the trusted renderer', async () => {
+    const storageStatus = vi.fn(() => ({
+      backupCount: 1,
+      feedbackCount: 1,
+      integrity: 'ok' as const,
+      recordCount: 2,
+      schemaVersion: 3,
+      sourceReferenceCount: 1,
+      writable: true,
+    }));
+    const createBackup = vi.fn(async () => ({ id: 'backup-1' }));
+    const restoreBackup = vi.fn(async () => ({ restoredBackupId: 'backup-1' }));
+    registerRecordIpc(
+      { createBackup, restoreBackup, storageStatus } as unknown as RecordRepository,
+      (id) => id === 7,
+    );
+
+    const statusResult = await electron.handlers.get(RECORD_IPC_CHANNELS.storageStatus)?.({
+      sender: { id: 7 },
+    });
+    const createResult = await electron.handlers.get(RECORD_IPC_CHANNELS.createBackup)?.({
+      sender: { id: 7 },
+    });
+    const restoreResult = await electron.handlers.get(RECORD_IPC_CHANNELS.restoreBackup)?.(
+      { sender: { id: 7 } },
+      'backup-1',
+    );
+    const rejected = await electron.handlers.get(RECORD_IPC_CHANNELS.restoreBackup)?.(
+      { sender: { id: 8 } },
+      'backup-1',
+    );
+
+    expect(statusResult).toMatchObject({ ok: true, data: { recordCount: 2 } });
+    expect(createResult).toEqual({ ok: true, data: { id: 'backup-1' } });
+    expect(restoreResult).toEqual({
+      ok: true,
+      data: { restoredBackupId: 'backup-1' },
+    });
+    expect(rejected).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    expect(restoreBackup).toHaveBeenCalledTimes(1);
+    expect(restoreBackup).toHaveBeenCalledWith('backup-1');
+  });
 });

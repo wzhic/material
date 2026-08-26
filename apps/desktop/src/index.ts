@@ -100,8 +100,13 @@ app.whenReady().then(() => {
     app.getPath('userData'),
     'material-analysis-records.sqlite3',
   );
+  const recordBackupDirectory = path.join(
+    app.getPath('userData'),
+    'backups',
+    'records',
+  );
   try {
-    recordRepository = new RecordRepository(recordDatabasePath);
+    recordRepository = new RecordRepository(recordDatabasePath, recordBackupDirectory);
     registerRecordIpc(
       recordRepository,
       isTrustedSender,

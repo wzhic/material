@@ -1,6 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import { chmodSync } from 'node:fs';
-import { DatabaseSync } from 'node:sqlite';
+import {
+  constants as fsConstants,
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+} from 'node:fs';
+import path from 'node:path';
+import { backup, DatabaseSync } from 'node:sqlite';
 
 import {
   normalizeFeedback,
@@ -16,8 +27,12 @@ import {
   ConfirmedRecordInput,
   MaterialSourceStatus,
   RecordApiErrorCode,
+  RecordBackupInfo,
+  RecordBackupKind,
   RecordFeedback,
   RecordFeedbackInput,
+  RecordRestoreResult,
+  RecordStorageStatus,
 } from './types';
 
 interface VersionRow {
@@ -30,6 +45,10 @@ interface QuickCheckRow {
 
 interface CountRow {
   count: number;
+}
+
+interface TableInfoRow {
+  name: string;
 }
 
 interface RecordRow {
@@ -73,12 +92,20 @@ interface SourceReferenceRow {
   encrypted_path: string;
 }
 
+interface BackupEntry extends RecordBackupInfo {
+  filePath: string;
+}
+
 const asRow = <T>(value: unknown): T | undefined => value as T | undefined;
 const asRows = <T>(value: unknown[]): T[] => value as T[];
 
 const escapeLike = (value: string): string =>
   value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
 
+const BACKUP_PATTERN =
+  /^record-(manual|pre-migration|pre-restore)-(\d{13})-([0-9a-f-]{36})\.sqlite3$/;
+const RESTORE_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const validateEncryptedSourcePath = (value: string): string => {
   if (
     value.length < 8
@@ -101,11 +128,20 @@ export class RecordRepositoryError extends Error {
 }
 
 export class RecordRepository {
-  private readonly database: DatabaseSync;
+  private database: DatabaseSync;
   private sourceTableAvailable = false;
-  private readonly writable: boolean;
+  private writable: boolean;
+  private readonly databasePath: string;
+  private readonly backupDirectory: string | null;
+  private maintenance = false;
 
-  constructor(databasePath: string) {
+  constructor(databasePath: string, backupDirectory?: string) {
+    this.databasePath = databasePath;
+    this.backupDirectory =
+      databasePath === ':memory:'
+        ? null
+        : backupDirectory ?? path.join(path.dirname(databasePath), 'record-backups');
+    this.recoverInterruptedRestore();
     const opened = this.openDatabase(databasePath);
     this.database = opened.database;
     this.writable = opened.writable;
@@ -114,6 +150,7 @@ export class RecordRepository {
       if (databasePath !== ':memory:' && this.writable) {
         chmodSync(databasePath, 0o600);
       }
+      this.cleanupRestoreFiles();
     } catch (error) {
       this.database.close();
       throw error;
@@ -125,6 +162,7 @@ export class RecordRepository {
   }
 
   list(query: AnalysisRecordQuery = {}): AnalysisRecordPage {
+    this.ensureAvailable();
     const conditions: string[] = [];
     const parameters: Array<number | string> = [];
     const normalizedQuery = normalizeRecordSearch(query.query ?? '');
@@ -193,6 +231,7 @@ export class RecordRepository {
   }
 
   get(id: string): AnalysisRecord {
+    this.ensureAvailable();
     const row = asRow<RecordRow>(
       this.database.prepare('SELECT * FROM analysis_records WHERE id = ?').get(id),
     );
@@ -254,6 +293,7 @@ export class RecordRepository {
     input: ConfirmedRecordInput,
     encryptedSourcePath?: string,
   ): AnalysisRecord {
+    this.ensureAvailable();
     validateConfirmedRecord(input);
     if (!input.confirmationId) {
       throw new RecordRepositoryError('INVALID_INPUT', '报告确认标识不能为空');
@@ -323,6 +363,7 @@ export class RecordRepository {
   }
 
   sourceReference(id: string): string | null {
+    this.ensureAvailable();
     this.requireRecord(id);
     if (!this.sourceTableAvailable) return null;
     return asRow<SourceReferenceRow>(
@@ -333,6 +374,7 @@ export class RecordRepository {
   }
 
   updateSourceStatus(id: string, status: MaterialSourceStatus): AnalysisRecord {
+    this.ensureAvailable();
     if (!['available', 'mismatch', 'needs_relocation'].includes(status)) {
       throw new RecordRepositoryError('INVALID_INPUT', '源素材状态不受支持');
     }
@@ -346,6 +388,7 @@ export class RecordRepository {
   }
 
   replaceSourceReference(id: string, encryptedSourcePath: string): AnalysisRecord {
+    this.ensureAvailable();
     const protectedSource = validateEncryptedSourcePath(encryptedSourcePath);
     this.transaction(() => {
       this.requireRecord(id);
@@ -355,6 +398,7 @@ export class RecordRepository {
   }
 
   saveFeedback(id: string, input: RecordFeedbackInput): RecordFeedback {
+    this.ensureAvailable();
     const normalized = normalizeFeedback(input);
     const updatedAt = new Date().toISOString();
     this.transaction(() => {
@@ -376,6 +420,7 @@ export class RecordRepository {
   }
 
   clearFeedback(id: string): void {
+    this.ensureAvailable();
     this.transaction(() => {
       this.requireRecord(id);
       this.database.prepare('DELETE FROM analysis_record_feedback WHERE record_id = ?').run(id);
@@ -383,6 +428,7 @@ export class RecordRepository {
   }
 
   remove(id: string): void {
+    this.ensureAvailable();
     this.transaction(() => {
       this.requireRecord(id);
       const result = this.database.prepare('DELETE FROM analysis_records WHERE id = ?').run(id);
@@ -390,6 +436,146 @@ export class RecordRepository {
         throw new RecordRepositoryError('CONFLICT', '分析记录删除失败，请重试');
       }
     });
+  }
+
+  storageStatus(): RecordStorageStatus {
+    this.ensureAvailable();
+    return this.storageStatusInternal();
+  }
+
+  private storageStatusInternal(): RecordStorageStatus {
+    const schemaVersion = asRow<VersionRow>(
+      this.database.prepare('PRAGMA user_version').get(),
+    )?.user_version ?? 0;
+    return {
+      schemaVersion,
+      integrity: this.integrityCheck(this.database) ? 'ok' : 'failed',
+      writable: this.writable,
+      recordCount: this.countTable(this.database, 'analysis_records'),
+      feedbackCount: this.countTable(this.database, 'analysis_record_feedback'),
+      sourceReferenceCount: this.countTable(this.database, 'analysis_record_sources'),
+      backupCount: this.listBackupEntries().length,
+    };
+  }
+
+  listBackups(): RecordBackupInfo[] {
+    this.ensureAvailable();
+    return this.listBackupEntries().map((entry) => ({
+      id: entry.id,
+      kind: entry.kind,
+      createdAt: entry.createdAt,
+      size: entry.size,
+      schemaVersion: entry.schemaVersion,
+      recordCount: entry.recordCount,
+      feedbackCount: entry.feedbackCount,
+      sourceReferenceCount: entry.sourceReferenceCount,
+      integrity: entry.integrity,
+    }));
+  }
+
+  async createBackup(): Promise<RecordBackupInfo> {
+    this.ensureAvailable();
+    this.maintenance = true;
+    try {
+      return await this.createBackupInternal('manual');
+    } finally {
+      this.maintenance = false;
+    }
+  }
+
+  async restoreBackup(id: string): Promise<RecordRestoreResult> {
+    this.ensureAvailable();
+    this.requireBackupDirectory();
+    if (!this.writable) {
+      throw new RecordRepositoryError(
+        'DATABASE_UNAVAILABLE',
+        '分析记录当前为只读，恢复写入权限后才能恢复备份',
+      );
+    }
+    const entry = this.listBackupEntries().find((candidate) => candidate.id === id);
+    if (!entry) {
+      throw new RecordRepositoryError('NOT_FOUND', '备份不存在或已被移除');
+    }
+    if (
+      entry.integrity !== 'ok'
+      || entry.schemaVersion === null
+      || ![1, 2, 3].includes(entry.schemaVersion)
+    ) {
+      throw new RecordRepositoryError('INVALID_INPUT', '备份未通过完整性或版本校验');
+    }
+
+    this.maintenance = true;
+    const restoreId = randomUUID();
+    const stagingPath = `${this.databasePath}.restore-new-${restoreId}`;
+    const oldPath = `${this.databasePath}.restore-old-${restoreId}`;
+    try {
+      const safetyBackup = await this.createBackupInternal('pre-restore');
+      copyFileSync(entry.filePath, stagingPath, fsConstants.COPYFILE_EXCL);
+      chmodSync(stagingPath, 0o600);
+      const staged = this.inspectDatabase(stagingPath);
+      if (
+        staged.integrity !== 'ok'
+        || staged.schemaVersion === null
+        || ![1, 2, 3].includes(staged.schemaVersion)
+      ) {
+        throw new RecordRepositoryError(
+          'INVALID_INPUT',
+          '备份副本复验失败，未修改当前分析记录',
+        );
+      }
+
+      this.database.close();
+      try {
+        renameSync(this.databasePath, oldPath);
+        renameSync(stagingPath, this.databasePath);
+        const opened = this.openDatabase(this.databasePath);
+        this.database = opened.database;
+        this.writable = opened.writable;
+        this.sourceTableAvailable = false;
+        this.initialize();
+        const status = this.storageStatusInternal();
+        if (status.integrity !== 'ok' || status.schemaVersion !== 3) {
+          throw new RecordRepositoryError(
+            'DATABASE_UNAVAILABLE',
+            '恢复后的分析记录复验失败',
+          );
+        }
+        chmodSync(this.databasePath, 0o600);
+        if (existsSync(oldPath)) {
+          unlinkSync(oldPath);
+        }
+        return { restoredBackupId: id, safetyBackup, status };
+      } catch (error) {
+        try {
+          this.database.close();
+        } catch {
+          // The connection can already be closed when replacement failed early.
+        }
+        if (existsSync(this.databasePath) && existsSync(oldPath)) {
+          unlinkSync(this.databasePath);
+        }
+        if (existsSync(oldPath)) {
+          renameSync(oldPath, this.databasePath);
+        }
+        const reopened = this.openDatabase(this.databasePath);
+        this.database = reopened.database;
+        this.writable = reopened.writable;
+        this.sourceTableAvailable = false;
+        this.initialize();
+        if (error instanceof RecordRepositoryError) {
+          throw error;
+        }
+        throw new RecordRepositoryError(
+          'DATABASE_UNAVAILABLE',
+          '备份恢复失败，原分析记录已恢复',
+        );
+      }
+    } finally {
+      if (existsSync(stagingPath)) {
+        unlinkSync(stagingPath);
+      }
+      this.maintenance = false;
+    }
   }
 
   private openDatabase(databasePath: string): { database: DatabaseSync; writable: boolean } {
@@ -416,6 +602,337 @@ export class RecordRepository {
           'DATABASE_UNAVAILABLE',
           '分析记录无法打开，请检查应用数据目录权限',
         );
+      }
+    }
+  }
+
+  private ensureAvailable(): void {
+    if (this.maintenance) {
+      throw new RecordRepositoryError(
+        'CONFLICT',
+        '分析记录正在执行备份或恢复，请稍后重试',
+      );
+    }
+  }
+
+  private requireBackupDirectory(): string {
+    if (!this.backupDirectory || this.databasePath === ':memory:') {
+      throw new RecordRepositoryError(
+        'DATABASE_UNAVAILABLE',
+        '当前分析记录不支持文件备份',
+      );
+    }
+    return this.backupDirectory;
+  }
+
+  private async createBackupInternal(kind: RecordBackupKind): Promise<RecordBackupInfo> {
+    const backupDirectory = this.requireBackupDirectory();
+    mkdirSync(backupDirectory, { recursive: true, mode: 0o700 });
+    chmodSync(backupDirectory, 0o700);
+    const createdAt = Date.now();
+    const id = randomUUID();
+    const destination = path.join(
+      backupDirectory,
+      `record-${kind}-${createdAt}-${id}.sqlite3`,
+    );
+    try {
+      await backup(this.database, destination, { rate: 128 });
+      chmodSync(destination, 0o600);
+      const inspection = this.inspectDatabase(destination);
+      if (inspection.integrity !== 'ok' || inspection.schemaVersion !== 3) {
+        throw new RecordRepositoryError(
+          'DATABASE_UNAVAILABLE',
+          '分析记录备份完整性校验失败，未保留该备份',
+        );
+      }
+      return this.toBackupInfo(id, kind, createdAt, destination, inspection);
+    } catch (error) {
+      if (existsSync(destination)) {
+        unlinkSync(destination);
+      }
+      if (error instanceof RecordRepositoryError) {
+        throw error;
+      }
+      throw new RecordRepositoryError(
+        'DATABASE_UNAVAILABLE',
+        '分析记录备份失败，请检查磁盘空间和目录权限',
+      );
+    }
+  }
+
+  private createPreMigrationBackupSync(): RecordBackupInfo {
+    const backupDirectory = this.requireBackupDirectory();
+    mkdirSync(backupDirectory, { recursive: true, mode: 0o700 });
+    chmodSync(backupDirectory, 0o700);
+    const createdAt = Date.now();
+    const id = randomUUID();
+    const destination = path.join(
+      backupDirectory,
+      `record-pre-migration-${createdAt}-${id}.sqlite3`,
+    );
+    try {
+      this.database.exec('PRAGMA wal_checkpoint(FULL);');
+      copyFileSync(this.databasePath, destination, fsConstants.COPYFILE_EXCL);
+      chmodSync(destination, 0o600);
+      const inspection = this.inspectDatabase(destination);
+      if (
+        inspection.integrity !== 'ok'
+        || inspection.schemaVersion === null
+        || ![1, 2].includes(inspection.schemaVersion)
+      ) {
+        throw new RecordRepositoryError(
+          'DATABASE_UNAVAILABLE',
+          '迁移前备份校验失败，已停止升级',
+        );
+      }
+      return this.toBackupInfo(
+        id,
+        'pre-migration',
+        createdAt,
+        destination,
+        inspection,
+      );
+    } catch (error) {
+      if (existsSync(destination)) {
+        unlinkSync(destination);
+      }
+      if (error instanceof RecordRepositoryError) {
+        throw error;
+      }
+      throw new RecordRepositoryError(
+        'DATABASE_UNAVAILABLE',
+        '迁移前备份失败，原分析记录未升级',
+      );
+    }
+  }
+
+  private toBackupInfo(
+    id: string,
+    kind: RecordBackupKind,
+    createdAt: number,
+    filePath: string,
+    inspection: Pick<
+      RecordBackupInfo,
+      'feedbackCount' | 'integrity' | 'recordCount' | 'schemaVersion' | 'sourceReferenceCount'
+    >,
+  ): RecordBackupInfo {
+    return {
+      id,
+      kind,
+      createdAt: new Date(createdAt).toISOString(),
+      size: statSync(filePath).size,
+      ...inspection,
+    };
+  }
+
+  private listBackupEntries(): BackupEntry[] {
+    if (!this.backupDirectory || !existsSync(this.backupDirectory)) {
+      return [];
+    }
+    return readdirSync(this.backupDirectory, { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .flatMap((entry) => {
+        const match = BACKUP_PATTERN.exec(entry.name);
+        if (!match) {
+          return [];
+        }
+        const kind = match[1] as RecordBackupKind;
+        const createdAt = Number(match[2]);
+        const id = match[3];
+        const filePath = path.join(this.backupDirectory as string, entry.name);
+        return [{
+          ...this.toBackupInfo(
+            id,
+            kind,
+            createdAt,
+            filePath,
+            this.inspectDatabase(filePath),
+          ),
+          filePath,
+        }];
+      })
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  private inspectDatabase(databasePath: string): Pick<
+    RecordBackupInfo,
+    'feedbackCount' | 'integrity' | 'recordCount' | 'schemaVersion' | 'sourceReferenceCount'
+  > {
+    let database: DatabaseSync | null = null;
+    try {
+      database = new DatabaseSync(databasePath, {
+        enableForeignKeyConstraints: true,
+        readOnly: true,
+        timeout: 5_000,
+      });
+      const schemaVersion = asRow<VersionRow>(
+        database.prepare('PRAGMA user_version').get(),
+      )?.user_version ?? null;
+      if (
+        schemaVersion === null
+        || ![1, 2, 3].includes(schemaVersion)
+        || !this.schemaShapeValid(database, schemaVersion)
+      ) {
+        return this.failedInspection(schemaVersion);
+      }
+      return {
+        schemaVersion,
+        recordCount: this.countTable(database, 'analysis_records'),
+        feedbackCount: this.countTable(database, 'analysis_record_feedback'),
+        sourceReferenceCount:
+          schemaVersion === 3 ? this.countTable(database, 'analysis_record_sources') : 0,
+        integrity: this.integrityCheck(database) ? 'ok' : 'failed',
+      };
+    } catch {
+      return this.failedInspection(null);
+    } finally {
+      database?.close();
+    }
+  }
+
+  private failedInspection(schemaVersion: number | null): Pick<
+    RecordBackupInfo,
+    'feedbackCount' | 'integrity' | 'recordCount' | 'schemaVersion' | 'sourceReferenceCount'
+  > {
+    return {
+      schemaVersion,
+      recordCount: null,
+      feedbackCount: null,
+      sourceReferenceCount: null,
+      integrity: 'failed',
+    };
+  }
+
+  private countTable(database: DatabaseSync, tableName: string): number {
+    const allowed = new Set([
+      'analysis_records',
+      'analysis_record_feedback',
+      'analysis_record_sources',
+    ]);
+    if (!allowed.has(tableName)) {
+      throw new RecordRepositoryError('INVALID_INPUT', '分析记录统计目标无效');
+    }
+    const exists = asRow<CountRow>(
+      database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = ?",
+        )
+        .get(tableName),
+    )?.count;
+    if (!exists) {
+      return 0;
+    }
+    return asRow<CountRow>(
+      database.prepare(`SELECT COUNT(*) AS count FROM ${tableName}`).get(),
+    )?.count ?? 0;
+  }
+
+  private quickCheck(database: DatabaseSync): boolean {
+    const rows = asRows<QuickCheckRow>(database.prepare('PRAGMA quick_check').all());
+    return rows.length > 0 && rows.every((row) => row.quick_check === 'ok');
+  }
+
+  private integrityCheck(database: DatabaseSync): boolean {
+    return this.quickCheck(database)
+      && database.prepare('PRAGMA foreign_key_check').all().length === 0;
+  }
+
+  private schemaShapeValid(database: DatabaseSync, schemaVersion: number): boolean {
+    const recordColumns = [
+      'id',
+      'industry',
+      'media_kind',
+      'material_display_name',
+      'product_display_name',
+      'total_score',
+      'source_status',
+      'source_record_id',
+      'confirmed_at',
+      'search_text',
+      'record_json',
+      ...(schemaVersion >= 2 ? ['confirmation_id'] : []),
+    ];
+    const feedbackColumns = [
+      'record_id',
+      'rating',
+      'reason',
+      'weight_direction',
+      'updated_at',
+    ];
+    return this.tableHasColumns(database, 'analysis_records', recordColumns)
+      && this.tableHasColumns(database, 'analysis_record_feedback', feedbackColumns)
+      && (
+        schemaVersion < 3
+        || this.tableHasColumns(
+          database,
+          'analysis_record_sources',
+          ['record_id', 'schema_version', 'encrypted_path'],
+        )
+      );
+  }
+
+  private tableHasColumns(
+    database: DatabaseSync,
+    tableName: string,
+    requiredColumns: string[],
+  ): boolean {
+    const allowed = new Set([
+      'analysis_records',
+      'analysis_record_feedback',
+      'analysis_record_sources',
+    ]);
+    if (!allowed.has(tableName)) {
+      return false;
+    }
+    const columns = new Set(
+      asRows<TableInfoRow>(database.prepare(`PRAGMA table_info(${tableName})`).all())
+        .map((row) => row.name),
+    );
+    return requiredColumns.every((column) => columns.has(column));
+  }
+
+  private recoverInterruptedRestore(): void {
+    if (this.databasePath === ':memory:' || existsSync(this.databasePath)) {
+      return;
+    }
+    const directory = path.dirname(this.databasePath);
+    if (!existsSync(directory)) {
+      return;
+    }
+    const prefix = `${path.basename(this.databasePath)}.restore-old-`;
+    const candidates = readdirSync(directory, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isFile()
+          && entry.name.startsWith(prefix)
+          && RESTORE_ID_PATTERN.test(entry.name.slice(prefix.length)),
+      )
+      .map((entry) => ({
+        name: entry.name,
+        modifiedAt: statSync(path.join(directory, entry.name)).mtimeMs,
+      }))
+      .sort((left, right) => right.modifiedAt - left.modifiedAt);
+    if (candidates[0]) {
+      renameSync(path.join(directory, candidates[0].name), this.databasePath);
+    }
+  }
+
+  private cleanupRestoreFiles(): void {
+    if (this.databasePath === ':memory:' || !this.integrityCheck(this.database)) {
+      return;
+    }
+    const directory = path.dirname(this.databasePath);
+    const baseName = path.basename(this.databasePath);
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const oldPrefix = `${baseName}.restore-old-`;
+      const newPrefix = `${baseName}.restore-new-`;
+      const suffix = entry.name.startsWith(oldPrefix)
+        ? entry.name.slice(oldPrefix.length)
+        : entry.name.startsWith(newPrefix)
+          ? entry.name.slice(newPrefix.length)
+          : '';
+      if (entry.isFile() && RESTORE_ID_PATTERN.test(suffix)) {
+        unlinkSync(path.join(directory, entry.name));
       }
     }
   }
@@ -472,10 +989,12 @@ export class RecordRepository {
       `);
       this.sourceTableAvailable = true;
     } else if (version === 1 && this.writable) {
+      this.createPreMigrationBackupSync();
       this.migrateV1ToV2();
       this.migrateV2ToV3();
       this.sourceTableAvailable = true;
     } else if (version === 2 && this.writable) {
+      this.createPreMigrationBackupSync();
       this.migrateV2ToV3();
       this.sourceTableAvailable = true;
     } else if (version === 3) {
@@ -486,10 +1005,13 @@ export class RecordRepository {
         '分析记录版本高于当前客户端，请升级客户端后重试',
       );
     }
-    const integrityRows = asRows<QuickCheckRow>(
-      this.database.prepare('PRAGMA quick_check(1)').all(),
-    );
-    if (!integrityRows.length || integrityRows.some((row) => row.quick_check !== 'ok')) {
+    const currentVersion = asRow<VersionRow>(
+      this.database.prepare('PRAGMA user_version').get(),
+    )?.user_version ?? 0;
+    if (
+      !this.schemaShapeValid(this.database, currentVersion)
+      || !this.integrityCheck(this.database)
+    ) {
       throw new RecordRepositoryError(
         'DATABASE_UNAVAILABLE',
         '分析记录完整性检查失败，已停止写入',
@@ -572,6 +1094,7 @@ export class RecordRepository {
           schema_version INTEGER NOT NULL CHECK (schema_version = 1),
           encrypted_path TEXT NOT NULL
         );
+        UPDATE analysis_records SET source_status = 'needs_relocation';
         PRAGMA user_version = 3;
       `);
       const foreignKeyIssues = this.database.prepare('PRAGMA foreign_key_check').all();
