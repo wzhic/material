@@ -111,6 +111,7 @@ export class AnalysisEngine {
     const runId = this.idFactory();
     const events: AnalysisRunEvent[] = [];
     let modelAudit: ModelInvocationAudit | null = null;
+    let modelTerminalReceived = false;
     const emit = (stage: AnalysisRunStage, progress: number): void => {
       const event = {
         at: this.clock().toISOString(),
@@ -142,16 +143,16 @@ export class AnalysisEngine {
 
       emit('awaiting_model', 0.4);
       const result = await this.model.complete(request, signal);
+      modelTerminalReceived = true;
       modelAudit = result.audit;
       if (!result.ok) {
-        if (result.error.code === 'CANCELLED' || isCancelled(signal)) cancelled();
+        if (result.error.code === 'CANCELLED') cancelled();
         throw new AnalysisEngineError(
           'MODEL_FAILED',
           `模型调用失败（${result.error.code}）`,
           result.error.code,
         );
       }
-      if (isCancelled(signal)) cancelled();
       if (
         result.audit.configurationId !== input.model.configurationId
         || result.audit.modelId !== input.model.modelId
@@ -174,8 +175,6 @@ export class AnalysisEngine {
         mediaKind: input.mediaKind,
         rule: ruleSnapshot.package,
       });
-      if (isCancelled(signal)) cancelled();
-
       emit('fusing_report', 0.85);
       const report = fuseAnalysisReport({
         audit: result.audit,
@@ -199,7 +198,7 @@ export class AnalysisEngine {
       };
     } catch (error) {
       let normalized: AnalysisEngineError;
-      if (isCancelled(signal)) {
+      if (!modelTerminalReceived && isCancelled(signal)) {
         normalized = new AnalysisEngineError('CANCELLED', '分析已取消', 'CANCELLED');
       } else if (error instanceof AnalysisEngineError) {
         normalized = error;

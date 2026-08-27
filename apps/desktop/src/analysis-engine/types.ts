@@ -154,6 +154,9 @@ export interface AnalysisReportDraft {
     configurationVersion: number;
     modelId: string;
     providerId: string;
+    providerReasoningEffort: string | null;
+    providerRequestedModelId: string | null;
+    providerReturnedModelId: string | null;
     usage: ModelUsage;
   };
   productOrGameplay: AnalysisClaim[];

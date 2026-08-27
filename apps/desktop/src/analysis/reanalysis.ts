@@ -1,10 +1,14 @@
 import type { MaterialSession } from '../media/types';
 import type { ProductListItem } from '../product/types';
 import type { AnalysisRecord } from '../record/types';
+import { CODEX_SUBSCRIPTION_CONFIGURATION_ID } from '../codex-subscription/types';
 
 export interface ReanalysisModelOption {
   configurationDisplayName: string;
+  configurationId: string;
   modelId: string;
+  providerId: string;
+  source: 'api-key' | 'codex-subscription';
   value: string;
 }
 
@@ -31,11 +35,24 @@ export const prepareReanalysisDraft = (
   products: ProductListItem[],
 ): ReanalysisDraftSelection => {
   const warnings: string[] = [];
-  const model = models.find((item) =>
-    item.configurationDisplayName === record.run.modelConfigurationName
-    && item.modelId === record.run.modelId);
+  const hasRecordedSource = Boolean(
+    record.run.modelConfigurationId
+    && record.run.providerId,
+  );
+  const recordedSource = record.run.providerId === CODEX_SUBSCRIPTION_CONFIGURATION_ID
+    ? 'codex-subscription'
+    : 'api-key';
+  const model = hasRecordedSource
+    ? models.find((item) =>
+      item.configurationId === record.run.modelConfigurationId
+      && item.providerId === record.run.providerId
+      && item.source === recordedSource
+      && item.modelId === record.run.modelId)
+    : null;
   if (!model) {
-    warnings.push('原模型配置已删除或不可用，请显式选择模型后再启动。');
+    warnings.push(hasRecordedSource
+      ? '原模型配置或来源已删除或不可用，请显式选择模型后再启动。'
+      : '历史记录缺少模型来源标识，无法安全恢复模型，请显式选择。');
   }
   const product = record.productSnapshot
     ? products.find((item) =>

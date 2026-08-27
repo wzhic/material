@@ -1,7 +1,7 @@
 import { ModelApiErrorCode } from './types';
 
 const SAFE_MESSAGES: Record<ModelApiErrorCode, string> = {
-  AUTHENTICATION_FAILED: 'API Key 无效或已失效，请更新后重试',
+  AUTHENTICATION_FAILED: '模型账户凭据无效或已失效，请重新认证后重试',
   BALANCE_INSUFFICIENT: '模型账户余额不足，请处理后重试',
   CANCELLED: '模型调用已取消',
   CONFIGURATION_CHANGED: '模型配置已在其他窗口发生变化，请刷新后重试',

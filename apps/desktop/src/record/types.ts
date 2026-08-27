@@ -1,5 +1,6 @@
 import { ProductSnapshot } from '../product/types';
 import type { MaterialMismatch, MaterialSession } from '../media/types';
+import type { ModelUsage } from '../model/types';
 
 export type RecordIndustry = 'apparel' | 'game';
 export type RecordMediaKind = 'image' | 'video';
@@ -84,6 +85,16 @@ export interface AnalysisRunSnapshot {
   modelId: string;
   capabilityVersion: string;
   completedAt: string;
+  /** Optional fields keep records written before model invocation audit v1 readable. */
+  adapterVersion?: string;
+  modelConfigurationId?: string;
+  modelConfigurationVersion?: number;
+  providerId?: string;
+  providerReasoningEffort?: string | null;
+  providerRequestedModelId?: string | null;
+  providerReturnedModelId?: string | null;
+  usage?: ModelUsage;
+  usageAvailable?: boolean;
 }
 
 export interface VisibleConversationItem {

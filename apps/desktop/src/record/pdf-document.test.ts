@@ -68,11 +68,27 @@ const record = (): AnalysisRecord => ({
     templateVersion: '1.0.0',
   },
   run: {
+    adapterVersion: 'codex-app-server@0.149.1',
     capabilityVersion: 'broker-1',
     completedAt: '2026-08-25T07:59:00.000Z',
+    modelConfigurationId: 'codex-subscription',
     modelConfigurationName: 'secret-config-marker',
+    modelConfigurationVersion: 1,
     modelId: 'secret-model-marker',
+    providerId: 'codex-subscription',
+    providerReasoningEffort: 'high',
+    providerRequestedModelId: 'requested-model-slug',
+    providerReturnedModelId: 'returned-model-marker',
     schemaVersion: 1,
+    usage: {
+      available: true,
+      completionTokens: 40,
+      promptCacheHitTokens: 10,
+      promptCacheMissTokens: 90,
+      promptTokens: 100,
+      totalTokens: 140,
+    },
+    usageAvailable: true,
   },
   sourceRecordAvailable: null,
   sourceRecordId: null,
@@ -96,7 +112,26 @@ describe('PDF report document', () => {
     expect(html).not.toContain('/Users/example');
     expect(html).not.toContain('conversation-marker');
     expect(html).not.toContain('private-feedback-marker');
-    expect(html).not.toContain('secret-config-marker');
+    expect(html).toContain('secret-config-marker');
+    expect(html).toContain('secret-model-marker');
+    expect(html).toContain('requested-model-slug');
+    expect(html).toContain('returned-model-marker');
+    expect(html).toContain('与请求不同');
+    expect(html).toContain('推理强度');
+    expect(html).toContain('high');
+    expect(html).toContain('codex-app-server@0.149.1');
+    expect(html).toContain('输入 100 · 缓存命中 10 · 输出 40 · 总计 140');
+  });
+
+  it('labels missing legacy token usage as unavailable instead of zero', () => {
+    const legacy = record();
+    delete legacy.run.usage;
+    delete legacy.run.usageAvailable;
+
+    const html = buildRecordPdfHtml(legacy);
+
+    expect(html).toContain('用量暂不可用');
+    expect(html).not.toContain('输入 0');
   });
 
   it('creates a cross-platform safe and bounded default filename', () => {

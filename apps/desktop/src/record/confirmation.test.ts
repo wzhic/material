@@ -66,7 +66,11 @@ const data = {
       configurationVersion: 1,
       modelId: 'deepseek-chat',
       providerId: 'deepseek',
+      providerReasoningEffort: null,
+      providerRequestedModelId: 'deepseek-chat',
+      providerReturnedModelId: 'deepseek-chat-20260825',
       usage: {
+        available: true,
         completionTokens: 1,
         promptCacheHitTokens: 0,
         promptCacheMissTokens: 1,
@@ -160,6 +164,18 @@ describe('createConfirmedRecordInput', () => {
     expect(input.report.score.dimensions[0].status).toBe('insufficient_evidence');
     expect(input.report.diagnoses[0].suggestion).toContain('提前展示 CTA');
     expect(input.conversionContext).toBe('加强情绪转化');
+    expect(input.run).toMatchObject({
+      adapterVersion: '1.0.0',
+      modelConfigurationId: 'config-1',
+      modelConfigurationVersion: 1,
+      modelId: 'deepseek-chat',
+      providerId: 'deepseek',
+      providerReasoningEffort: null,
+      providerRequestedModelId: 'deepseek-chat',
+      providerReturnedModelId: 'deepseek-chat-20260825',
+      usage: { available: true, totalTokens: 2 },
+      usageAvailable: true,
+    });
     expect(serialized).not.toContain('analysis.v1');
     expect(serialized).not.toContain('material-local://');
     expect(serialized).not.toContain('sessionId');
@@ -179,5 +195,23 @@ describe('createConfirmedRecordInput', () => {
       { role: 'user', text: '重点关注 00:03 的 CTA', timeReferenceMs: 3_000 },
       { role: 'assistant', text: '已按该关注点生成新版报告。', timeReferenceMs: 3_000 },
     ]);
+  });
+
+  it('persists unavailable token usage as unknown without zero counters', () => {
+    const unavailable = structuredClone(data);
+    unavailable.report.model.usage = {
+      available: false,
+      completionTokens: 0,
+      promptCacheHitTokens: 0,
+      promptCacheMissTokens: 0,
+      promptTokens: 0,
+      totalTokens: 0,
+    };
+
+    const input = createConfirmedRecordInput(unavailable, material, '加强情绪转化');
+
+    expect(input.run.usageAvailable).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(input.run, 'usage')).toBe(false);
+    expect(JSON.stringify(input.run)).not.toContain('completionTokens');
   });
 });

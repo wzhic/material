@@ -20,6 +20,11 @@ import type {
   AnalysisRuntimeProgress,
   AnalysisRuntimeResult,
 } from '../analysis-runtime/types';
+import {
+  CODEX_SUBSCRIPTION_CONFIGURATION_DISPLAY_NAME,
+  CODEX_SUBSCRIPTION_CONFIGURATION_ID,
+  CodexSubscriptionState,
+} from '../codex-subscription/types';
 import { MaterialSession } from '../media/types';
 import { ModelConfigurationSummary } from '../model/types';
 import { ProductListItem } from '../product/types';
@@ -146,19 +151,161 @@ const Sidebar = ({ onNavigate, page }: SidebarProps): React.JSX.Element => {
         type="button"
       >
         模型管理
-        <span>BYOK</span>
+        <span>API Key / Codex</span>
       </button>
     </aside>
   );
 };
 
-interface ModelSelectionOption {
+export interface ModelSelectionOption {
   configurationDisplayName: string;
   configurationId: string;
   label: string;
   modelId: string;
+  providerId: string;
+  source: 'api-key' | 'codex-subscription';
   value: string;
 }
+
+const modelSelectionValue = (
+  source: ModelSelectionOption['source'],
+  configurationId: string,
+  modelId: string,
+): string => [source, configurationId, modelId]
+  .map((part) => encodeURIComponent(part))
+  .join('/');
+
+const codexRateLimitReached = (state: CodexSubscriptionState): boolean =>
+  state.rateLimits?.buckets.some((bucket) => (
+    bucket.spendControlReached === true
+    || bucket.rateLimitReachedType !== null
+    || (bucket.primary?.usedPercent ?? 0) >= 100
+    || (bucket.secondary?.usedPercent ?? 0) >= 100
+  )) ?? false;
+
+export const createAnalysisModelOptions = (
+  configurations: ModelConfigurationSummary[],
+  codexState: CodexSubscriptionState | null,
+): ModelSelectionOption[] => {
+  const apiKeyOptions = configurations
+    .filter((configuration) => configuration.connectionStatus === 'ready')
+    .flatMap((configuration) => configuration.availableModels.map((model) => ({
+      configurationDisplayName: configuration.displayName,
+      configurationId: configuration.id,
+      label: `${configuration.displayName} · ${model.id} · API Key`,
+      modelId: model.id,
+      providerId: configuration.providerId,
+      source: 'api-key' as const,
+      value: modelSelectionValue('api-key', configuration.id, model.id),
+    })));
+
+  if (
+    codexState?.status !== 'ready'
+    || codexRateLimitReached(codexState)
+  ) {
+    return apiKeyOptions;
+  }
+
+  const seenModelIds = new Set<string>();
+  const codexOptions = codexState.models.flatMap((model) => {
+    if (!model.inputModalities.includes('text') || seenModelIds.has(model.id)) return [];
+    seenModelIds.add(model.id);
+    return [{
+      configurationDisplayName: CODEX_SUBSCRIPTION_CONFIGURATION_DISPLAY_NAME,
+      configurationId: CODEX_SUBSCRIPTION_CONFIGURATION_ID,
+      label: `${model.displayName} · ${model.id} · ${model.modelSlug}`
+        + ` · ${model.defaultReasoningEffort} · Codex 订阅 · Beta`,
+      modelId: model.id,
+      providerId: CODEX_SUBSCRIPTION_CONFIGURATION_ID,
+      source: 'codex-subscription' as const,
+      value: modelSelectionValue(
+        'codex-subscription',
+        CODEX_SUBSCRIPTION_CONFIGURATION_ID,
+        model.id,
+      ),
+    }];
+  });
+  return [...apiKeyOptions, ...codexOptions];
+};
+
+export const keepValidModelSelection = (
+  current: string,
+  options: ModelSelectionOption[],
+  codexState: CodexSubscriptionState | null = null,
+): string => {
+  if (current && options.some((option) => option.value === current)) return current;
+  const codexPrefix = `${encodeURIComponent('codex-subscription')}/`;
+  if (current.startsWith(codexPrefix) && codexState?.status === 'testing') return current;
+  return '';
+};
+
+export const codexAnalysisAvailabilityNotice = (
+  state: CodexSubscriptionState | null,
+  loaded: boolean,
+): string | null => {
+  if (!loaded) return '正在读取 Codex 订阅状态；不会自动改用其他模型。';
+  if (!state || state.status === 'unavailable') {
+    return 'Codex 本地运行组件当前不可用；请前往“模型管理”检查后重试。';
+  }
+  if (state.status === 'signedOut') {
+    return 'Codex 尚未连接 ChatGPT 订阅；请前往“模型管理”登录。';
+  }
+  if (state.status === 'loginPending') {
+    return 'Codex 正在等待登录完成；完成后会刷新可用模型。';
+  }
+  if (state.status === 'limited' || codexRateLimitReached(state)) {
+    return 'Codex 订阅额度当前受限；请等待重置后刷新状态。';
+  }
+  if (state.status === 'error') {
+    return 'Codex 订阅状态异常；请前往“模型管理”刷新或重新连接。';
+  }
+  if (state.status === 'testing') {
+    return 'Codex 正在执行测试调用；已有 Codex 草稿选择会暂时保留，但此时不能新选或启动 Codex 模型。';
+  }
+  if (!state.models.some((model) => model.inputModalities.includes('text'))) {
+    return 'Codex 当前没有可用于文本分析的模型；请前往“模型管理”刷新模型目录。';
+  }
+  return null;
+};
+
+export type AnalysisRunUiStatus =
+  | 'cancelled'
+  | 'cancelling'
+  | 'failed'
+  | 'running'
+  | 'succeeded';
+
+export const isAnalysisInFlight = (status: AnalysisRunUiStatus | undefined): boolean =>
+  status === 'running' || status === 'cancelling';
+
+export const requestAnalysisCancellation = (
+  status: AnalysisRunUiStatus,
+): { shouldCancel: boolean; status: AnalysisRunUiStatus } => (
+  status === 'running'
+    ? { shouldCancel: true, status: 'cancelling' }
+    : { shouldCancel: false, status }
+);
+
+export const dispatchAnalysisCancellation = (
+  run: { clientRunId: string; status: AnalysisRunUiStatus },
+  requestedRunIds: Set<string>,
+  publishStatus: (status: AnalysisRunUiStatus) => void,
+  cancel: (clientRunId: string) => void,
+): boolean => {
+  const transition = requestAnalysisCancellation(run.status);
+  if (!transition.shouldCancel || requestedRunIds.has(run.clientRunId)) return false;
+  requestedRunIds.add(run.clientRunId);
+  publishStatus(transition.status);
+  cancel(run.clientRunId);
+  return true;
+};
+
+export const analysisStatusAfterResult = (
+  result: { ok: true } | { error: { code: string }; ok: false },
+): AnalysisRunUiStatus => {
+  if (result.ok) return 'succeeded';
+  return result.error.code === 'CANCELLED' ? 'cancelled' : 'failed';
+};
 
 type RuntimeReportData = Extract<AnalysisRuntimeResult, { ok: true }>['data'];
 
@@ -177,7 +324,7 @@ interface ActiveAnalysisRun {
     text: string;
   }>;
   sourceRecordId: string | null;
-  status: 'cancelled' | 'failed' | 'running' | 'succeeded';
+  status: AnalysisRunUiStatus;
 }
 
 interface ConversationReference {
@@ -194,6 +341,8 @@ interface ReanalysisOrigin {
 
 interface NewAnalysisPageProps {
   analysisBusy: boolean;
+  codexSubscriptionLoaded: boolean;
+  codexSubscriptionState: CodexSubscriptionState | null;
   conversionContext: string;
   industry: Industry;
   material: SelectedMaterial | null;
@@ -214,6 +363,8 @@ interface NewAnalysisPageProps {
 
 const NewAnalysisPage = ({
   analysisBusy,
+  codexSubscriptionLoaded,
+  codexSubscriptionState,
   conversionContext,
   industry,
   material,
@@ -233,15 +384,19 @@ const NewAnalysisPage = ({
 }: NewAnalysisPageProps): React.JSX.Element => {
   const [fileError, setFileError] = useState('');
   const [fileBusy, setFileBusy] = useState(false);
+  const selectedModel = modelOptions.find((option) => option.value === modelId);
+  const codexAvailabilityNotice = codexAnalysisAvailabilityNotice(
+    codexSubscriptionState,
+    codexSubscriptionLoaded,
+  );
   const draft: AnalysisDraft = {
     industry,
     material: material?.summary ?? null,
-    modelId,
+    modelId: selectedModel ? modelId : '',
   };
   const validation = validateDraft(draft);
   const compatibleProducts = products.filter((product) => product.industry === industry);
   const selectedProduct = products.find((product) => product.id === productId);
-  const selectedModel = modelOptions.find((option) => option.value === modelId);
 
   const handleSelectMaterial = async (): Promise<void> => {
     setFileBusy(true);
@@ -509,10 +664,17 @@ const NewAnalysisPage = ({
                 ))}
               </select>
               <small>
-                {modelOptions.length
-                  ? '模型由你显式选择；同一任务不会静默切换。'
-                  : '请前往“模型管理”保存并验证用户自有 Key。'}
+                {selectedModel?.source === 'codex-subscription'
+                  ? '将消耗当前账号的 Codex 订阅额度；V1 只发送结构化文本证据，不发送原始素材。'
+                  : modelOptions.length
+                    ? '模型由你显式选择；同一任务不会静默切换、回退或改为其他计费方式。'
+                    : '请前往“模型管理”连接可用的 Codex 订阅，或保存并验证用户自有 Key。'}
               </small>
+              {codexAvailabilityNotice ? (
+                <small className="model-availability-note" role="status">
+                  Codex：{codexAvailabilityNotice} API Key 配置不受影响；系统也不会自动选中或回退使用其他模型。
+                </small>
+              ) : null}
             </label>
 
             <label className="form-field field-span-two">
@@ -661,6 +823,8 @@ const WorkspacePage = ({
   const emotionPath = emotionPoints.map((item) => `${item.x},${item.y}`).join(' ');
   const runtimeLabel = run?.status === 'running'
     ? '分析运行中'
+    : run?.status === 'cancelling'
+      ? '正在取消分析'
     : run?.status === 'succeeded'
       ? '报告待确认'
       : run?.status === 'cancelled'
@@ -835,7 +999,7 @@ const WorkspacePage = ({
       >
         <div className="source-panel">
           <div className="workspace-toolbar">
-            <Button disabled={run?.status === 'running'} onClick={onBack} size="small" variant="text">
+            <Button disabled={isAnalysisInFlight(run?.status)} onClick={onBack} size="small" variant="text">
               ← 返回配置
             </Button>
             <div className="workspace-title">
@@ -888,6 +1052,7 @@ const WorkspacePage = ({
             <span>{formatFileSize(material.summary.size)}</span>
             <span>未复制到应用目录</span>
             {run?.status === 'running' ? <span>解析与模型调用进行中</span> : null}
+            {run?.status === 'cancelling' ? <span>正在请求停止本次分析</span> : null}
           </div>
         </div>
 
@@ -934,6 +1099,8 @@ const WorkspacePage = ({
                   <p>
                     {run?.status === 'running'
                       ? run.progress[run.progress.length - 1]?.message ?? '正在准备分析'
+                      : run?.status === 'cancelling'
+                        ? '取消请求已提交，正在等待当前分析安全停止。请勿重复操作。'
                       : run?.status === 'succeeded'
                         ? report?.summary ?? '待确认报告已经生成。'
                         : run?.status === 'failed' || run?.status === 'cancelled'
@@ -956,7 +1123,16 @@ const WorkspacePage = ({
                 {!conversation.length ? <p className="conversation-placeholder">可补充关注点，或点击时间轴片段后带引用提问。</p> : null}
               </div>
               <div className="runtime-actions">
-                {run?.status === 'running' ? <Button onClick={onCancel} size="small" variant="outline">取消分析</Button> : null}
+                {isAnalysisInFlight(run?.status) ? (
+                  <Button
+                    disabled={run?.status === 'cancelling'}
+                    onClick={onCancel}
+                    size="small"
+                    variant="outline"
+                  >
+                    {run?.status === 'cancelling' ? '正在取消…' : '取消分析'}
+                  </Button>
+                ) : null}
                 {run?.status === 'failed' || run?.status === 'cancelled' ? <Button onClick={onRetry} size="small" theme="primary">使用当前配置重试</Button> : null}
                 {run?.status === 'succeeded' ? <Button onClick={onViewReport} size="small" theme="primary">查看待确认报告</Button> : null}
               </div>
@@ -965,8 +1141,15 @@ const WorkspacePage = ({
             <div className="runtime-progress-panel" role="tabpanel">
               <div className="runtime-progress-heading">
                 <div><span>本次运行</span><strong>{runtimeLabel}</strong></div>
-                {run?.status === 'running' ? (
-                  <Button onClick={onCancel} size="small" variant="outline">取消</Button>
+                {isAnalysisInFlight(run?.status) ? (
+                  <Button
+                    disabled={run?.status === 'cancelling'}
+                    onClick={onCancel}
+                    size="small"
+                    variant="outline"
+                  >
+                    {run?.status === 'cancelling' ? '正在取消…' : '取消'}
+                  </Button>
                 ) : null}
               </div>
               {run?.progress.length ? (
@@ -1005,7 +1188,11 @@ const WorkspacePage = ({
                   submitConversation();
                 }
               }}
-              placeholder={run?.status === 'running' ? '补充内容将在当前解析完成后生成新版报告…' : '补充关注点；提交会再次调用当前模型…'}
+              placeholder={run?.status === 'running'
+                ? '补充内容将在当前解析完成后生成新版报告…'
+                : run?.status === 'cancelling'
+                  ? '正在取消本次分析，暂时不能补充内容…'
+                  : '补充关注点；提交会再次调用当前模型…'}
               value={conversationText}
             />
             <Button
@@ -1046,8 +1233,8 @@ const WorkspacePage = ({
                   {' · '}
                   {report
                     ? `${report.timeline.length} 条时间证据`
-                    : run?.status === 'running'
-                      ? '正在解析'
+                    : isAnalysisInFlight(run?.status)
+                      ? runtimeLabel
                       : '等待真实解析结果'}
                   {selectedEvidenceText ? ` · 当前片段 ${selectedEvidenceText}` : ''}
                 </span>
@@ -1165,10 +1352,14 @@ export const App = (): React.JSX.Element => {
   const [modelId, setModelId] = useState('');
   const [conversionContext, setConversionContext] = useState('');
   const [modelConfigurations, setModelConfigurations] = useState<ModelConfigurationSummary[]>([]);
+  const [modelConfigurationsLoaded, setModelConfigurationsLoaded] = useState(false);
+  const [codexSubscriptionState, setCodexSubscriptionState] = useState<CodexSubscriptionState | null>(null);
+  const [codexSubscriptionLoaded, setCodexSubscriptionLoaded] = useState(false);
   const [products, setProducts] = useState<ProductListItem[]>([]);
   const [productId, setProductId] = useState('');
   const [activeRun, setActiveRun] = useState<ActiveAnalysisRun | null>(null);
   const activeRunRef = useRef<ActiveAnalysisRun | null>(null);
+  const cancellationRequestedRunIdsRef = useRef(new Set<string>());
   const [confirmingReport, setConfirmingReport] = useState(false);
   const [confirmReportError, setConfirmReportError] = useState('');
   const [previewVersionIndex, setPreviewVersionIndex] = useState(0);
@@ -1250,27 +1441,57 @@ export const App = (): React.JSX.Element => {
     if (result.ok) {
       setModelConfigurations(result.data.configurations);
     }
+    setModelConfigurationsLoaded(true);
+  }, []);
+
+  const refreshCodexSubscription = useCallback(async (): Promise<void> => {
+    const result = await window.materialApi.codexSubscription.getState();
+    if (result.ok) {
+      setCodexSubscriptionState(result.data);
+    } else {
+      setCodexSubscriptionState(null);
+    }
+    setCodexSubscriptionLoaded(true);
   }, []);
 
   useEffect(() => {
     void refreshProducts();
     void refreshModelConfigurations();
-  }, [refreshModelConfigurations, refreshProducts]);
-
-  const modelOptions = useMemo<ModelSelectionOption[]>(() =>
-    modelConfigurations.filter((configuration) => configuration.connectionStatus === 'ready').flatMap((configuration) =>
-      configuration.availableModels.map((model) => ({
-        configurationDisplayName: configuration.displayName,
-        configurationId: configuration.id,
-        label: `${configuration.displayName} · ${model.id}`,
-        modelId: model.id,
-        value: `${configuration.id}::${model.id}`,
-      }))), [modelConfigurations]);
+    void refreshCodexSubscription();
+  }, [refreshCodexSubscription, refreshModelConfigurations, refreshProducts]);
 
   useEffect(() => {
-    setModelId((current) =>
-      current && modelOptions.some((option) => option.value === current) ? current : '');
-  }, [modelOptions]);
+    const removeStateListener = window.materialApi.codexSubscription.onStateChanged((state) => {
+      setCodexSubscriptionState(state);
+      setCodexSubscriptionLoaded(true);
+    });
+    const removeRateLimitsListener = window.materialApi.codexSubscription.onRateLimitsChanged(
+      (rateLimits) => {
+        setCodexSubscriptionState((current) => current ? { ...current, rateLimits } : current);
+      },
+    );
+    const removeLoginListener = window.materialApi.codexSubscription.onLoginCompleted(() => {
+      void refreshCodexSubscription();
+    });
+    return () => {
+      removeLoginListener();
+      removeRateLimitsListener();
+      removeStateListener();
+    };
+  }, [refreshCodexSubscription]);
+
+  const modelOptions = useMemo<ModelSelectionOption[]>(() =>
+    createAnalysisModelOptions(modelConfigurations, codexSubscriptionState),
+  [codexSubscriptionState, modelConfigurations]);
+
+  useEffect(() => {
+    if (!codexSubscriptionLoaded || !modelConfigurationsLoaded) return;
+    setModelId((current) => keepValidModelSelection(
+      current,
+      modelOptions,
+      codexSubscriptionState,
+    ));
+  }, [codexSubscriptionLoaded, codexSubscriptionState, modelConfigurationsLoaded, modelOptions]);
 
   useEffect(() => {
     const sessionId = material?.sessionId;
@@ -1313,6 +1534,7 @@ export const App = (): React.JSX.Element => {
       referenceTimeMs: reference?.timeMs ?? null,
       sourceClientRunId,
     });
+    cancellationRequestedRunIdsRef.current.delete(clientRunId);
     const current = activeRunRef.current;
     if (!current || current.clientRunId !== clientRunId) return;
     if (!result.ok) {
@@ -1386,13 +1608,14 @@ export const App = (): React.JSX.Element => {
       productId: productId || null,
       sessionId: verifiedMaterial.sessionId,
     });
+    cancellationRequestedRunIdsRef.current.delete(clientRunId);
     const current = activeRunRef.current;
     if (!current || current.clientRunId !== clientRunId) return;
     if (!result.ok) {
       updateActiveRun((latest) => latest ? {
         ...latest,
         error: result.error.message,
-        status: result.error.code === 'CANCELLED' ? 'cancelled' : 'failed',
+        status: analysisStatusAfterResult(result),
       } : latest);
       return;
     }
@@ -1401,7 +1624,7 @@ export const App = (): React.JSX.Element => {
       ...latest,
       data: result.data,
       queuedGuidance: [],
-      status: 'succeeded',
+      status: analysisStatusAfterResult(result),
     } : latest);
     if (queued.length) {
       const reference = queued[queued.length - 1]?.reference ?? null;
@@ -1447,10 +1670,36 @@ export const App = (): React.JSX.Element => {
   }, [runRefinement, updateActiveRun]);
 
   const handleCancelAnalysis = useCallback((): void => {
-    if (activeRun?.status === 'running') {
-      void window.materialApi.analysis.cancel(activeRun.clientRunId);
-    }
-  }, [activeRun]);
+    const current = activeRunRef.current;
+    if (!current) return;
+    dispatchAnalysisCancellation(
+      current,
+      cancellationRequestedRunIdsRef.current,
+      (status) => {
+        const next = {
+          ...current,
+          error: undefined,
+          status,
+        };
+        activeRunRef.current = next;
+        setActiveRun(next);
+      },
+      (requestedClientRunId) => {
+        void window.materialApi.analysis.cancel(requestedClientRunId).catch(() => {
+          cancellationRequestedRunIdsRef.current.delete(requestedClientRunId);
+          updateActiveRun((latest) => (
+            latest?.clientRunId === requestedClientRunId && latest.status === 'cancelling'
+              ? {
+                ...latest,
+                error: '取消请求未能送达，分析仍在运行；可再次尝试取消。',
+                status: 'running',
+              }
+              : latest
+          ));
+        });
+      },
+    );
+  }, [updateActiveRun]);
 
   const handleConfirmReport = useCallback(async (): Promise<void> => {
     if (!activeRun?.data || activeRun.status !== 'succeeded' || confirmingReport) return;
@@ -1483,7 +1732,7 @@ export const App = (): React.JSX.Element => {
   }, [activeRun, confirmingReport, updateActiveRun]);
 
   const leaveReportForConfiguration = useCallback((): void => {
-    if (confirmingReport || activeRunRef.current?.status === 'running') return;
+    if (confirmingReport || isAnalysisInFlight(activeRunRef.current?.status)) return;
     if (!window.confirm('当前报告尚未保存，返回配置将放弃这份预览。是否继续？')) return;
     updateActiveRun(() => null);
     setConfirmReportError('');
@@ -1492,7 +1741,7 @@ export const App = (): React.JSX.Element => {
 
   const navigate = useCallback((nextPage: AppPage): void => {
     if (page === 'report' && activeRun?.data && nextPage !== 'report') {
-      if (confirmingReport || activeRun.status === 'running') return;
+      if (confirmingReport || isAnalysisInFlight(activeRun.status)) return;
       if (!window.confirm('当前报告尚未保存，离开将放弃这份预览。是否继续？')) return;
       updateActiveRun(() => null);
       setConfirmReportError('');
@@ -1559,7 +1808,7 @@ export const App = (): React.JSX.Element => {
           onReanalyze={(guidance) => handleSubmitConversation(guidance, null)}
           previewVersionCount={reportVersions.length}
           previewVersionIndex={previewVersionIndex}
-          reanalyzing={activeRun.status === 'running'}
+          reanalyzing={isAnalysisInFlight(activeRun.status)}
         />
       );
     }
@@ -1599,13 +1848,16 @@ export const App = (): React.JSX.Element => {
     if (page === 'settings') {
       return (
         <ModelSettingsPage
+          codexSubscriptionApi={window.materialApi.codexSubscription}
           onChanged={() => void refreshModelConfigurations()}
         />
       );
     }
     return (
       <NewAnalysisPage
-        analysisBusy={activeRun?.status === 'running'}
+        analysisBusy={isAnalysisInFlight(activeRun?.status)}
+        codexSubscriptionLoaded={codexSubscriptionLoaded}
+        codexSubscriptionState={codexSubscriptionState}
         conversionContext={conversionContext}
         industry={industry}
         material={material}
@@ -1620,11 +1872,11 @@ export const App = (): React.JSX.Element => {
         }}
         onConversionContextChange={(value) => {
           setConversionContext(value);
-          if (activeRun?.status !== 'running') updateActiveRun(() => null);
+          if (!isAnalysisInFlight(activeRun?.status)) updateActiveRun(() => null);
         }}
         onIndustryChange={(value) => {
           setIndustry(value);
-          if (activeRun?.status !== 'running') updateActiveRun(() => null);
+          if (!isAnalysisInFlight(activeRun?.status)) updateActiveRun(() => null);
           setProductId((current) =>
             products.some((product) => product.id === current && product.industry === value)
               ? current
@@ -1641,15 +1893,15 @@ export const App = (): React.JSX.Element => {
             setReanalysisOrigin(null);
             setSourceRecordId(null);
           }
-          if (activeRun?.status !== 'running') updateActiveRun(() => null);
+          if (!isAnalysisInFlight(activeRun?.status)) updateActiveRun(() => null);
         }}
         onModelChange={(value) => {
           setModelId(value);
-          if (activeRun?.status !== 'running') updateActiveRun(() => null);
+          if (!isAnalysisInFlight(activeRun?.status)) updateActiveRun(() => null);
         }}
         onProductChange={(value) => {
           setProductId(value);
-          if (activeRun?.status !== 'running') updateActiveRun(() => null);
+          if (!isAnalysisInFlight(activeRun?.status)) updateActiveRun(() => null);
         }}
         onPreviewWorkspace={() => {
           updateActiveRun(() => null);
@@ -1660,6 +1912,8 @@ export const App = (): React.JSX.Element => {
     );
   }, [
     activeRun,
+    codexSubscriptionLoaded,
+    codexSubscriptionState,
     conversionContext,
     confirmReportError,
     confirmingReport,

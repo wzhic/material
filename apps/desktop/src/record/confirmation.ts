@@ -113,11 +113,22 @@ export const createConfirmedRecordInput = (
       templateVersion: rule.template.version,
     },
     run: {
+      adapterVersion: report.model.adapterVersion,
       capabilityVersion: capabilityVersion(data),
       completedAt: report.createdAt,
+      modelConfigurationId: report.model.configurationId,
       modelConfigurationName: report.model.configurationDisplayName,
+      modelConfigurationVersion: report.model.configurationVersion,
       modelId: report.model.modelId,
+      providerId: report.model.providerId,
+      providerReasoningEffort: report.model.providerReasoningEffort,
+      providerRequestedModelId: report.model.providerRequestedModelId,
+      providerReturnedModelId: report.model.providerReturnedModelId,
       schemaVersion: 1,
+      ...(report.model.usage.available
+        ? { usage: structuredClone(report.model.usage) }
+        : {}),
+      usageAvailable: report.model.usage.available,
     },
     sourceRecordId: context.sourceRecordId ?? null,
     visibleConversation: structuredClone(context.visibleConversation ?? []),

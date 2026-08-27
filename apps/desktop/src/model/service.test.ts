@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ModelServiceError } from './errors';
 import { ModelProviderAdapter } from './provider';
@@ -56,6 +56,7 @@ describe('model service', () => {
           providerId: 'deepseek',
           systemFingerprint: 'test-fingerprint',
           usage: {
+            available: true,
             completionTokens: 4,
             promptCacheHitTokens: 0,
             promptCacheMissTokens: 5,
@@ -144,6 +145,164 @@ describe('model service', () => {
     expect(JSON.stringify(result.audit)).not.toContain('Return a JSON object');
   });
 
+  it('runs one explicit connectivity test with a fixed non-business prompt', async () => {
+    let observedRequest: ModelCompletionRequest | null = null;
+    provider.complete = async (_apiKey, _connection, input) => {
+      completeCalls += 1;
+      observedRequest = input;
+      return {
+        content: 'OK',
+        finishReason: 'stop',
+        modelId: input.modelId,
+        providerId: 'deepseek',
+        systemFingerprint: null,
+        usage: {
+          available: true,
+          completionTokens: 1,
+          promptCacheHitTokens: 0,
+          promptCacheMissTokens: 0,
+          promptTokens: 5,
+          totalTokens: 6,
+        },
+      };
+    };
+    const unchecked = await service.saveConfiguration({
+      apiKey: 'unit_test_api_key_service_value',
+      displayName: '主模型',
+      providerId: 'deepseek',
+    });
+    const saved = await service.refreshModels(unchecked.id);
+
+    const result = await service.testModel(saved.id, 'deepseek-test');
+
+    expect(completeCalls).toBe(1);
+    expect(observedRequest).toEqual({
+      configurationId: saved.id,
+      format: 'text',
+      maxTokens: 128,
+      messages: [{ content: 'Reply with exactly OK.', role: 'user' }],
+      modelId: 'deepseek-test',
+      thinking: 'disabled',
+    });
+    expect(result).toEqual({
+      checkedAt: expect.any(String),
+      configurationId: saved.id,
+      durationMs: expect.any(Number),
+      providerId: 'deepseek',
+      requestedModelId: 'deepseek-test',
+      returnedModelId: 'deepseek-test',
+    });
+    expect(result).not.toHaveProperty('content');
+    expect(result).not.toHaveProperty('usage');
+  });
+
+  it('requires the ready configuration\'s explicitly selected model for connectivity tests',
+    async () => {
+      provider.listModels = async () => {
+        listCalls += 1;
+        return [
+          { id: 'deepseek-test', ownedBy: 'deepseek' },
+          { id: 'deepseek-z', ownedBy: 'deepseek' },
+        ];
+      };
+      const unchecked = await service.saveConfiguration({
+        apiKey: 'unit_test_api_key_service_value',
+        displayName: '主模型',
+        providerId: 'deepseek',
+      });
+
+      await expect(service.testModel(unchecked.id, 'deepseek-test')).rejects.toMatchObject({
+        code: 'MODEL_NOT_AVAILABLE',
+      });
+      const ready = await service.refreshModels(unchecked.id);
+      await expect(service.testModel(ready.id, 'deepseek-z')).rejects.toMatchObject({
+        code: 'MODEL_NOT_AVAILABLE',
+      });
+
+      expect(completeCalls).toBe(0);
+    });
+
+  it('does not retry or expose a provider failure from a connectivity test', async () => {
+    provider.complete = async () => {
+      completeCalls += 1;
+      throw new ModelServiceError('RATE_LIMITED');
+    };
+    const unchecked = await service.saveConfiguration({
+      apiKey: 'unit_test_api_key_service_value',
+      displayName: '主模型',
+      providerId: 'deepseek',
+    });
+    const ready = await service.refreshModels(unchecked.id);
+
+    await expect(service.testModel(ready.id, 'deepseek-test')).rejects.toMatchObject({
+      code: 'RATE_LIMITED',
+    });
+    expect(completeCalls).toBe(1);
+  });
+
+  it('reports both requested and provider-returned model IDs without hiding alias resolution',
+    async () => {
+    provider.complete = async (_apiKey, _connection, input) => {
+      completeCalls += 1;
+      return {
+        content: 'OK',
+        finishReason: 'stop',
+        modelId: `${input.modelId}-2026-08-25`,
+        providerId: 'deepseek',
+        systemFingerprint: null,
+        usage: {
+          available: true,
+          completionTokens: 1,
+          promptCacheHitTokens: 0,
+          promptCacheMissTokens: 0,
+          promptTokens: 5,
+          totalTokens: 6,
+        },
+      };
+    };
+    const unchecked = await service.saveConfiguration({
+      apiKey: 'unit_test_api_key_service_value',
+      displayName: '主模型',
+      providerId: 'deepseek',
+    });
+    const ready = await service.refreshModels(unchecked.id);
+
+    await expect(service.testModel(ready.id, 'deepseek-test')).resolves.toMatchObject({
+      providerId: 'deepseek',
+      requestedModelId: 'deepseek-test',
+      returnedModelId: 'deepseek-test-2026-08-25',
+    });
+    expect(completeCalls).toBe(1);
+  });
+
+  it('times out a connectivity test after its bounded one-minute window', async () => {
+    vi.useFakeTimers();
+    provider.complete = async (_apiKey, _connection, _input, signal) => {
+      completeCalls += 1;
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => {
+          reject(new ModelServiceError('CANCELLED'));
+        }, { once: true });
+      });
+    };
+    try {
+      const unchecked = await service.saveConfiguration({
+        apiKey: 'unit_test_api_key_service_value',
+        displayName: '主模型',
+        providerId: 'deepseek',
+      });
+      const ready = await service.refreshModels(unchecked.id);
+      const result = service.testModel(ready.id, 'deepseek-test').catch((error: unknown) => error);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      await expect(result).resolves.toMatchObject({ code: 'TIMEOUT' });
+      expect(completeCalls).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('rejects an unavailable model without calling or silently switching', async () => {
     const unchecked = await service.saveConfiguration({
       apiKey: 'unit_test_api_key_service_value',
@@ -190,6 +349,7 @@ describe('model service', () => {
             providerId: 'openai-compatible',
             systemFingerprint: null,
             usage: {
+              available: true,
               completionTokens: 1,
               promptCacheHitTokens: 0,
               promptCacheMissTokens: 0,

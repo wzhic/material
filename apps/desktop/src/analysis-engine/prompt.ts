@@ -7,6 +7,7 @@ import type {
 } from './types';
 import type { AnalysisRuleSnapshot } from '../analysis-rules';
 import type { ModelCompletionRequest } from '../model/types';
+import { buildAnalysisOutputSchema } from './output-schema';
 
 const EXACT_PROMPT_KEYS = new Set([
   'id',
@@ -112,6 +113,7 @@ export const buildAnalysisModelRequest = (
       { content: JSON.stringify(payload), role: 'user' },
     ],
     modelId: input.model.modelId,
+    outputSchema: buildAnalysisOutputSchema(rule, input.industry, input.mediaKind),
     temperature: 0.2,
     thinking: 'disabled',
   };

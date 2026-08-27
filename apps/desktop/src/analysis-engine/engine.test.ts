@@ -67,6 +67,9 @@ ModelInvocationAudit => ({
   finishedAt: '2026-08-25T02:00:00.020Z',
   modelId: 'deepseek-chat',
   providerId: 'deepseek',
+  providerReasoningEffort: null,
+  providerRequestedModelId: 'deepseek-chat',
+  providerReturnedModelId: 'deepseek-chat',
   startedAt: '2026-08-25T02:00:00.000Z',
   status,
 });
@@ -159,6 +162,7 @@ const successResult = (content: string): ModelInvocationResult => ({
     providerId: 'deepseek',
     systemFingerprint: 'test',
     usage: {
+      available: true,
       completionTokens: 200,
       promptCacheHitTokens: 0,
       promptCacheMissTokens: 300,
@@ -315,6 +319,9 @@ describe('analysis engine', () => {
         configurationDisplayName: '主模型',
         configurationId: 'config-1',
         modelId: 'deepseek-chat',
+        providerReasoningEffort: null,
+        providerRequestedModelId: 'deepseek-chat',
+        providerReturnedModelId: 'deepseek-chat',
       },
     });
     expect(result.report.ruleSnapshot.package.packageVersion).toBe('1.0.0');
@@ -351,6 +358,55 @@ describe('analysis engine', () => {
     });
     expect(JSON.stringify(result)).not.toContain('provider detail');
   });
+
+  it('preserves a successful model terminal when cancellation arrives before continuation',
+    async () => {
+      const controller = new AbortController();
+      const complete = vi.fn(async (): Promise<ModelInvocationResult> => {
+        controller.abort();
+        return successResult(JSON.stringify(validModelObject(rule)));
+      });
+      const engine = new AnalysisEngine(
+        { complete },
+        { idFactory: () => 'run-success-before-cancel' },
+      );
+
+      const result = await engine.run(input, controller.signal);
+
+      expect(complete).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({
+        modelAudit: { status: 'succeeded' },
+        ok: true,
+      });
+      expect(result.events[result.events.length - 1]?.stage).toBe('succeeded');
+    });
+
+  it('preserves a non-cancel model failure when cancellation arrives before continuation',
+    async () => {
+      const controller = new AbortController();
+      const complete = vi.fn(async (): Promise<ModelInvocationResult> => {
+        controller.abort();
+        return {
+          audit: audit('failed'),
+          error: { code: 'RATE_LIMITED', message: 'provider detail' },
+          ok: false,
+        };
+      });
+      const engine = new AnalysisEngine(
+        { complete },
+        { idFactory: () => 'run-failure-before-cancel' },
+      );
+
+      const result = await engine.run(input, controller.signal);
+
+      expect(complete).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({
+        error: { code: 'MODEL_FAILED', modelErrorCode: 'RATE_LIMITED' },
+        modelAudit: { errorCode: 'RATE_LIMITED', status: 'failed' },
+        ok: false,
+      });
+      expect(result.events[result.events.length - 1]?.stage).toBe('failed');
+    });
 
   it('rejects a successful response whose model identity changed', async () => {
     const switched = successResult(JSON.stringify(validModelObject(rule)));

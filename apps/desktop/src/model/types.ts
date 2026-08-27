@@ -70,11 +70,15 @@ export interface ModelCompletionRequest {
   messages: readonly ModelMessage[];
   format: 'json' | 'text';
   maxTokens: number;
+  /** Optional JSON Schema for providers that can constrain structured output. */
+  outputSchema?: Readonly<Record<string, unknown>>;
   thinking: 'disabled' | 'enabled';
   temperature?: number;
 }
 
 export interface ModelUsage {
+  /** False means the provider did not return a complete, trustworthy usage record. */
+  available: boolean;
   completionTokens: number;
   promptCacheHitTokens: number;
   promptCacheMissTokens: number;
@@ -91,6 +95,15 @@ export interface ModelCompletion {
   usage: ModelUsage;
 }
 
+export interface ModelConnectivityTestResult {
+  checkedAt: string;
+  configurationId: string;
+  durationMs: number;
+  providerId: ModelProviderId;
+  requestedModelId: string;
+  returnedModelId: string;
+}
+
 export interface ModelInvocationAudit {
   adapterVersion: string;
   configurationId: string;
@@ -100,6 +113,12 @@ export interface ModelInvocationAudit {
   finishedAt: string;
   modelId: string;
   providerId: ModelProviderId;
+  /** Provider-native model identifier sent on the wire. */
+  providerRequestedModelId: string | null;
+  /** Actual model reported by the upstream provider, when separately available. */
+  providerReturnedModelId: string | null;
+  /** Provider-native reasoning effort frozen for this invocation, when applicable. */
+  providerReasoningEffort: string | null;
   startedAt: string;
   status: 'cancelled' | 'failed' | 'succeeded' | 'timed_out';
 }
@@ -162,6 +181,10 @@ export interface ModelApi {
   refreshModels: (
     id: string,
   ) => Promise<ModelApiResult<ModelConfigurationSummary>>;
+  testModel: (
+    configurationId: string,
+    modelId: string,
+  ) => Promise<ModelApiResult<ModelConnectivityTestResult>>;
   removeConfiguration: (
     id: string,
     expectedWriteVersion: number,
@@ -173,4 +196,5 @@ export const MODEL_IPC_CHANNELS = {
   refreshModels: 'material:models:refresh-models',
   removeConfiguration: 'material:models:remove-configuration',
   saveConfiguration: 'material:models:save-configuration',
+  testModel: 'material:models:test-model',
 } as const;

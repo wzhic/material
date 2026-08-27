@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0025",
-  "reason": "APP-0025 已提交并推送，继续时间轴联动与布局持久化",
+  "previous_task_id": "APP-0026",
+  "reason": "同步最新 APP-0025 基线并保留已合入的 APP-0026 时间轴与布局能力，继续完成 Codex 订阅模型分析接入",
   "schema_version": 1,
-  "selected_at": "2026-08-26T02:02:18+00:00",
+  "selected_at": "2026-08-26T04:58:36+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0026"
+  "task_id": "APP-0027"
 }
