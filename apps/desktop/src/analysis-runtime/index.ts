@@ -4,3 +4,4 @@ export {
   createAnalysisRuntimeService,
 } from './service';
 export * from './types';
+export * from './visual-input';

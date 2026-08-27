@@ -21,6 +21,10 @@ const MODEL_TIMEOUT_MS = 180_000;
 const MODEL_LIST_TIMEOUT_MS = 30_000;
 const MODEL_CONNECTIVITY_TEST_TIMEOUT_MS = 60_000;
 const MODEL_CONNECTIVITY_TEST_PROMPT = 'Reply with exactly OK.';
+const MAX_VISUAL_INPUTS = 8;
+const MAX_VISUAL_INPUT_BYTES = 1024 * 1024;
+const MAX_VISUAL_INPUT_TOTAL_BYTES = 6 * 1024 * 1024;
+const VISUAL_EVIDENCE_ID = /^[a-z][a-z0-9-]{0,99}$/;
 
 const toError = (error: unknown): ModelServiceError =>
   error instanceof ModelServiceError ? error : new ModelServiceError('UNKNOWN');
@@ -50,6 +54,50 @@ const validateRequest = (request: ModelCompletionRequest): void => {
       throw new ModelServiceError('INVALID_INPUT');
     }
     totalChars += message.content.length;
+  }
+  let totalVisualBytes = 0;
+  if (request.visualInputs !== undefined) {
+    if (
+      !Array.isArray(request.visualInputs)
+      || request.visualInputs.length === 0
+      || request.visualInputs.length > MAX_VISUAL_INPUTS
+    ) {
+      throw new ModelServiceError('INVALID_INPUT');
+    }
+    for (const visual of request.visualInputs) {
+      if (
+        visual.mediaType !== 'image/jpeg'
+        || !VISUAL_EVIDENCE_ID.test(visual.evidenceId)
+        || !Number.isSafeInteger(visual.width)
+        || !Number.isSafeInteger(visual.height)
+        || visual.width < 1
+        || visual.height < 1
+        || visual.width > 1_280
+        || visual.height > 1_280
+        || (visual.timeMs !== null
+          && (!Number.isSafeInteger(visual.timeMs) || visual.timeMs < 0))
+        || typeof visual.dataBase64 !== 'string'
+        || !/^[A-Za-z0-9+/]+={0,2}$/.test(visual.dataBase64)
+      ) {
+        throw new ModelServiceError('INVALID_INPUT');
+      }
+      const bytes = Buffer.from(visual.dataBase64, 'base64');
+      if (
+        bytes.length < 4
+        || bytes.length > MAX_VISUAL_INPUT_BYTES
+        || bytes.toString('base64') !== visual.dataBase64
+        || bytes[0] !== 0xff
+        || bytes[1] !== 0xd8
+        || bytes[bytes.length - 2] !== 0xff
+        || bytes[bytes.length - 1] !== 0xd9
+      ) {
+        throw new ModelServiceError('INVALID_INPUT');
+      }
+      totalVisualBytes += bytes.length;
+    }
+    if (totalVisualBytes > MAX_VISUAL_INPUT_TOTAL_BYTES) {
+      throw new ModelServiceError('INVALID_INPUT');
+    }
   }
   if (
     totalChars > MAX_MESSAGE_CHARS
@@ -105,10 +153,20 @@ export class ModelService {
     } else if (rawBaseUrl !== null || rawManualModelId !== null) {
       throw new ModelServiceError('INVALID_INPUT');
     }
+    const visualInputEnabled = input.visualInputEnabled === undefined
+      ? existing?.visualInputEnabled ?? false
+      : input.visualInputEnabled;
+    if (
+      typeof visualInputEnabled !== 'boolean'
+      || (visualInputEnabled && !provider.info.capabilities.inputKinds.includes('image'))
+    ) {
+      throw new ModelServiceError('INVALID_INPUT');
+    }
     const saved = await this.vault.save({
       ...input,
       baseUrl,
       manualModelId,
+      visualInputEnabled,
     });
     return this.toSummary(saved);
   }
@@ -252,6 +310,15 @@ export class ModelService {
       }
       const provider = this.registry.resolve(providerId);
       adapterVersion = provider.info.adapterVersion;
+      if (
+        request.visualInputs?.length
+        && (
+          !credential.configuration.visualInputEnabled
+          || !provider.info.capabilities.inputKinds.includes('image')
+        )
+      ) {
+        throw new ModelServiceError('INVALID_INPUT');
+      }
       if (request.thinking === 'enabled' && !provider.info.capabilities.thinkingControl) {
         throw new ModelServiceError('INVALID_INPUT');
       }

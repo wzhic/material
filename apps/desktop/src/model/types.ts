@@ -10,7 +10,7 @@ export interface ModelProviderInfo {
   adapterVersion: string;
   capabilities: {
     dataDestination: string;
-    inputKinds: readonly ['text'];
+    inputKinds: readonly ('image' | 'text')[];
     maxInputCharacters: number;
     maxMessages: number;
     maxOutputTokens: number;
@@ -45,6 +45,7 @@ export interface ModelConfigurationSummary {
   createdAt: string;
   updatedAt: string;
   writeVersion: number;
+  visualInputEnabled: boolean;
   hasCredential: true;
 }
 
@@ -56,12 +57,26 @@ export interface SaveModelConfigurationInput {
   baseUrl?: string | null;
   manualModelId?: string | null;
   selectedModelId?: string | null;
+  visualInputEnabled?: boolean;
   expectedWriteVersion?: number;
 }
 
 export interface ModelMessage {
   role: 'assistant' | 'system' | 'user';
   content: string;
+}
+
+/**
+ * Main-process-only visual payload. It must never cross IPC or enter persisted
+ * reports, logs, exports, or model invocation audits.
+ */
+export interface ModelVisualInput {
+  dataBase64: string;
+  evidenceId: string;
+  height: number;
+  mediaType: 'image/jpeg';
+  timeMs: number | null;
+  width: number;
 }
 
 export interface ModelCompletionRequest {
@@ -74,6 +89,7 @@ export interface ModelCompletionRequest {
   outputSchema?: Readonly<Record<string, unknown>>;
   thinking: 'disabled' | 'enabled';
   temperature?: number;
+  visualInputs?: readonly ModelVisualInput[];
 }
 
 export interface ModelUsage {

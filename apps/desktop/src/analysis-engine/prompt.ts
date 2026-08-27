@@ -73,6 +73,10 @@ export const buildAnalysisModelRequest = (
       industry: input.industry,
       mediaKind: input.mediaKind,
       productSnapshot: input.productSnapshot ?? null,
+      visualEvidence: input.visualInputs?.map((visual) => ({
+        evidenceId: visual.evidenceId,
+        timeMs: visual.timeMs,
+      })) ?? [],
     },
     evidencePacket: {
       items: packet.items,
@@ -116,5 +120,6 @@ export const buildAnalysisModelRequest = (
     outputSchema: buildAnalysisOutputSchema(rule, input.industry, input.mediaKind),
     temperature: 0.2,
     thinking: 'disabled',
+    ...(input.visualInputs?.length ? { visualInputs: input.visualInputs } : {}),
   };
 };

@@ -34,6 +34,7 @@ const apiConfiguration = (
   updatedAt: '2026-08-26T00:00:00.000Z',
   writeVersion: 1,
   ...overrides,
+  visualInputEnabled: overrides.visualInputEnabled ?? false,
 });
 
 const codexState = (
@@ -77,6 +78,24 @@ describe('analysis model selection options', () => {
     expect(options[1]?.label).toContain('shared-model-slug');
     expect(options[1]?.label).toContain('medium');
     expect(options[0]?.value).not.toBe(options[1]?.value);
+    expect(options[0]?.visualInputEnabled).toBe(false);
+    expect(options[1]?.visualInputEnabled).toBe(false);
+  });
+
+  it('marks only explicitly enabled API Key configurations as visual', () => {
+    const options = createAnalysisModelOptions([
+      apiConfiguration({ visualInputEnabled: true }),
+    ], codexState());
+
+    expect(options[0]).toMatchObject({
+      source: 'api-key',
+      visualInputEnabled: true,
+    });
+    expect(options[0]?.label).toContain('视觉');
+    expect(options[1]).toMatchObject({
+      source: 'codex-subscription',
+      visualInputEnabled: false,
+    });
   });
 
   it.each<CodexSubscriptionStatus>([

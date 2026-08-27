@@ -30,7 +30,7 @@ export class ModelProviderRegistry {
         ...provider.info,
         capabilities: {
           ...provider.info.capabilities,
-          inputKinds: [...provider.info.capabilities.inputKinds] as ['text'],
+          inputKinds: [...provider.info.capabilities.inputKinds],
         },
       }))
       .sort((left, right) => left.displayName.localeCompare(right.displayName));

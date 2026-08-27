@@ -13,6 +13,7 @@ import type {
   ModelInvocationAudit,
   ModelInvocationResult,
   ModelUsage,
+  ModelVisualInput,
 } from '../model/types';
 import type { StructuredEvidence } from '../tooling/evidence';
 import type { ProductSnapshot } from '../product/types';
@@ -116,6 +117,7 @@ export interface AnalysisRunInput {
   mediaKind: AnalysisMediaKind;
   model: AnalysisModelSelection;
   productSnapshot?: ProductSnapshot | null;
+  visualInputs?: readonly ModelVisualInput[];
 }
 
 export type AnalysisRunStage =

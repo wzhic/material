@@ -27,6 +27,7 @@ export interface AnalysisRuntimeStartInput {
   modelId: string;
   productId?: string | null;
   sessionId: string;
+  visualInputEnabled: boolean;
 }
 
 export interface AnalysisRuntimeRefineInput {

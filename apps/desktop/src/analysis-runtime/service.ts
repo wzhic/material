@@ -22,6 +22,8 @@ import type {
   ToolInvocationResult,
   ToolInvocationSuccess,
 } from '../tooling/types';
+import type { ModelVisualInput } from '../model/types';
+import type { VisualInputPreparer } from './visual-input';
 import type {
   AnalysisRuntimeErrorCode,
   AnalysisRuntimeProgress,
@@ -64,6 +66,7 @@ interface RefinementContext {
   media: MediaEvidenceOutput;
   mediaSummary: Extract<AnalysisRuntimeResult, { ok: true }>['data']['media'];
   productSnapshot: ProductSnapshot | null;
+  visualInputs: readonly ModelVisualInput[];
 }
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/;
@@ -107,6 +110,7 @@ const validateInput = (input: AnalysisRuntimeStartInput): void => {
     || !input.configurationDisplayName.trim()
     || input.configurationDisplayName.length > 100
     || (input.productId && !UUID.test(input.productId))
+    || typeof input.visualInputEnabled !== 'boolean'
     || (input.conversionContext !== undefined && input.conversionContext.trim().length > 2_000)
   ) {
     throw new AnalysisRuntimeError('INVALID_INPUT', '分析输入无效，请返回配置页检查');
@@ -172,6 +176,7 @@ export class AnalysisRuntimeService {
     private readonly materials: MaterialPort,
     private readonly engine: EnginePort,
     private readonly products: ProductSnapshotPort | null,
+    private readonly visualInputPreparer: VisualInputPreparer | null = null,
   ) {}
 
   async run(
@@ -189,6 +194,7 @@ export class AnalysisRuntimeService {
 
     const controller = new AbortController();
     const invocationIds: string[] = [];
+    const successfulInvocations = new Map<string, ToolInvocationSuccess>();
     this.active.set(input.clientRunId, controller);
     const emit = (stage: AnalysisRuntimeStage, message = STAGE_MESSAGES[stage]): void => {
       try {
@@ -210,7 +216,10 @@ export class AnalysisRuntimeService {
         signal: controller.signal,
       });
       invocationIds.push(result.invocationId);
-      if (result.ok) return toolOutput<T>(result);
+      if (result.ok) {
+        successfulInvocations.set(capabilityId, result);
+        return toolOutput<T>(result);
+      }
       if (result.error.code === 'CANCELLED') {
         throw new AnalysisRuntimeError('CANCELLED', '分析已取消');
       }
@@ -368,6 +377,40 @@ export class AnalysisRuntimeService {
         limitations: [...new Set([...normalized.limitations, ...limitations])],
       };
 
+      let visualInputs: readonly ModelVisualInput[] = [];
+      if (input.visualInputEnabled) {
+        const frameInvocation = successfulInvocations.get('media.frame.extract');
+        if (!frames || !frameInvocation || !this.visualInputPreparer) {
+          throw new AnalysisRuntimeError(
+            'REQUIRED_TOOL_FAILED',
+            '视觉证据准备失败，未向模型发送任何素材，请重试',
+          );
+        }
+        try {
+          visualInputs = await this.visualInputPreparer.prepare(
+            frameInvocation,
+            frames,
+            material.summary.kind,
+          );
+        } catch {
+          throw new AnalysisRuntimeError(
+            'REQUIRED_TOOL_FAILED',
+            '视觉证据准备失败，未向模型发送任何素材，请重试',
+          );
+        }
+        if (material.summary.kind === 'video') {
+          media.limitations = [
+            ...media.limitations,
+            `视频画面理解仅覆盖 ${visualInputs.length} 个代表帧，不代表完整视频逐帧分析`,
+          ];
+        }
+      } else {
+        media.limitations = [
+          ...media.limitations,
+          '所选模型配置未启用视觉输入，画面结论仅依据 OCR 与结构化工具证据',
+        ];
+      }
+
       emit('generating_report');
       const engineResult = await this.engine.run({
         conversionContext: input.conversionContext,
@@ -380,12 +423,18 @@ export class AnalysisRuntimeService {
           modelId: input.modelId,
         },
         productSnapshot,
+        ...(visualInputs.length ? { visualInputs } : {}),
       }, controller.signal, (event) => emit('generating_report', engineStageMessage(event)));
       if (!engineResult.ok) {
         if (engineResult.error.code === 'CANCELLED') {
           throw new AnalysisRuntimeError('CANCELLED', '分析已取消');
         }
-        throw new AnalysisRuntimeError('MODEL_FAILED', engineResult.error.message);
+        throw new AnalysisRuntimeError(
+          'MODEL_FAILED',
+          visualInputs.length
+            ? `视觉模型分析未完成：${engineResult.error.message}；画面、镜头、卖点和情绪等视觉维度未生成，未自动切换或重试`
+            : engineResult.error.message,
+        );
       }
       const mediaSummary = {
         durationMs: probe.durationMs,
@@ -398,6 +447,7 @@ export class AnalysisRuntimeService {
         media: structuredClone(media),
         mediaSummary,
         productSnapshot: productSnapshot ? structuredClone(productSnapshot) : null,
+        visualInputs: structuredClone(visualInputs),
       });
       emit('report_ready');
       return {
@@ -494,6 +544,9 @@ export class AnalysisRuntimeService {
         productSnapshot: source.productSnapshot
           ? structuredClone(source.productSnapshot)
           : null,
+        ...(source.visualInputs.length
+          ? { visualInputs: structuredClone(source.visualInputs) }
+          : {}),
       };
       emit('generating_report');
       const engineResult = await this.engine.run(
@@ -505,7 +558,12 @@ export class AnalysisRuntimeService {
         if (engineResult.error.code === 'CANCELLED') {
           throw new AnalysisRuntimeError('CANCELLED', '重新分析已取消');
         }
-        throw new AnalysisRuntimeError('MODEL_FAILED', engineResult.error.message);
+        throw new AnalysisRuntimeError(
+          'MODEL_FAILED',
+          source.visualInputs.length
+            ? `视觉模型分析未完成：${engineResult.error.message}；画面、镜头、卖点和情绪等视觉维度未生成，未自动切换或重试`
+            : engineResult.error.message,
+        );
       }
       const nextStartInput: AnalysisRuntimeStartInput = {
         ...structuredClone(source.input),
@@ -518,6 +576,7 @@ export class AnalysisRuntimeService {
         media: structuredClone(source.media),
         mediaSummary: structuredClone(source.mediaSummary),
         productSnapshot: source.productSnapshot ? structuredClone(source.productSnapshot) : null,
+        visualInputs: structuredClone(source.visualInputs),
       });
       emit('report_ready');
       return {
@@ -574,4 +633,11 @@ export const createAnalysisRuntimeService = (
   materials: MaterialPort,
   engine: AnalysisEngine,
   products: ProductSnapshotPort | null,
-): AnalysisRuntimeService => new AnalysisRuntimeService(tools, materials, engine, products);
+  visualInputPreparer: VisualInputPreparer | null = null,
+): AnalysisRuntimeService => new AnalysisRuntimeService(
+  tools,
+  materials,
+  engine,
+  products,
+  visualInputPreparer,
+);

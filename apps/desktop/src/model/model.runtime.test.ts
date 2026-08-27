@@ -133,6 +133,40 @@ describe('OpenAI-compatible model runtime', () => {
     ]);
   });
 
+  it('sends one bounded visual payload through Chat Completions content parts', async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const provider = createCustomOpenAiCompatibleProvider(async (_input, init) => {
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return new Response(JSON.stringify({
+        choices: [{ finish_reason: 'stop', message: { content: '{"ok":true}' } }],
+        model: 'vision-runtime-model',
+      }), { headers: { 'Content-Type': 'application/json' }, status: 200 });
+    });
+
+    await provider.complete(
+      LOCAL_API_KEY,
+      { baseUrl: 'https://runtime.example.invalid/v1' },
+      {
+        ...completionRequest('vision-runtime-model'),
+        visualInputs: [{
+          dataBase64: Buffer.from('bounded-jpeg').toString('base64'),
+          evidenceId: 'frame-1234567890abcdef1234',
+          height: 720,
+          mediaType: 'image/jpeg',
+          timeMs: 1_000,
+          width: 1_280,
+        }],
+      },
+      new AbortController().signal,
+    );
+
+    const messages = bodies[0].messages as Array<{ content: unknown }>;
+    expect(messages[0].content).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'image_url' }),
+    ]));
+    expect(JSON.stringify(messages)).not.toContain('/Users/');
+  });
+
   it('maps authentication failures without returning provider bodies or keys', async () => {
     const fetcher: typeof fetch = async () => new Response(
       '{"error":"not returned to caller"}',

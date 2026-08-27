@@ -35,6 +35,15 @@ ModelCompletionRequest => ({
   thinking: 'disabled',
 });
 
+const visualInput = {
+  dataBase64: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64'),
+  evidenceId: 'frame-1234567890abcdef1234',
+  height: 720,
+  mediaType: 'image/jpeg' as const,
+  timeMs: 1_000,
+  width: 1_280,
+};
+
 describe('model service', () => {
   let directory: string;
   let service: ModelService;
@@ -317,6 +326,33 @@ describe('model service', () => {
     expect(completeCalls).toBe(0);
   });
 
+  it('rejects visual data unless both provider and saved configuration explicitly allow it',
+    async () => {
+      await expect(service.saveConfiguration({
+        apiKey: 'unit_test_api_key_service_vision',
+        displayName: '文本模型',
+        providerId: 'deepseek',
+        visualInputEnabled: true,
+      })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+
+      const unchecked = await service.saveConfiguration({
+        apiKey: 'unit_test_api_key_service_value',
+        displayName: '主模型',
+        providerId: 'deepseek',
+      });
+      const saved = await service.refreshModels(unchecked.id);
+      const result = await service.complete({
+        ...request(saved.id),
+        visualInputs: [visualInput],
+      });
+
+      expect(result).toMatchObject({
+        audit: { errorCode: 'INVALID_INPUT' },
+        ok: false,
+      });
+      expect(completeCalls).toBe(0);
+    });
+
   it('does not retry provider failures', async () => {
     provider.complete = async () => {
       completeCalls += 1;
@@ -363,7 +399,7 @@ describe('model service', () => {
           baseUrl: null,
           capabilities: {
             dataDestination: 'Custom API',
-            inputKinds: ['text'],
+            inputKinds: ['text', 'image'],
             maxInputCharacters: 250_000,
             maxMessages: 100,
             maxOutputTokens: 384_000,
@@ -396,6 +432,7 @@ describe('model service', () => {
         displayName: '自定义模型',
         manualModelId: 'declared/model',
         providerId: 'openai-compatible',
+        visualInputEnabled: true,
       });
 
       expect(saved).toMatchObject({
@@ -403,6 +440,7 @@ describe('model service', () => {
         connectionStatus: 'unchecked',
         manualModelId: 'declared/model',
         selectedModelId: null,
+        visualInputEnabled: true,
       });
       expect(saved.availableModels).toEqual([]);
       expect(listCalls).toBe(0);
@@ -422,7 +460,10 @@ describe('model service', () => {
       expect(completeCalls).toBe(0);
       expect(connections).toEqual(['https://custom.example.invalid/v1']);
 
-      const result = await service.complete(request(refreshed.id, 'declared/model'));
+      const result = await service.complete({
+        ...request(refreshed.id, 'declared/model'),
+        visualInputs: [visualInput],
+      });
       expect(result.ok).toBe(true);
       expect(completeCalls).toBe(1);
       expect(connections).toEqual([

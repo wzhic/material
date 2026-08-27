@@ -12,6 +12,7 @@ import {
   ToolInvocationAudit,
   ToolInvocationFailure,
   ToolInvocationResult,
+  ToolArtifact,
   ToolPermission,
   ToolResourceLimits,
 } from './types';
@@ -71,6 +72,7 @@ const mapError = (
 export class ToolBroker {
   private readonly active = new Map<string, AbortController>();
   private readonly audits: ToolInvocationAudit[] = [];
+  private readonly completedArtifacts = new Map<string, readonly ToolArtifact[]>();
 
   constructor(
     private readonly registry: ToolRegistry,
@@ -264,8 +266,10 @@ export class ToolBroker {
         inputBytes,
         outputBytes,
       );
+      const completedArtifacts = workspace.listArtifacts().map((artifact) => ({ ...artifact }));
+      this.completedArtifacts.set(invocationId, completedArtifacts);
       return {
-        artifacts: workspace.listArtifacts(),
+        artifacts: completedArtifacts,
         audit,
         capability: snapshot,
         invocationId,
@@ -304,7 +308,24 @@ export class ToolBroker {
     if (this.active.has(invocationId)) {
       throw new Error('cannot release artifacts while invocation is active');
     }
+    this.completedArtifacts.delete(invocationId);
     await this.artifacts.cleanup(invocationId);
+  }
+
+  async readArtifact(invocationId: string, artifactId: string): Promise<Buffer> {
+    if (this.active.has(invocationId)) {
+      throw new Error('cannot read artifacts while invocation is active');
+    }
+    const artifact = this.completedArtifacts.get(invocationId)?.find(
+      (candidate) => candidate.artifactId === artifactId,
+    );
+    if (!artifact) throw new Error('artifact is not registered for this invocation');
+    return this.artifacts.readArtifact(
+      invocationId,
+      artifact.relativePath,
+      artifact.byteLength,
+      artifact.sha256,
+    );
   }
 
   auditTrail(): readonly ToolInvocationAudit[] {

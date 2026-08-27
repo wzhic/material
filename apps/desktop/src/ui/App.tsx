@@ -165,6 +165,7 @@ export interface ModelSelectionOption {
   providerId: string;
   source: 'api-key' | 'codex-subscription';
   value: string;
+  visualInputEnabled: boolean;
 }
 
 const modelSelectionValue = (
@@ -192,11 +193,13 @@ export const createAnalysisModelOptions = (
     .flatMap((configuration) => configuration.availableModels.map((model) => ({
       configurationDisplayName: configuration.displayName,
       configurationId: configuration.id,
-      label: `${configuration.displayName} · ${model.id} · API Key`,
+      label: `${configuration.displayName} · ${model.id}`
+        + `${configuration.visualInputEnabled ? ' · 视觉' : ''} · API Key`,
       modelId: model.id,
       providerId: configuration.providerId,
       source: 'api-key' as const,
       value: modelSelectionValue('api-key', configuration.id, model.id),
+      visualInputEnabled: configuration.visualInputEnabled,
     })));
 
   if (
@@ -223,6 +226,7 @@ export const createAnalysisModelOptions = (
         CODEX_SUBSCRIPTION_CONFIGURATION_ID,
         model.id,
       ),
+      visualInputEnabled: false,
     }];
   });
   return [...apiKeyOptions, ...codexOptions];
@@ -666,6 +670,10 @@ const NewAnalysisPage = ({
               <small>
                 {selectedModel?.source === 'codex-subscription'
                   ? '将消耗当前账号的 Codex 订阅额度；V1 只发送结构化文本证据，不发送原始素材。'
+                  : selectedModel?.visualInputEnabled
+                    ? '该 API Key 配置会发送受控压缩图片或视频代表帧；不发送原视频和音频。'
+                    : selectedModel
+                      ? '该 API Key 配置仅发送文本证据；同一任务不会静默切换、回退或改为其他计费方式。'
                   : modelOptions.length
                     ? '模型由你显式选择；同一任务不会静默切换、回退或改为其他计费方式。'
                     : '请前往“模型管理”连接可用的 Codex 订阅，或保存并验证用户自有 Key。'}
@@ -1607,6 +1615,7 @@ export const App = (): React.JSX.Element => {
       modelId: selectedModel.modelId,
       productId: productId || null,
       sessionId: verifiedMaterial.sessionId,
+      visualInputEnabled: selectedModel.visualInputEnabled,
     });
     cancellationRequestedRunIdsRef.current.delete(clientRunId);
     const current = activeRunRef.current;

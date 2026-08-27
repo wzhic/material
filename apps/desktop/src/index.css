@@ -775,6 +775,32 @@ textarea:focus-visible,
   cursor: default;
 }
 
+.model-visual-toggle {
+  align-items: flex-start;
+  background: #f2f7ff;
+  border: 1px solid #c9ddff;
+  border-radius: 7px;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  padding: 11px 12px;
+}
+
+.model-visual-toggle input {
+  accent-color: var(--app-blue);
+  margin-top: 3px;
+}
+
+.model-visual-toggle span {
+  display: grid;
+  gap: 4px;
+}
+
+.model-visual-toggle small {
+  color: #5c7191;
+  line-height: 1.55;
+}
+
 .model-form-notice {
   background: #f1f6ff;
   border: 1px solid #d8e6fb;

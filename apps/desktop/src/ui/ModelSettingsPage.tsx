@@ -29,6 +29,7 @@ interface ConfigurationForm {
   id: string | null;
   manualModelId: string;
   providerId: string;
+  visualInputEnabled: boolean;
 }
 
 const emptyForm = (providers: ModelProviderInfo[] = []): ConfigurationForm => ({
@@ -39,6 +40,7 @@ const emptyForm = (providers: ModelProviderInfo[] = []): ConfigurationForm => ({
   id: null,
   manualModelId: '',
   providerId: providers[0]?.id ?? '',
+  visualInputEnabled: false,
 });
 
 const statusLabel = (
@@ -154,6 +156,7 @@ export const ModelSettingsPage = ({
       id: configuration.id,
       manualModelId: configuration.manualModelId ?? '',
       providerId: configuration.providerId,
+      visualInputEnabled: configuration.visualInputEnabled,
     });
     setDialogError('');
     setError('');
@@ -204,6 +207,7 @@ export const ModelSettingsPage = ({
         ? form.manualModelId.trim()
         : undefined,
       providerId: form.providerId,
+      visualInputEnabled: form.visualInputEnabled,
     });
     if (!result.ok) {
       setBusyAction(null);
@@ -317,6 +321,7 @@ export const ModelSettingsPage = ({
       id: configuration.id,
       providerId: configuration.providerId,
       selectedModelId,
+      visualInputEnabled: configuration.visualInputEnabled,
     });
     if (!result.ok) {
       await load();
@@ -452,6 +457,11 @@ export const ModelSettingsPage = ({
                   </div>
                   <div className="model-config-meta">
                     <span>API Key：已由系统安全存储保护</span>
+                    <span>
+                      视觉输入：{configuration.visualInputEnabled
+                        ? '启用压缩图片 / 视频代表帧'
+                        : '未启用，仅发送文本证据'}
+                    </span>
                     {configuration.baseUrl ? (
                       <span title={configuration.baseUrl}>API 地址：{configuration.baseUrl}</span>
                     ) : null}
@@ -598,6 +608,7 @@ export const ModelSettingsPage = ({
                         baseUrl: provider?.baseUrl ?? '',
                         manualModelId: '',
                         providerId: event.target.value,
+                        visualInputEnabled: false,
                       }));
                       setDialogError('');
                     }}
@@ -702,6 +713,28 @@ export const ModelSettingsPage = ({
                     <small>填写供应商用于 API 调用的准确模型标识。</small>
                   </label>
                 ) : null}
+
+                {selectedProvider?.capabilities.inputKinds.includes('image') ? (
+                  <label className="model-visual-toggle" htmlFor="model-visual-input-enabled">
+                    <input
+                      checked={form.visualInputEnabled}
+                      disabled={busyAction === 'save'}
+                      id="model-visual-input-enabled"
+                      onChange={(event) => setForm((current) => ({
+                        ...current,
+                        visualInputEnabled: event.target.checked,
+                      }))}
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>启用视觉输入</strong>
+                      <small>
+                        分析时允许把压缩图片或最多 8 个视频代表帧发送给该模型；
+                        不发送原视频或音频。
+                      </small>
+                    </span>
+                  </label>
+                ) : null}
               </div>
 
               <div className="model-form-notice">
@@ -710,7 +743,11 @@ export const ModelSettingsPage = ({
                   保存后只请求 /models 验证连接，不会发起模型生成或产生测试调用费用。
                   只有之后明确点击“测试调用”并再次确认，才会发送固定测试文本。
                   {selectedProvider
-                    ? ` 后续明确运行分析时，文本与结构化证据会发送至 ${selectedProvider.capabilities.dataDestination}；不会直接上传原始视频或图片。`
+                      ? ` 后续明确运行分析时，文本与结构化证据会发送至 ${selectedProvider.capabilities.dataDestination}；${
+                        form.visualInputEnabled
+                          ? '同时发送受控压缩图片或视频代表帧，不发送原视频和音频。'
+                          : '当前不会发送图片、原视频或音频。'
+                      }`
                     : ''}
                 </span>
               </div>

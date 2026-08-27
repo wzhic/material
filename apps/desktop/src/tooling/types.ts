@@ -104,6 +104,7 @@ export interface ToolArtifact {
   byteLength: number;
   mediaType: string;
   relativePath: string;
+  sha256: string;
 }
 
 export interface ToolWorkspace {

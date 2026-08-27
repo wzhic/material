@@ -72,6 +72,7 @@ describe('model credential vault', () => {
       displayName: '自定义模型',
       manualModelId: 'vendor/model-v1',
       providerId: 'openai-compatible',
+      visualInputEnabled: true,
     });
     const envelope = JSON.parse(readFileSync(filePath, 'utf8')) as {
       configurations: Array<Record<string, unknown>>;
@@ -81,11 +82,13 @@ describe('model credential vault', () => {
     expect(saved).toMatchObject({
       baseUrl: 'https://custom.example.invalid/v1',
       manualModelId: 'vendor/model-v1',
+      visualInputEnabled: true,
     });
     expect(envelope.schemaVersion).toBe(1);
     expect(envelope.configurations[0]).toMatchObject({
       baseUrl: 'https://custom.example.invalid/v1',
       manualModelId: 'vendor/model-v1',
+      visualInputEnabled: true,
     });
   });
 
@@ -115,6 +118,7 @@ describe('model credential vault', () => {
       id,
       manualModelId: null,
       providerId: 'deepseek',
+      visualInputEnabled: false,
     });
     expect((await vault.readCredential(id)).apiKey).toBe(apiKey);
   });

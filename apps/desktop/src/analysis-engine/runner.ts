@@ -81,6 +81,16 @@ const validateRunInput = (input: AnalysisRunInput): void => {
   ) {
     throw new AnalysisEngineError('INPUT_INVALID', '产品快照与本次分析上下文不一致');
   }
+  if (input.visualInputs !== undefined) {
+    const evidenceIds = new Set(input.media.evidence.map((item) => item.evidenceId));
+    if (
+      input.visualInputs.length < 1
+      || input.visualInputs.length > 8
+      || input.visualInputs.some((visual) => !evidenceIds.has(visual.evidenceId))
+    ) {
+      throw new AnalysisEngineError('INPUT_INVALID', '视觉输入与当前素材证据不一致');
+    }
+  }
 };
 
 const isCancelled = (signal: AbortSignal | undefined): boolean => signal?.aborted === true;

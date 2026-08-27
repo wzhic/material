@@ -340,6 +340,37 @@ describe('analysis engine', () => {
     ]);
   });
 
+  it('forwards controlled visual evidence to the selected model without persisting bytes',
+    async () => {
+      const complete = vi.fn<ModelCompletionPort['complete']>();
+      complete.mockResolvedValue(successResult(JSON.stringify(validModelObject(rule))));
+      const encoded = Buffer.from('bounded-jpeg-engine').toString('base64');
+      const engine = new AnalysisEngine({ complete }, {
+        idFactory: (() => {
+          const ids = ['run-visual', 'draft-visual'];
+          return () => ids.shift() as string;
+        })(),
+      });
+
+      const result = await engine.run({
+        ...input,
+        visualInputs: [{
+          dataBase64: encoded,
+          evidenceId: EVIDENCE_ID,
+          height: 720,
+          mediaType: 'image/jpeg',
+          timeMs: 0,
+          width: 1_280,
+        }],
+      });
+
+      expect(complete.mock.calls[0][0].visualInputs).toEqual([
+        expect.objectContaining({ evidenceId: EVIDENCE_ID }),
+      ]);
+      expect(result.ok).toBe(true);
+      expect(JSON.stringify(result)).not.toContain(encoded);
+    });
+
   it('does not retry or switch after a model failure', async () => {
     const complete = vi.fn(async (): Promise<ModelInvocationResult> => ({
       audit: audit('failed'),
@@ -452,6 +483,27 @@ describe('analysis engine', () => {
       ok: false,
     });
   });
+
+  it('rejects a visual input that is not bound to current evidence before model invocation',
+    async () => {
+      const complete = vi.fn(async () => successResult(JSON.stringify(validModelObject(rule))));
+      const engine = new AnalysisEngine({ complete }, { idFactory: () => 'run-bad-visual' });
+
+      const result = await engine.run({
+        ...input,
+        visualInputs: [{
+          dataBase64: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64'),
+          evidenceId: 'frame-not-sent',
+          height: 1,
+          mediaType: 'image/jpeg',
+          timeMs: 0,
+          width: 1,
+        }],
+      });
+
+      expect(complete).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ error: { code: 'INPUT_INVALID' }, ok: false });
+    });
 
   it('normalizes a thrown abort as cancellation without retrying', async () => {
     const controller = new AbortController();

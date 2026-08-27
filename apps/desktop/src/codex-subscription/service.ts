@@ -567,6 +567,7 @@ const validateAnalysisRequest = (request: ModelCompletionRequest): void => {
       || !message.content.trim()
       || message.content.length > 250_000)
     || request.messages.reduce((total, message) => total + message.content.length, 0) > 250_000
+    || request.visualInputs !== undefined
     || (request.temperature !== undefined
       && (!Number.isFinite(request.temperature)
         || request.temperature < 0

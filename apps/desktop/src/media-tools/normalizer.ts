@@ -17,6 +17,8 @@ import {
 const stableId = (kind: string, value: string): string =>
   `${kind}-${createHash('sha256').update(value).digest('hex').slice(0, 20)}`;
 
+export const frameEvidenceId = (frameId: string): string => stableId('frame', frameId);
+
 const videoLocator = (
   startMs: number,
   endMs: number | null | undefined,
@@ -196,7 +198,7 @@ export const normalizeMediaEvidence = (
   for (const frame of input.frames?.frames ?? []) {
     evidence.push({
       confidence: 1,
-      evidenceId: stableId('frame', frame.frameId),
+      evidenceId: frameEvidenceId(frame.frameId),
       evidenceType: 'metadata.frame.sample',
       locator: input.mediaKind === 'video'
         ? { kind: 'video_time', startMs: frame.timeMs }

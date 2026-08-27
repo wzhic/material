@@ -109,6 +109,7 @@ export interface StoredModelConfiguration {
   createdAt: string;
   updatedAt: string;
   writeVersion: number;
+  visualInputEnabled: boolean;
 }
 
 interface VaultConfiguration extends StoredModelConfiguration {
@@ -207,6 +208,7 @@ const validConfiguration = (value: unknown): value is VaultConfiguration => {
       || item.manualModelId === null
       || (typeof item.manualModelId === 'string'
         && /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(item.manualModelId)))
+    && (item.visualInputEnabled === undefined || typeof item.visualInputEnabled === 'boolean')
     && (item.selectedModelId === null || typeof item.selectedModelId === 'string')
     && ['error', 'ready', 'unchecked'].includes(String(item.connectionStatus))
     && (item.lastCheckedAt === null || typeof item.lastCheckedAt === 'string')
@@ -228,6 +230,7 @@ const withoutCiphertext = (item: VaultConfiguration): StoredModelConfiguration =
   providerId: item.providerId,
   selectedModelId: item.selectedModelId,
   updatedAt: item.updatedAt,
+  visualInputEnabled: item.visualInputEnabled ?? false,
   writeVersion: item.writeVersion,
 });
 
@@ -297,6 +300,12 @@ export class ModelCredentialVault {
       const selectedModelId = input.selectedModelId === undefined
         ? existing?.selectedModelId ?? null
         : input.selectedModelId;
+      const visualInputEnabled = input.visualInputEnabled === undefined
+        ? existing?.visualInputEnabled ?? false
+        : input.visualInputEnabled;
+      if (typeof visualInputEnabled !== 'boolean') {
+        throw new ModelServiceError('INVALID_INPUT');
+      }
       if (
         !connectionChanged
         && !manualModelChanged
@@ -326,6 +335,7 @@ export class ModelCredentialVault {
           ? null
           : selectedModelId ?? null,
         updatedAt: now,
+        visualInputEnabled,
         writeVersion: (existing?.writeVersion ?? 0) + 1,
       };
       if (existingIndex >= 0) {

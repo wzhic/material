@@ -5,7 +5,9 @@ import { AnalysisEngine } from './analysis-engine';
 import {
   AnalysisRuntimeService,
   registerAnalysisRuntimeIpc,
+  VisualInputPreparer,
 } from './analysis-runtime';
+import { ElectronVisualImageCodec } from './analysis-runtime/electron-visual-codec';
 import { CodexAppServerClient } from './codex-subscription/client';
 import { registerCodexSubscriptionIpc } from './codex-subscription/ipc';
 import { isTrustedMainWindowSender } from './codex-subscription/ipc-trust';
@@ -210,6 +212,7 @@ app.whenReady().then(() => {
       codexSubscriptionService,
     )),
     productRepository,
+    new VisualInputPreparer(toolBroker, new ElectronVisualImageCodec()),
   );
   registerModelIpc(
     modelService,

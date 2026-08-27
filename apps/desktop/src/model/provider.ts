@@ -161,6 +161,42 @@ const normalizeFetchError = (error: unknown, signal: AbortSignal): never => {
   throw new ModelServiceError('NETWORK_UNAVAILABLE');
 };
 
+const completionMessages = (request: ModelCompletionRequest): unknown[] => {
+  const visualInputs = request.visualInputs;
+  if (!visualInputs?.length) return [...request.messages];
+  let targetIndex = -1;
+  for (let index = request.messages.length - 1; index >= 0; index -= 1) {
+    if (request.messages[index].role === 'user') {
+      targetIndex = index;
+      break;
+    }
+  }
+  if (targetIndex < 0) throw new ModelServiceError('INVALID_INPUT');
+  return request.messages.map((message, index) => index === targetIndex
+    ? {
+        role: message.role,
+        content: [
+          { type: 'text', text: message.content },
+          ...visualInputs.flatMap((visual, visualIndex) => [
+            {
+              type: 'text',
+              text: `视觉证据 ${visualIndex + 1}：evidenceId=${visual.evidenceId}；时间=${
+                visual.timeMs === null ? '静态图片' : `${visual.timeMs}ms`
+              }`,
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                detail: 'low',
+                url: `data:${visual.mediaType};base64,${visual.dataBase64}`,
+              },
+            },
+          ]),
+        ],
+      }
+    : message);
+};
+
 export class OpenAiCompatibleProvider implements ModelProviderAdapter {
   readonly info: ModelProviderInfo;
 
@@ -225,7 +261,7 @@ export class OpenAiCompatibleProvider implements ModelProviderAdapter {
     try {
       const requestBody: Record<string, unknown> = {
         max_tokens: request.maxTokens,
-        messages: request.messages,
+        messages: completionMessages(request),
         model: request.modelId,
         response_format: request.format === 'json' ? { type: 'json_object' } : undefined,
         stream: false,
@@ -465,7 +501,7 @@ export const createCustomOpenAiCompatibleProvider = (
   baseUrl: null,
   capabilities: {
     dataDestination: '用户配置的 OpenAI 兼容 API',
-    inputKinds: ['text'],
+    inputKinds: ['text', 'image'],
     maxInputCharacters: 250_000,
     maxMessages: 100,
     maxOutputTokens: 384_000,

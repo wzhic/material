@@ -1857,6 +1857,33 @@ describe('Codex subscription service', () => {
     expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');
   });
 
+  it('rejects visual bytes before starting the Codex runtime', async () => {
+    const client = new FakeClient(signedInHandler());
+    const service = new CodexSubscriptionService({
+      client,
+      openExternal: vi.fn(async () => undefined),
+      settingsPath,
+    });
+
+    const result = await service.complete({
+      ...analysisRequest(),
+      visualInputs: [{
+        dataBase64: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64'),
+        evidenceId: 'frame-1',
+        height: 1,
+        mediaType: 'image/jpeg',
+        timeMs: 0,
+        width: 1,
+      }],
+    });
+
+    expect(result).toMatchObject({
+      error: { code: 'INVALID_INPUT' },
+      ok: false,
+    });
+    expect(client.calls).toEqual([]);
+  });
+
   it('completes analysis with the explicitly requested catalog model and strict turn bounds',
     async () => {
       const requestedCatalogId = 'luna-preset';

@@ -180,6 +180,40 @@ describe('temporary artifact manager', () => {
 });
 
 describe('tool broker and adapters', () => {
+  it('allows exact registered artifact reads until explicit release', async () => {
+    const { broker, tempRoot } = await brokerWith(
+      manifest(),
+      new FunctionToolAdapter('builtin', async ({ input, workspace }) => {
+        await workspace.writeArtifact('visual/frame.jpg', 'jpeg-bytes', 'image/jpeg');
+        return { echoed: (input as { value: string }).value };
+      }),
+    );
+    const result = await broker.invoke({ capabilityId: 'test.echo', input: { value: 'ok' } });
+    if (!result.ok) throw new Error('tool invocation failed');
+    expect(result.artifacts).toHaveLength(1);
+    await expect(broker.readArtifact(
+      result.invocationId,
+      result.artifacts[0].artifactId,
+    )).resolves.toEqual(Buffer.from('jpeg-bytes'));
+    await expect(broker.readArtifact(result.invocationId, 'not-registered')).rejects.toThrow(
+      /not registered/,
+    );
+    await writeFile(path.join(
+      tempRoot,
+      `material-tool-run-${result.invocationId}`,
+      result.artifacts[0].relativePath,
+    ), 'changed-after-registration');
+    await expect(broker.readArtifact(
+      result.invocationId,
+      result.artifacts[0].artifactId,
+    )).rejects.toThrow(/changed/);
+    await broker.release(result.invocationId);
+    await expect(broker.readArtifact(
+      result.invocationId,
+      result.artifacts[0].artifactId,
+    )).rejects.toThrow(/not registered/);
+  });
+
   it('validates input and output while keeping audit metadata free of raw values', async () => {
     const { broker } = await brokerWith(
       manifest(),

@@ -1,4 +1,5 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import {
   lstat,
   mkdir,
@@ -28,6 +29,17 @@ const within = (parent: string, child: string): boolean => {
   const relative = path.relative(parent, child);
   return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
 };
+
+const sha256 = (bytes: Uint8Array): string =>
+  createHash('sha256').update(bytes).digest('hex');
+
+const sha256File = (filePath: string): Promise<string> => new Promise((resolve, reject) => {
+  const hash = createHash('sha256');
+  const stream = createReadStream(filePath);
+  stream.on('data', (chunk) => hash.update(chunk));
+  stream.on('error', reject);
+  stream.on('end', () => resolve(hash.digest('hex')));
+});
 
 class ManagedWorkspace implements ToolWorkspace {
   private readonly artifacts = new Map<string, ToolArtifact>();
@@ -84,6 +96,7 @@ class ManagedWorkspace implements ToolWorkspace {
       byteLength: metadata.size,
       mediaType,
       relativePath,
+      sha256: await sha256File(realArtifact),
     });
     this.artifacts.set(relativePath, artifact);
     this.totalBytes += metadata.size;
@@ -99,7 +112,11 @@ class ManagedWorkspace implements ToolWorkspace {
       (candidate) => candidate.artifactId === artifactId,
     );
     if (!artifact) throw new Error('artifact does not exist in this workspace');
-    return readFile(this.resolve(artifact.relativePath));
+    const bytes = await readFile(this.resolve(artifact.relativePath));
+    if (bytes.length !== artifact.byteLength || sha256(bytes) !== artifact.sha256) {
+      throw new Error('artifact changed before it was consumed');
+    }
+    return bytes;
   }
 
   private resolve(relativePath: string): string {
@@ -158,6 +175,55 @@ export class TemporaryArtifactManager {
       throw new Error('workspace cleanup target is not a managed directory');
     }
     await rm(directory, { recursive: true });
+  }
+
+  async readArtifact(
+    invocationId: string,
+    relativePath: string,
+    expectedByteLength: number,
+    expectedSha256: string,
+  ): Promise<Buffer> {
+    const directory = this.workspacePath(invocationId);
+    if (
+      !relativePath
+      || relativePath.includes('\0')
+      || path.isAbsolute(relativePath)
+      || relativePath.split(/[\\/]/u).some(
+        (segment) => !segment || segment === '.' || segment === '..',
+      )
+      || !Number.isSafeInteger(expectedByteLength)
+      || expectedByteLength < 1
+      || !/^[0-9a-f]{64}$/.test(expectedSha256)
+    ) {
+      throw new Error('artifact read contract is invalid');
+    }
+    const destination = path.resolve(directory, relativePath);
+    if (!within(directory, destination)) throw new Error('artifact path escapes workspace');
+    const [workspaceMetadata, artifactMetadata] = await Promise.all([
+      lstat(directory),
+      lstat(destination),
+    ]);
+    if (
+      !workspaceMetadata.isDirectory()
+      || workspaceMetadata.isSymbolicLink()
+      || !artifactMetadata.isFile()
+      || artifactMetadata.isSymbolicLink()
+      || artifactMetadata.size !== expectedByteLength
+    ) {
+      throw new Error('artifact changed before it was consumed');
+    }
+    const [realWorkspace, realArtifact] = await Promise.all([
+      realpath(directory),
+      realpath(destination),
+    ]);
+    if (!within(realWorkspace, realArtifact)) {
+      throw new Error('artifact resolves outside the managed workspace');
+    }
+    const bytes = await readFile(realArtifact);
+    if (bytes.length !== expectedByteLength || sha256(bytes) !== expectedSha256) {
+      throw new Error('artifact changed while it was consumed');
+    }
+    return bytes;
   }
 
   async sweepStale(olderThanMs: number, now = Date.now()): Promise<number> {

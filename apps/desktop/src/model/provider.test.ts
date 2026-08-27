@@ -112,6 +112,52 @@ describe('OpenAI-compatible endpoint security', () => {
       url: 'https://deepseek.example.com/v1/chat/completions',
     }]);
   });
+
+  it('maps controlled images to official text and image_url content parts', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const provider = createCustomOpenAiCompatibleProvider(async (_input, init) => {
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return new Response(JSON.stringify({
+        choices: [{ finish_reason: 'stop', message: { content: '{"ok":true}' } }],
+        model: 'vision-model',
+      }), { status: 200 });
+    });
+
+    await provider.complete(
+      'unit_test_api_key_provider_vision',
+      { baseUrl: 'https://vision.example.com/v1' },
+      {
+        ...completionRequest,
+        modelId: 'vision-model',
+        visualInputs: [{
+          dataBase64: Buffer.from('bounded-jpeg').toString('base64'),
+          evidenceId: 'frame-1234567890abcdef1234',
+          height: 720,
+          mediaType: 'image/jpeg',
+          timeMs: 1_000,
+          width: 1_280,
+        }],
+      },
+      new AbortController().signal,
+    );
+
+    const messages = bodies[0].messages as Array<{ content: unknown; role: string }>;
+    expect(messages[0]).toMatchObject({ role: 'user' });
+    expect(messages[0].content).toEqual([
+      { text: 'hello', type: 'text' },
+      {
+        text: '视觉证据 1：evidenceId=frame-1234567890abcdef1234；时间=1000ms',
+        type: 'text',
+      },
+      {
+        image_url: {
+          detail: 'low',
+          url: `data:image/jpeg;base64,${Buffer.from('bounded-jpeg').toString('base64')}`,
+        },
+        type: 'image_url',
+      },
+    ]);
+  });
 });
 
 describe('official OpenAI Responses provider', () => {

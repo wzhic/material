@@ -27,6 +27,7 @@ const input: AnalysisRuntimeStartInput = {
   modelId: 'deepseek-chat',
   productId: '10000000-0000-4000-8000-000000000001',
   sessionId: '20000000-0000-4000-8000-000000000001',
+  visualInputEnabled: false,
 };
 
 const materialSession = {
@@ -362,6 +363,61 @@ describe('analysis runtime service', () => {
     expect(engine.run.mock.calls[1][0].conversionContext).toContain('1.5 秒');
     expect(progress.mock.calls.map((call) => call[0].stage)).toContain('applying_guidance');
   });
+
+  it('prepares visual frames only when the chosen configuration explicitly enables them',
+    async () => {
+      const tools = {
+        invoke: vi.fn(async ({ capabilityId }: { capabilityId: string }) =>
+          success(capabilityId, toolOutputs[capabilityId])),
+        release: vi.fn(async () => undefined),
+      };
+      const visualInputs = [{
+        dataBase64: Buffer.from('bounded-jpeg').toString('base64'),
+        evidenceId: 'frame-1234567890abcdef1234',
+        height: 720,
+        mediaType: 'image/jpeg' as const,
+        timeMs: 1_000,
+        width: 1_280,
+      }];
+      const visualInputPreparer = { prepare: vi.fn(async () => visualInputs) };
+      const engine = {
+        run: vi.fn(async (runInput): Promise<AnalysisRunResult> => ({
+          events: [],
+          modelAudit: {} as never,
+          ok: true,
+          report: { ...report, productSnapshot: runInput.productSnapshot ?? null },
+          runId: 'engine-run-visual',
+        })),
+      };
+      const service = new AnalysisRuntimeService(
+        tools,
+        { inspect: vi.fn(async () => materialSession) },
+        engine,
+        { snapshot: vi.fn(() => snapshot) },
+        visualInputPreparer as never,
+      );
+
+      const result = await service.run({ ...input, visualInputEnabled: true });
+
+      expect(result.ok).toBe(true);
+      expect(visualInputPreparer.prepare).toHaveBeenCalledTimes(1);
+      expect(engine.run.mock.calls[0][0]).toMatchObject({ visualInputs });
+      expect(engine.run.mock.calls[0][0].media.limitations).toContain(
+        '视频画面理解仅覆盖 1 个代表帧，不代表完整视频逐帧分析',
+      );
+      expect(JSON.stringify(result)).not.toContain('bounded-jpeg');
+
+      const refined = await service.refine({
+        clientRunId: 'client-run-visual-refined',
+        guidance: '重点复核第一个代表帧',
+        referenceTimeMs: 1_000,
+        sourceClientRunId: input.clientRunId,
+      });
+      expect(refined.ok).toBe(true);
+      expect(visualInputPreparer.prepare).toHaveBeenCalledTimes(1);
+      expect(engine.run.mock.calls[1][0]).toMatchObject({ visualInputs });
+      expect(JSON.stringify(refined)).not.toContain('bounded-jpeg');
+    });
 
   it('rejects refinement after its source run context is unavailable', async () => {
     const service = new AnalysisRuntimeService(
