@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0026",
-  "reason": "同步最新 APP-0025 基线并保留已合入的 APP-0026 时间轴与布局能力，继续完成 Codex 订阅模型分析接入",
+  "previous_task_id": "APP-0027",
+  "reason": "用户已明确开始 APP-0029 视觉模型分析整合，切换隔离工作区当前任务",
   "schema_version": 1,
-  "selected_at": "2026-08-26T04:58:36+00:00",
+  "selected_at": "2026-08-27T02:21:51+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0027"
+  "task_id": "APP-0029"
 }
