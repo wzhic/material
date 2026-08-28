@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Optional local OCR/ASR/audio-event runner. JSON only; never logs media data."""
+"""Bundled local OCR/ASR/audio-event runner. JSON only; never logs media data."""
 
 from __future__ import annotations
 
 import csv
 import importlib
-import io
 import json
 import math
 import pathlib
@@ -24,11 +23,29 @@ def _required_model(payload: Dict[str, Any], key: str) -> pathlib.Path:
     return pathlib.Path(value).resolve(strict=True)
 
 
+def _directory_has_file(directory: pathlib.Path) -> bool:
+    return directory.is_dir() and any(item.is_file() for item in directory.rglob("*"))
+
+
+def _validate_model_layout(action: str, model_path: pathlib.Path) -> None:
+    if action == "ocr":
+        if not all(_directory_has_file(model_path / name) for name in ("det", "rec")):
+            raise ValueError("OCR model directory requires populated det and rec children")
+    elif action == "asr":
+        if not all((model_path / name).is_file() for name in ("config.json", "model.bin")):
+            raise ValueError("ASR model directory is incomplete")
+    elif action == "audio_event":
+        if not (model_path / "saved_model.pb").is_file() or not _directory_has_file(
+            model_path / "variables"
+        ):
+            raise ValueError("audio event model directory is incomplete")
+
+
 def _health(action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     modules = {
         "ocr": ("paddleocr", "PIL.Image"),
         "asr": ("faster_whisper",),
-        "audio_event": ("numpy", "soundfile", "tensorflow", "tensorflow_hub"),
+        "audio_event": ("numpy", "soundfile", "tensorflow"),
     }
     if action not in modules:
         return {"available": False, "detail": "unknown capability", "runtimeVersion": None}
@@ -40,8 +57,7 @@ def _health(action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
             "audio_event": "audioEventModelPath",
         }
         model_path = _required_model(payload, model_keys[action])
-        if action == "ocr" and not all((model_path / name).is_dir() for name in ("det", "rec")):
-            raise ValueError("OCR model directory requires det and rec children")
+        _validate_model_layout(action, model_path)
         for name in modules[action]:
             module = importlib.import_module(name)
             versions.append(f"{name}/{_module_version(module)}")
@@ -83,6 +99,32 @@ def _flatten_ocr_v2(value: Any) -> Iterable[Any]:
     return flattened
 
 
+def _ocr_v3_mapping(value: Any) -> Dict[str, Any] | None:
+    candidate = value
+    if not isinstance(candidate, dict):
+        candidate = getattr(value, "json", None)
+        if callable(candidate):
+            candidate = candidate()
+    if not isinstance(candidate, dict):
+        return None
+    result = candidate.get("res", candidate)
+    return result if isinstance(result, dict) else None
+
+
+def _ocr_v3_lines(value: Any) -> Iterable[Any]:
+    mapping = _ocr_v3_mapping(value)
+    if mapping is None:
+        return []
+    texts = mapping.get("rec_texts")
+    scores = mapping.get("rec_scores")
+    polygons = mapping.get("rec_polys")
+    if polygons is None:
+        polygons = mapping.get("dt_polys")
+    if not all(hasattr(item, "__iter__") for item in (texts, scores, polygons)):
+        return []
+    return zip(polygons, zip(texts, scores))
+
+
 def _run_ocr(payload: Dict[str, Any]) -> Dict[str, Any]:
     paddleocr = importlib.import_module("paddleocr")
     pillow = importlib.import_module("PIL.Image")
@@ -92,28 +134,27 @@ def _run_ocr(payload: Dict[str, Any]) -> Dict[str, Any]:
     recognition_model = model_path / "rec"
     if not detection_model.is_dir() or not recognition_model.is_dir():
         raise ValueError("OCR model directory requires det and rec children")
-    try:
-        engine = paddleocr.PaddleOCR(
-            det_model_dir=str(detection_model),
-            rec_model_dir=str(recognition_model),
-            use_angle_cls=False,
-            lang=language,
-            show_log=False,
-        )
-    except TypeError:
-        engine = paddleocr.PaddleOCR(
-            det_model_dir=str(detection_model),
-            rec_model_dir=str(recognition_model),
-            use_angle_cls=False,
-            lang=language,
-        )
+    engine = paddleocr.PaddleOCR(
+        text_detection_model_name="PP-OCRv5_mobile_det",
+        text_detection_model_dir=str(detection_model),
+        text_recognition_model_name="PP-OCRv5_mobile_rec",
+        text_recognition_model_dir=str(recognition_model),
+        use_doc_orientation_classify=False,
+        use_doc_unwarping=False,
+        use_textline_orientation=False,
+        device="cpu",
+        lang=language,
+    )
     segments: List[Dict[str, Any]] = []
     for item in payload.get("items") or []:
         image_path = pathlib.Path(str(item.get("path") or "")).resolve(strict=True)
         with pillow.open(image_path) as image:
             width, height = image.size
-        result = engine.ocr(str(image_path), cls=False)
-        for line in _flatten_ocr_v2(result):
+        result = engine.predict(str(image_path))
+        lines: List[Any] = []
+        for prediction in result:
+            lines.extend(_ocr_v3_lines(prediction))
+        for line in lines:
             try:
                 points, text_score = line
                 text, score = text_score
@@ -148,10 +189,27 @@ def _run_asr(payload: Dict[str, Any]) -> Dict[str, Any]:
     faster_whisper = importlib.import_module("faster_whisper")
     model_path = pathlib.Path(str(payload.get("modelPath") or "")).resolve(strict=True)
     source_path = pathlib.Path(str(payload.get("sourcePath") or "")).resolve(strict=True)
-    model = faster_whisper.WhisperModel(str(model_path), device="cpu", compute_type="int8")
+    _validate_model_layout("asr", model_path)
+    model = faster_whisper.WhisperModel(
+        str(model_path),
+        device="cpu",
+        compute_type="int8",
+        cpu_threads=4,
+        num_workers=1,
+        local_files_only=True,
+    )
+    language = payload.get("language") or None
+    initial_prompt = (
+        "以下是普通话内容，请使用简体中文。"
+        if isinstance(language, str) and language.lower().replace("_", "-").startswith("zh")
+        else None
+    )
     segments_iter, info = model.transcribe(
         str(source_path),
-        language=payload.get("language") or None,
+        beam_size=3,
+        condition_on_previous_text=False,
+        initial_prompt=initial_prompt,
+        language=language,
         vad_filter=True,
         word_timestamps=bool(payload.get("wordTimestamps", True)),
     )
@@ -240,15 +298,16 @@ def _rhythm_change_events(waveform: Any, sample_rate: int, numpy: Any) -> List[D
 def _run_audio_event(payload: Dict[str, Any]) -> Dict[str, Any]:
     numpy = importlib.import_module("numpy")
     soundfile = importlib.import_module("soundfile")
-    tensorflow_hub = importlib.import_module("tensorflow_hub")
+    tensorflow = importlib.import_module("tensorflow")
     model_path = pathlib.Path(str(payload.get("modelPath") or "")).resolve(strict=True)
+    _validate_model_layout("audio_event", model_path)
     audio_path = pathlib.Path(str(payload.get("audioPath") or "")).resolve(strict=True)
     waveform, sample_rate = soundfile.read(str(audio_path), dtype="float32")
     if int(sample_rate) != 16000:
         raise ValueError("audio event input must be 16 kHz")
     if getattr(waveform, "ndim", 1) > 1:
         waveform = numpy.mean(waveform, axis=1)
-    model = tensorflow_hub.load(str(model_path))
+    model = tensorflow.saved_model.load(str(model_path))
     scores, _embeddings, _spectrogram = model(waveform)
     class_map_path = model.class_map_path().numpy().decode("utf-8")
     with open(class_map_path, "r", encoding="utf-8") as handle:
@@ -273,9 +332,12 @@ def _run_audio_event(payload: Dict[str, Any]) -> Dict[str, Any]:
     events.sort(key=lambda event: (event["startMs"], event["label"]))
     return {
         "events": _merge_events(events),
-        "limitations": ["节奏变化是本地能量差候选，不等同于 BPM 或节拍真值"],
+        "limitations": [
+            "YAMNet 采用约 0.96 秒窗口、0.48 秒步长，事件边界为近似值",
+            "节奏变化是本地能量差候选，不等同于 BPM 或节拍真值",
+        ],
         "modelVersion": model_path.name,
-        "runtimeVersion": "tensorflow-hub/yamnet-local",
+        "runtimeVersion": f"tensorflow/{_module_version(tensorflow)},yamnet/local",
     }
 
 

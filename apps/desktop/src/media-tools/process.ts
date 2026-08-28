@@ -8,6 +8,7 @@ import { MediaToolError } from './contracts';
 export interface ProcessRequest {
   args: readonly string[];
   cwd?: string;
+  env?: Readonly<Record<string, string>>;
   executable: string;
   maxStderrBytes: number;
   maxStdoutBytes: number;
@@ -38,9 +39,22 @@ export class SpawnMediaProcessRunner implements MediaProcessRunner {
       throw new MediaToolError('RUNTIME_OUTPUT_INVALID', '媒体工具参数无效');
     }
     if (request.signal?.aborted) throw new Error('aborted');
+    const operatingSystemEnvironment = process.platform === 'win32'
+      ? {
+        SystemRoot: process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows',
+        TEMP: process.env.TEMP ?? '',
+        TMP: process.env.TMP ?? '',
+        WINDIR: process.env.WINDIR ?? process.env.SystemRoot ?? 'C:\\Windows',
+      }
+      : {};
     const child = spawn(request.executable, [...request.args], {
       cwd: request.cwd,
-      env: { LANG: 'C', LC_ALL: 'C' },
+      env: {
+        ...operatingSystemEnvironment,
+        LANG: 'C',
+        LC_ALL: 'C',
+        ...request.env,
+      },
       shell: false,
       windowsHide: true,
     });

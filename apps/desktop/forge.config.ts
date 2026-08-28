@@ -16,6 +16,7 @@ import electronChecksums from 'electron/checksums.json';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
+import { resolveLearnedRuntimeBundle } from './src/media-tools/learned-runtime-bundle';
 import { mainConfig } from './webpack.main.config';
 import { rendererConfig } from './webpack.renderer.config';
 
@@ -102,10 +103,50 @@ export const configureCodexResourcesForTarget = async (
   ];
 };
 
+type LearnedRuntimeVerifier = typeof resolveLearnedRuntimeBundle;
+
+export const configureLearnedRuntimeResourcesForTarget = async (
+  forgeConfig: ResolvedForgeConfig,
+  platform: ForgePlatform,
+  arch: ForgeArch,
+  environment: NodeJS.ProcessEnv = process.env,
+  verify: LearnedRuntimeVerifier = resolveLearnedRuntimeBundle,
+): Promise<void> => {
+  const configuredRoot = environment.MATERIAL_LEARNED_RUNTIME_BUNDLE;
+  if (!configuredRoot) {
+    if (environment.MATERIAL_REQUIRE_LEARNED_RUNTIME === '1') {
+      throw new Error('A verified learned runtime bundle is required for this package');
+    }
+    return;
+  }
+  if (!path.isAbsolute(configuredRoot) || path.basename(configuredRoot) !== 'learned-runtime') {
+    throw new Error('Learned runtime bundle must be an absolute learned-runtime directory');
+  }
+  await verify({
+    arch: arch as NodeJS.Architecture,
+    platform: platform as NodeJS.Platform,
+    root: configuredRoot,
+  });
+  const existing = forgeConfig.packagerConfig.extraResource;
+  const existingResources = Array.isArray(existing)
+    ? existing
+    : existing ? [existing] : [];
+  forgeConfig.packagerConfig.extraResource = [...existingResources, configuredRoot];
+};
+
+export const configurePackageResourcesForTarget = async (
+  forgeConfig: ResolvedForgeConfig,
+  platform: ForgePlatform,
+  arch: ForgeArch,
+): Promise<void> => {
+  await configureCodexResourcesForTarget(forgeConfig, platform, arch);
+  await configureLearnedRuntimeResourcesForTarget(forgeConfig, platform, arch);
+};
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
-    extraResource: ['./runtime'],
+    extraResource: [],
     // The Electron npm package ships release checksums. Passing them here keeps
     // cached packaging verifiable without fetching SHASUMS256.txt on every run.
     download: {
@@ -114,7 +155,7 @@ const config: ForgeConfig = {
     },
   },
   hooks: {
-    prePackage: configureCodexResourcesForTarget,
+    prePackage: configurePackageResourcesForTarget,
   },
   rebuildConfig: {},
   makers: [

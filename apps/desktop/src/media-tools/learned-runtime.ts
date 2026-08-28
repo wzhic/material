@@ -28,10 +28,13 @@ interface RuntimeHealthPayload {
 export interface LocalLearnedRuntimeConfiguration {
   asrModelPath?: string;
   audioEventModelPath?: string;
+  cachePath?: string;
   ocrLanguage?: string;
   ocrModelPath?: string;
   pythonPath?: string;
   scriptPath: string;
+  unavailableDetail?: string;
+  verifyIntegrity?: () => Promise<void>;
 }
 
 export interface OcrRequest {
@@ -52,6 +55,15 @@ const CAPABILITIES: Record<LearnedAction, RuntimeCapabilityHealth['capabilityId'
   asr: 'media.asr',
   audio_event: 'media.audio.event',
   ocr: 'media.ocr',
+};
+
+const OFFLINE_RUNTIME_ENVIRONMENT: Readonly<Record<string, string>> = {
+  HF_HUB_OFFLINE: '1',
+  PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: 'True',
+  PYTHONDONTWRITEBYTECODE: '1',
+  PYTHONNOUSERSITE: '1',
+  PYTHONUTF8: '1',
+  TRANSFORMERS_OFFLINE: '1',
 };
 
 const boundedText = (value: unknown, maximum = 10_000): string =>
@@ -96,6 +108,18 @@ export class LocalLearnedRuntime {
     if (!path.isAbsolute(configuration.scriptPath)) {
       throw new Error('local learned runtime script path must be absolute');
     }
+    if (configuration.cachePath && !path.isAbsolute(configuration.cachePath)) {
+      throw new Error('local learned runtime cache path must be absolute');
+    }
+  }
+
+  private processEnvironment(): Readonly<Record<string, string>> {
+    return {
+      ...OFFLINE_RUNTIME_ENVIRONMENT,
+      ...(this.configuration.cachePath
+        ? { PADDLE_PDX_CACHE_HOME: this.configuration.cachePath }
+        : {}),
+    };
   }
 
   async health(action: LearnedAction): Promise<RuntimeCapabilityHealth> {
@@ -106,7 +130,7 @@ export class LocalLearnedRuntime {
       const missing = {
         available: false,
         capabilityId: CAPABILITIES[action],
-        detail: '未配置本地 Python 运行时',
+        detail: this.configuration.unavailableDetail ?? '未配置本地 Python 运行时',
         runtimeVersion: null,
       };
       this.healthCache.set(action, missing);
@@ -130,6 +154,7 @@ export class LocalLearnedRuntime {
     try {
       const result = await this.runner.run({
         args: [this.configuration.scriptPath, '--health', action],
+        env: this.processEnvironment(),
         executable: python,
         maxStderrBytes: 256 * 1024,
         maxStdoutBytes: 256 * 1024,
@@ -167,6 +192,13 @@ export class LocalLearnedRuntime {
     payload: Record<string, unknown>,
     signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
+    if (this.configuration.verifyIntegrity) {
+      try {
+        await this.configuration.verifyIntegrity();
+      } catch {
+        throw new MediaToolError('RUNTIME_MISSING', '本地学习型媒体运行时完整性校验失败');
+      }
+    }
     const health = await this.health(action);
     if (!health.available) {
       throw new MediaToolError('RUNTIME_MISSING', health.detail);
@@ -174,6 +206,7 @@ export class LocalLearnedRuntime {
     const python = requiredAbsolute(this.configuration.pythonPath, '本地 Python 运行时');
     const result = await this.runner.run({
       args: [this.configuration.scriptPath, '--run', action],
+      env: this.processEnvironment(),
       executable: python,
       maxStderrBytes: 1024 * 1024,
       maxStdoutBytes: 16 * 1024 * 1024,

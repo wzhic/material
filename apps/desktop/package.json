@@ -14,8 +14,11 @@
     "typecheck": "tsc --noEmit",
     "test": "node scripts/run-tests-with-diagnostic.mjs",
     "test:codex-runtime": "vitest run src/codex-subscription/runtime.test.ts src/codex-subscription/codex.runtime.test.ts --reporter=verbose",
+    "test:learned-runtime": "vitest run src/media-tools/learned-runtime.test.ts src/media-tools/learned-runtime-bundle.test.ts src/media-tools/learned-runtime-builder.test.ts src/media-tools/learned-runtime-configuration.test.ts --reporter=verbose && node scripts/run-python-runtime-tests.mjs",
     "test:media-runtime": "vitest run src/media-tools/media.runtime.test.ts --reporter=verbose",
-    "test:model-runtime": "vitest run src/model/model.runtime.test.ts --reporter=verbose"
+    "test:model-runtime": "vitest run src/model/model.runtime.test.ts --reporter=verbose",
+    "runtime:assemble": "node scripts/assemble-learned-runtime.mjs",
+    "runtime:sync": "uv sync --project runtime --frozen"
   },
   "keywords": [],
   "author": "wzhic",

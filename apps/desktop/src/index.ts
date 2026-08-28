@@ -27,6 +27,7 @@ import {
   materialSessionSourceResolver,
   registerDeterministicMediaTools,
 } from './media-tools';
+import { resolveLearnedRuntimeConfiguration } from './media-tools/learned-runtime-configuration';
 import { registerModelIpc } from './model/ipc';
 import {
   createCustomOpenAiCompatibleProvider,
@@ -97,7 +98,7 @@ const createWindow = (): void => {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   registerMaterialProtocol(materialSessionService);
   registerMaterialIpc(materialSessionService);
   const modelRegistry = new ModelProviderRegistry();
@@ -165,9 +166,15 @@ app.whenReady().then(() => {
     registerUnavailableRecordIpc('分析记录无法打开，请检查应用数据目录权限或数据库版本');
   }
   const toolRegistry = new ToolRegistry();
-  const runtimeScriptPath = app.isPackaged
-    ? path.join(process.resourcesPath, 'runtime', 'media_runtime.py')
-    : path.join(app.getAppPath(), 'runtime', 'media_runtime.py');
+  const learnedRuntimeConfiguration = await resolveLearnedRuntimeConfiguration({
+    appPath: app.getAppPath(),
+    arch: process.arch,
+    cachePath: path.join(app.getPath('temp'), 'material-learned-runtime-cache'),
+    environment: process.env,
+    isPackaged: app.isPackaged,
+    platform: process.platform,
+    resourcesPath: process.resourcesPath,
+  });
   const executableSearchPath = [
     process.env.PATH,
     ...(process.platform === 'darwin'
@@ -179,14 +186,7 @@ app.whenReady().then(() => {
     materialSessionSourceResolver(materialSessionService),
     {
       ffmpeg: { pathValue: executableSearchPath },
-      learned: {
-        asrModelPath: process.env.MATERIAL_ASR_MODEL_PATH,
-        audioEventModelPath: process.env.MATERIAL_AUDIO_EVENT_MODEL_PATH,
-        ocrLanguage: 'ch',
-        ocrModelPath: process.env.MATERIAL_OCR_MODEL_PATH,
-        pythonPath: process.env.MATERIAL_MEDIA_PYTHON,
-        scriptPath: runtimeScriptPath,
-      },
+      learned: learnedRuntimeConfiguration,
     },
   );
   const artifacts = new TemporaryArtifactManager(

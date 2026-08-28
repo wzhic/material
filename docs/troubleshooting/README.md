@@ -35,4 +35,6 @@ FFmpeg / ffprobe、取帧、镜头候选、OCR、音频基础特征、ASR、声�
 
 OpenAI 兼容视觉配置、M02 临时代表帧、主进程 JPEG 限额、Chat Completions 图片内容块、证据绑定、失败零重试和视觉字节零持久化见 [OpenAI兼容视觉模型分析-TRB-0018-v1.0](OpenAI兼容视觉模型分析-TRB-0018-v1.0.md)。
 
+随客户端发行的 PaddleOCR、faster-whisper 与 YAMNet 本地 bundle、manifest / hash 校验、目标平台打包、固定样例烟测和整包恢复见 [本地学习型媒体生产运行时-TRB-0019-v1.0](本地学习型媒体生产运行时-TRB-0019-v1.0.md)。
+
 不得用删除状态、关闭 Hook、跳过测试、直接修改受保护记录或改写 Git 历史作为排障手段。普通网络重试和范围内可逆修复不需要逐项确认。
