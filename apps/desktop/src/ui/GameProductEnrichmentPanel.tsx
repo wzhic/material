@@ -7,6 +7,11 @@ import {
   GameEnrichmentErrorCode,
   GameEnrichmentStatus,
 } from '../product-enrichment/types';
+import {
+  consumeGrantedQueryAutoRun,
+  GrantedQuerySuppression,
+  suppressGrantedQueryAutoRun,
+} from '../product-enrichment/query-scheduling';
 
 type SearchState =
   | { kind: 'awaiting-consent' }
@@ -45,6 +50,7 @@ export const GameProductEnrichmentPanel = ({
   const latestName = useRef(gameName);
   const lastCompletedQuery = useRef('');
   const lastQueryNowToken = useRef(queryNowToken);
+  const grantedQuerySuppression = useRef<GrantedQuerySuppression>({ query: null });
 
   latestName.current = gameName;
 
@@ -139,6 +145,9 @@ export const GameProductEnrichmentPanel = ({
       if (lastCompletedQuery.current !== query) setState({ kind: 'awaiting-consent' });
       return undefined;
     }
+    if (consumeGrantedQueryAutoRun(grantedQuerySuppression.current, query)) {
+      return undefined;
+    }
     void cancelActive();
     const timer = window.setTimeout(
       () => void runSearch(query),
@@ -158,6 +167,10 @@ export const GameProductEnrichmentPanel = ({
       setState({ kind: 'disabled' });
       return;
     }
+    suppressGrantedQueryAutoRun(
+      grantedQuerySuppression.current,
+      normalizeForLookup(latestName.current),
+    );
     await runSearch(latestName.current, true);
   };
 
