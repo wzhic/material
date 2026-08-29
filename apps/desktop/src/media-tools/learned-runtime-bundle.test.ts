@@ -122,9 +122,17 @@ describe('learned runtime bundle', () => {
     })).rejects.toMatchObject({ reason: 'TARGET_MISMATCH' });
 
     const linked = await makeBundle();
+    // Windows hosted runners can create directory junctions without the
+    // elevated file-symlink privilege. Both are links that the verifier must
+    // reject before following their targets.
     await symlink(
-      path.join(linked, 'models', 'asr', 'model.bin'),
-      path.join(linked, 'models', 'asr', 'linked.bin'),
+      process.platform === 'win32'
+        ? path.join(linked, 'models', 'asr')
+        : path.join(linked, 'models', 'asr', 'model.bin'),
+      process.platform === 'win32'
+        ? path.join(linked, 'models', 'linked-asr')
+        : path.join(linked, 'models', 'asr', 'linked.bin'),
+      process.platform === 'win32' ? 'junction' : 'file',
     );
     const error = await resolveLearnedRuntimeBundle({
       arch: 'arm64', platform: 'darwin', root: linked,

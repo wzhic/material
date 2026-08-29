@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0035",
+  "base_head": "1ee1e55ee7881e4ddbc67fc8a2997d59ffd916ab",
+  "paths": [
+    "apps/desktop/package.json",
+    "apps/desktop/src/media-tools/learned-runtime-builder.test.ts",
+    "apps/desktop/src/media-tools/learned-runtime-bundle.test.ts",
+    "docs/development/本地学习型媒体生产运行时-DEV-0022-v1.0.md",
+    "docs/development/游戏产品联网补全-DEV-0023-v1.0.md",
+    "docs/troubleshooting/本地学习型媒体生产运行时-TRB-0019-v1.0.md",
+    "docs/troubleshooting/游戏产品联网补全-TRB-0020-v1.0.md"
+  ]
+}
