@@ -13,6 +13,10 @@ import {
 } from './learned-runtime-bundle';
 
 const roots: string[] = [];
+const fixtureTarget = process.platform === 'win32'
+  ? { arch: 'x64' as const, platform: 'win32' as const }
+  : { arch: 'arm64' as const, platform: 'darwin' as const };
+const mismatchedArch = fixtureTarget.arch === 'arm64' ? 'x64' : 'arm64';
 
 const sha256 = (value: Buffer): string =>
   createHash('sha256').update(value).digest('hex');
@@ -68,7 +72,7 @@ const makeBundle = async (): Promise<string> => {
       script: 'runtime/media_runtime.py',
     },
     schemaVersion: 1,
-    target: { arch: 'arm64', platform: 'darwin' },
+    target: fixtureTarget,
   };
   await writeFile(
     path.join(root, LEARNED_RUNTIME_MANIFEST_NAME),
@@ -96,8 +100,8 @@ describe('learned runtime bundle', () => {
     const root = await makeBundle();
 
     const configuration = await resolveLearnedRuntimeBundle({
-      arch: 'arm64',
-      platform: 'darwin',
+      arch: fixtureTarget.arch,
+      platform: fixtureTarget.platform,
       root,
     });
     expect(configuration).toMatchObject({
@@ -115,20 +119,20 @@ describe('learned runtime bundle', () => {
     const tampered = await makeBundle();
     await writeFile(path.join(tampered, 'models', 'asr', 'model.bin'), 'changed');
     await expect(resolveLearnedRuntimeBundle({
-      arch: 'arm64', platform: 'darwin', root: tampered,
+      arch: fixtureTarget.arch, platform: fixtureTarget.platform, root: tampered,
     })).rejects.toMatchObject({ reason: 'FILE_METADATA' });
 
     const withExtra = await makeBundle();
     await writeFile(path.join(withExtra, 'unexpected.txt'), 'extra');
     await expect(resolveLearnedRuntimeBundle({
-      arch: 'arm64', platform: 'darwin', root: withExtra,
+      arch: fixtureTarget.arch, platform: fixtureTarget.platform, root: withExtra,
     })).rejects.toMatchObject({ reason: 'FILE_SET' });
   });
 
   it('rejects target mismatches and symbolic links without exposing local paths', async () => {
     const mismatched = await makeBundle();
     await expect(resolveLearnedRuntimeBundle({
-      arch: 'x64', platform: 'darwin', root: mismatched,
+      arch: mismatchedArch, platform: fixtureTarget.platform, root: mismatched,
     })).rejects.toMatchObject({ reason: 'TARGET_MISMATCH' });
 
     let linked: string;
@@ -161,7 +165,7 @@ describe('learned runtime bundle', () => {
     }
     try {
       const error = await resolveLearnedRuntimeBundle({
-        arch: 'arm64', platform: 'darwin', root: linked,
+        arch: fixtureTarget.arch, platform: fixtureTarget.platform, root: linked,
       }).catch((value: unknown) => value);
       expect(error).toBeInstanceOf(LearnedRuntimeBundleError);
       expect(error).toMatchObject({ reason: expectedReason });
