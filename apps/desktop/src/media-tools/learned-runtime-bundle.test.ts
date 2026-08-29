@@ -125,30 +125,37 @@ describe('learned runtime bundle', () => {
       arch: 'x64', platform: 'darwin', root: mismatched,
     })).rejects.toMatchObject({ reason: 'TARGET_MISMATCH' });
 
-    const linked = await makeBundle();
+    let linked: string;
+    let expectedReason: 'ROOT_TYPE' | 'SYMLINK';
     if (process.platform === 'win32') {
       // File symlinks require Developer Mode or elevation on Windows runners.
-      // A directory junction exercises the same lstat fail-closed path without
-      // weakening the production verifier or requiring runner privileges.
-      const junctionTarget = await mkdtemp(path.join(os.tmpdir(), 'material-runtime-link-target-'));
-      roots.push(junctionTarget);
-      await writeFile(path.join(junctionTarget, 'model.bin'), 'linked-model');
+      // A root directory junction exercises the same fail-closed boundary
+      // without leaving a nested reparse point for recursive cleanup to race.
+      const junctionContainer = await mkdtemp(
+        path.join(os.tmpdir(), 'material-runtime-link-container-'),
+      );
+      roots.push(junctionContainer);
+      const junctionTarget = await makeBundle();
+      linked = path.join(junctionContainer, 'bundle-link');
       await symlink(
         junctionTarget,
-        path.join(linked, 'models', 'asr', 'linked-directory'),
+        linked,
         'junction',
       );
+      expectedReason = 'ROOT_TYPE';
     } else {
+      linked = await makeBundle();
       await symlink(
         path.join(linked, 'models', 'asr', 'model.bin'),
         path.join(linked, 'models', 'asr', 'linked.bin'),
       );
+      expectedReason = 'SYMLINK';
     }
     const error = await resolveLearnedRuntimeBundle({
       arch: 'arm64', platform: 'darwin', root: linked,
     }).catch((value: unknown) => value);
     expect(error).toBeInstanceOf(LearnedRuntimeBundleError);
-    expect(error).toMatchObject({ reason: 'SYMLINK' });
+    expect(error).toMatchObject({ reason: expectedReason });
     expect(String(error)).not.toContain(linked);
   });
 
