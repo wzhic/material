@@ -11,7 +11,7 @@ const commonArgs = [
   'run',
   '--exclude',
   '**/*.runtime.test.ts',
-  '--reporter=verbose',
+  '--reporter=json',
   '--no-file-parallelism',
 ];
 
@@ -33,70 +33,96 @@ const findTests = (directory) => readdirSync(directory, { withFileTypes: true })
 
 const testFiles = findTests(sourceRoot).sort();
 const fullSuite = run(commonArgs, 'pipe');
+const classifyFailure = (messages) => {
+  const combined = messages.join('\n');
+  if (/\bEPERM\b/.test(combined)) return 'EPERM';
+  if (/\bEBUSY\b/.test(combined)) return 'EBUSY';
+  if (/\bEACCES\b/.test(combined)) return 'EACCES';
+  if (/\bENOTEMPTY\b/.test(combined)) return 'ENOTEMPTY';
+  if (/\bENOENT\b/.test(combined)) return 'ENOENT';
+  if (/Hook timed out/i.test(combined)) return 'HOOK_TIMEOUT';
+  if (/Test timed out/i.test(combined)) return 'TEST_TIMEOUT';
+  if (/AssertionError|expected .* to |expected .* not to /i.test(combined)) return 'ASSERTION';
+  if (/Unhandled (?:Error|Rejection)/i.test(combined)) return 'UNHANDLED';
+  return 'ERROR';
+};
+
+const diagnosticExitCodes = {
+  EPERM: 101,
+  EBUSY: 102,
+  EACCES: 103,
+  ENOTEMPTY: 104,
+  ENOENT: 105,
+  HOOK_TIMEOUT: 106,
+  TEST_TIMEOUT: 107,
+  ASSERTION: 108,
+  UNHANDLED: 109,
+  ERROR: 110,
+  REPORT_MISSING: 111,
+  REPORT_INVALID: 112,
+};
+
+let report;
+try {
+  report = JSON.parse((fullSuite.stdout ?? Buffer.alloc(0)).toString('utf8'));
+} catch {
+  process.stderr.write('[vitest-report-missing]\n');
+  process.exit(diagnosticExitCodes.REPORT_MISSING);
+}
+if (!report || !Array.isArray(report.testResults)) {
+  process.stderr.write('[vitest-report-invalid]\n');
+  process.exit(diagnosticExitCodes.REPORT_INVALID);
+}
 if (fullSuite.status === 0) {
-  process.stdout.write(fullSuite.stdout ?? Buffer.alloc(0));
-  process.stderr.write(fullSuite.stderr ?? Buffer.alloc(0));
+  if (report.success !== true || Number(report.numFailedTests) !== 0) {
+    process.stderr.write('[vitest-report-invalid]\n');
+    process.exit(diagnosticExitCodes.REPORT_INVALID);
+  }
+  process.stdout.write(
+    `[vitest-summary files=${report.testResults.length} tests=${Number(report.numPassedTests)}]\n`,
+  );
   process.exit(0);
 }
 
-let diagnosticRuns = 0;
-const diagnosticBudget = 24;
-const fails = (files) => {
-  if (diagnosticRuns >= diagnosticBudget) return false;
-  diagnosticRuns += 1;
-  return run([
-    vitestCli,
-    'run',
-    ...files,
-    '--reporter=dot',
-    '--no-file-parallelism',
-  ], 'ignore').status !== 0;
-};
-
-const partition = (items, count) => {
-  const chunks = [];
-  for (let index = 0; index < count; index += 1) {
-    const start = Math.floor((index * items.length) / count);
-    const end = Math.floor(((index + 1) * items.length) / count);
-    if (start < end) chunks.push(items.slice(start, end));
+const failures = [];
+for (const result of report.testResults) {
+  const relativeName = typeof result?.name === 'string'
+    ? path.relative(packageRoot, result.name).split(path.sep).join('/')
+    : '';
+  const safeName = testFiles.includes(relativeName) ? relativeName : 'unknown-test-file';
+  const assertions = Array.isArray(result?.assertionResults) ? result.assertionResults : [];
+  const failedAssertions = assertions
+    .map((assertion, index) => ({ assertion, index }))
+    .filter(({ assertion }) => assertion?.status === 'failed');
+  if (failedAssertions.length === 0 && result?.status === 'failed') {
+    failures.push({
+      category: classifyFailure([typeof result.message === 'string' ? result.message : '']),
+      index: 'suite',
+      name: safeName,
+    });
+    continue;
   }
-  return chunks;
-};
-
-let minimal = [...testFiles];
-let granularity = 2;
-while (minimal.length >= 2 && diagnosticRuns < diagnosticBudget) {
-  const chunks = partition(minimal, granularity);
-  let reduced = false;
-
-  for (const chunk of chunks) {
-    if (fails(chunk)) {
-      minimal = chunk;
-      granularity = 2;
-      reduced = true;
-      break;
-    }
+  for (const { assertion, index } of failedAssertions) {
+    failures.push({
+      category: classifyFailure(Array.isArray(assertion.failureMessages) ? assertion.failureMessages : []),
+      index,
+      name: safeName,
+    });
   }
-  if (reduced) continue;
-
-  for (const chunk of chunks) {
-    const excluded = new Set(chunk);
-    const complement = minimal.filter((file) => !excluded.has(file));
-    if (complement.length > 0 && fails(complement)) {
-      minimal = complement;
-      granularity = Math.max(2, granularity - 1);
-      reduced = true;
-      break;
-    }
-  }
-  if (reduced) continue;
-
-  if (granularity >= minimal.length) break;
-  granularity = Math.min(minimal.length, granularity * 2);
+}
+if (failures.length === 0) {
+  process.stderr.write('[vitest-report-no-failure]\n');
+  process.exit(diagnosticExitCodes.REPORT_INVALID);
 }
 
-// The controlled runner records byte count and SHA-256, not raw stderr. A
-// deterministic list lets maintainers recover the subset from the known test
-// inventory without exposing arbitrary test output or turning the gate green.
-process.stderr.write(`[vitest-minimal-subset runs=${diagnosticRuns}]\n${minimal.join('\n')}\n`);
-process.exit(91);
+const categories = [...new Set(failures.map((failure) => failure.category))];
+const category = categories.length === 1 ? categories[0] : 'ERROR';
+const marker = `[vitest-original-failures category=${category}]\n${failures
+  .map((failure) => `${failure.name}#${failure.index}`)
+  .join('\n')}\n`;
+
+// The controlled runner records only byte counts and SHA-256 values. Emit
+// repository-owned file/assertion identifiers plus a bounded category from the
+// original run, avoiding raw errors and false positives caused by reruns.
+process.stderr.write(marker);
+process.exit(diagnosticExitCodes[category]);

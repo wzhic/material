@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0035",
+  "base_head": "63a716ae465a8a2057d6866c760a43daf849a676",
+  "paths": [
+    "apps/desktop/scripts/run-tests-with-diagnostic.mjs"
+  ]
+}
