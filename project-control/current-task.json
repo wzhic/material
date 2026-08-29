@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0024",
-  "reason": "close only the trusted main-push diff-boundary failure from run 32702883035",
+  "previous_task_id": "GOV-0028",
+  "reason": "产品栈 merge 已展开；恢复 main 权威治理实现后重新选择 APP-0035，继续解决组合结果",
   "schema_version": 1,
-  "selected_at": "2026-08-24T07:50:41+00:00",
+  "selected_at": "2026-08-29T09:27:43+00:00",
   "selected_by": "Codex",
-  "task_id": "GOV-0028"
+  "task_id": "APP-0035"
 }
