@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -29,8 +29,7 @@ describe('learned runtime assembler', () => {
     const ocrRoot = path.join(root, 'ocr-source');
     const asrRoot = path.join(root, 'asr-source');
     const yamnetRoot = path.join(root, 'yamnet-source');
-    await writeFixture(pythonRoot, 'bin/python3.11', '#!/bin/sh\nexit 0\n');
-    await symlink('python3.11', path.join(pythonRoot, 'bin', 'python'));
+    await writeFixture(pythonRoot, 'bin/python', '#!/bin/sh\nexit 0\n');
     await writeFixture(ocrRoot, 'det/inference.json', '{}');
     await writeFixture(ocrRoot, 'rec/inference.json', '{}');
     await writeFixture(asrRoot, 'config.json', '{}');

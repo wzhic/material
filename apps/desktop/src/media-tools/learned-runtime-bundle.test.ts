@@ -78,7 +78,11 @@ const makeBundle = async (): Promise<string> => {
 };
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { force: true, recursive: true })));
+  // Remove the bundle before its Windows junction target so cleanup never races
+  // a reparse point with the directory it references.
+  for (const root of roots.splice(0)) {
+    await rm(root, { force: true, recursive: true });
+  }
 });
 
 describe('learned runtime bundle', () => {
@@ -122,14 +126,29 @@ describe('learned runtime bundle', () => {
     })).rejects.toMatchObject({ reason: 'TARGET_MISMATCH' });
 
     const linked = await makeBundle();
-    await symlink(
-      path.join(linked, 'models', 'asr', 'model.bin'),
-      path.join(linked, 'models', 'asr', 'linked.bin'),
-    );
+    if (process.platform === 'win32') {
+      // File symlinks require Developer Mode or elevation on Windows runners.
+      // A directory junction exercises the same lstat fail-closed path without
+      // weakening the production verifier or requiring runner privileges.
+      const junctionTarget = await mkdtemp(path.join(os.tmpdir(), 'material-runtime-link-target-'));
+      roots.push(junctionTarget);
+      await writeFile(path.join(junctionTarget, 'model.bin'), 'linked-model');
+      await symlink(
+        junctionTarget,
+        path.join(linked, 'models', 'asr', 'linked-directory'),
+        'junction',
+      );
+    } else {
+      await symlink(
+        path.join(linked, 'models', 'asr', 'model.bin'),
+        path.join(linked, 'models', 'asr', 'linked.bin'),
+      );
+    }
     const error = await resolveLearnedRuntimeBundle({
       arch: 'arm64', platform: 'darwin', root: linked,
     }).catch((value: unknown) => value);
     expect(error).toBeInstanceOf(LearnedRuntimeBundleError);
+    expect(error).toMatchObject({ reason: 'SYMLINK' });
     expect(String(error)).not.toContain(linked);
   });
 
