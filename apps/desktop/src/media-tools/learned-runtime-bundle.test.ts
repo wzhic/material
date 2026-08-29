@@ -78,10 +78,16 @@ const makeBundle = async (): Promise<string> => {
 };
 
 afterEach(async () => {
-  // Remove the bundle before its Windows junction target so cleanup never races
-  // a reparse point with the directory it references.
+  // Windows may retain file handles briefly after integrity reads. Use Node's
+  // bounded recursive-removal retries so fixture cleanup remains deterministic
+  // under the full-suite load without hiding a persistent cleanup failure.
   for (const root of roots.splice(0)) {
-    await rm(root, { force: true, recursive: true });
+    await rm(root, {
+      force: true,
+      maxRetries: process.platform === 'win32' ? 5 : 0,
+      recursive: true,
+      retryDelay: 100,
+    });
   }
 });
 
