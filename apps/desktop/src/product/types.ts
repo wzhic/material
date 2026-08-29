@@ -1,3 +1,5 @@
+import { GameEnrichmentApi } from '../product-enrichment/types';
+
 export type ProductIndustry = 'apparel' | 'game';
 
 export interface ProductDimension {
@@ -131,6 +133,7 @@ export type ProductApiResult<T> =
   | { ok: false; error: ProductApiError };
 
 export interface ProductApi {
+  enrichment: GameEnrichmentApi;
   list: (query?: ProductListQuery) => Promise<ProductApiResult<ProductListPage>>;
   get: (id: string) => Promise<ProductApiResult<ProductRecord>>;
   findDuplicates: (

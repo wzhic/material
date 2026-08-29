@@ -3,6 +3,7 @@ import { Button, Input, Tag } from 'tdesign-react';
 
 import { formatFileSize } from '../analysis/draft';
 import { productIndustryLabel } from '../product/domain';
+import { mergeGameSuggestion } from '../product-enrichment/form-merge';
 import {
   DuplicateCandidate,
   GameContext,
@@ -14,6 +15,7 @@ import {
   ProductRecord,
   ProductStorageStatus,
 } from '../product/types';
+import { GameProductEnrichmentPanel } from './GameProductEnrichmentPanel';
 
 type ProductView = 'list' | 'form' | 'detail' | 'maintenance';
 
@@ -34,6 +36,9 @@ const apparelFields = [
 
 const gameFields = [
   ['游戏类型', '例如：角色扮演、策略、休闲'],
+  ['平台', '例如：PC、iOS、Android'],
+  ['发售日期', '例如：2026-08-29'],
+  ['游戏简介', '可应用联网候选后继续编辑'],
   ['核心玩法', '填写主要玩法与循环'],
   ['角色', '填写重要角色或阵营'],
   ['目标玩家', '填写主要玩家群体'],
@@ -255,6 +260,7 @@ const ProductForm = ({
   const [saving, setSaving] = useState(false);
   const [duplicates, setDuplicates] = useState<DuplicateCandidate[]>([]);
   const [duplicatePreview, setDuplicatePreview] = useState<ProductRecord | null>(null);
+  const [enrichmentBlurToken, setEnrichmentBlurToken] = useState(0);
   const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
   const fields = draft.industry === 'apparel' ? apparelFields : gameFields;
 
@@ -372,6 +378,7 @@ const ProductForm = ({
             </span>
             <Input
               onChange={(value) => setDraft({ ...draft, name: value })}
+              onBlur={() => setEnrichmentBlurToken((value) => value + 1)}
               placeholder={draft.industry === 'apparel' ? '填写产品名称' : '填写游戏名称'}
               value={draft.name}
             />
@@ -386,10 +393,16 @@ const ProductForm = ({
               />
             </label>
           ) : (
-            <div className="form-field online-suggestion-placeholder">
-              <span className="field-label">联网补全</span>
-              <div>当前未配置搜索服务，可完整手工创建产品。</div>
-              <small>后续接入时只生成可编辑建议，不会自动保存。</small>
+            <div className="form-field field-span-two">
+              <GameProductEnrichmentPanel
+                gameName={draft.name}
+                onApply={(candidate) => {
+                  const merged = mergeGameSuggestion(draft, candidate);
+                  setDraft(merged.input);
+                  return merged.appliedFields;
+                }}
+                queryNowToken={enrichmentBlurToken}
+              />
             </div>
           )}
         </div>

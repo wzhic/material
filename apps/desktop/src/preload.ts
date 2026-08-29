@@ -14,10 +14,26 @@ import {
 } from './codex-subscription/types';
 import { MATERIAL_IPC_CHANNELS, MaterialApi } from './media/types';
 import { MODEL_IPC_CHANNELS, ModelApi } from './model/types';
+import {
+  GAME_ENRICHMENT_IPC_CHANNELS,
+  GameEnrichmentApi,
+} from './product-enrichment/types';
 import { PRODUCT_IPC_CHANNELS, ProductApi } from './product/types';
 import { RECORD_IPC_CHANNELS, RecordApi } from './record/types';
 
+const gameEnrichmentApi: GameEnrichmentApi = {
+  cancel: (requestId) =>
+    ipcRenderer.invoke(GAME_ENRICHMENT_IPC_CHANNELS.cancel, requestId),
+  clearPersistentConsent: () =>
+    ipcRenderer.invoke(GAME_ENRICHMENT_IPC_CHANNELS.clearPersistentConsent),
+  getStatus: () => ipcRenderer.invoke(GAME_ENRICHMENT_IPC_CHANNELS.getStatus),
+  search: (input) => ipcRenderer.invoke(GAME_ENRICHMENT_IPC_CHANNELS.search, input),
+  setConsent: (choice) =>
+    ipcRenderer.invoke(GAME_ENRICHMENT_IPC_CHANNELS.setConsent, choice),
+};
+
 const productApi: ProductApi = {
+  enrichment: gameEnrichmentApi,
   list: (query) => ipcRenderer.invoke(PRODUCT_IPC_CHANNELS.list, query),
   get: (id) => ipcRenderer.invoke(PRODUCT_IPC_CHANNELS.get, id),
   findDuplicates: (input, excludeId) =>

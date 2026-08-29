@@ -37,6 +37,10 @@ import {
 import { ModelProviderRegistry } from './model/registry';
 import { ModelService } from './model/service';
 import { ElectronSafeStorageCipher, ModelCredentialVault } from './model/vault';
+import { BangumiGameSearchAdapter } from './product-enrichment/bangumi-adapter';
+import { GameEnrichmentConsentStore } from './product-enrichment/consent-store';
+import { registerGameEnrichmentIpc } from './product-enrichment/ipc';
+import { GameProductEnrichmentService } from './product-enrichment/service';
 import { registerProductIpc, registerUnavailableProductIpc } from './product/ipc';
 import { ProductRepository } from './product/repository';
 import { registerRecordIpc, registerUnavailableRecordIpc } from './record/ipc';
@@ -66,7 +70,9 @@ let productRepository: ProductRepository | null = null;
 let recordRepository: RecordRepository | null = null;
 let analysisRuntimeService: AnalysisRuntimeService | null = null;
 let codexSubscriptionService: CodexSubscriptionService | null = null;
+let gameEnrichmentService: GameProductEnrichmentService | null = null;
 let unregisterCodexSubscriptionIpc: (() => void) | null = null;
+let unregisterGameEnrichmentIpc: (() => void) | null = null;
 let mainWindow: BrowserWindow | null = null;
 const materialSessionService = new MaterialSessionService();
 const isTrustedSender = (webContentsId: number): boolean =>
@@ -110,6 +116,20 @@ app.whenReady().then(async () => {
     new ElectronSafeStorageCipher(),
   );
   const modelService = new ModelService(modelRegistry, modelVault);
+  const gameEnrichmentDataDirectory = path.join(
+    app.getPath('userData'),
+    'game-product-enrichment',
+  );
+  gameEnrichmentService = new GameProductEnrichmentService({
+    adapter: new BangumiGameSearchAdapter(),
+    consentStore: new GameEnrichmentConsentStore(
+      path.join(gameEnrichmentDataDirectory, 'consent.json'),
+    ),
+  });
+  unregisterGameEnrichmentIpc = registerGameEnrichmentIpc(
+    gameEnrichmentService,
+    isTrustedSender,
+  );
   const codexDataDirectory = path.join(app.getPath('userData'), 'codex-subscription');
   const createCodexClient = async (): Promise<CodexAppServerClient> => {
     const command = await resolveCodexRuntimePath({
@@ -253,6 +273,10 @@ app.on('before-quit', () => {
   analysisRuntimeService = null;
   unregisterCodexSubscriptionIpc?.();
   unregisterCodexSubscriptionIpc = null;
+  unregisterGameEnrichmentIpc?.();
+  unregisterGameEnrichmentIpc = null;
+  gameEnrichmentService?.dispose();
+  gameEnrichmentService = null;
   codexSubscriptionService?.stop();
   codexSubscriptionService = null;
   materialSessionService.clear();
