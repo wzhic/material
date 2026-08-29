@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -127,6 +127,7 @@ describe('learned runtime bundle', () => {
 
     let linked: string;
     let expectedReason: 'ROOT_TYPE' | 'SYMLINK';
+    let cleanupLink: (() => Promise<void>) | undefined;
     if (process.platform === 'win32') {
       // File symlinks require Developer Mode or elevation on Windows runners.
       // A root directory junction exercises the same fail-closed boundary
@@ -142,6 +143,7 @@ describe('learned runtime bundle', () => {
         linked,
         'junction',
       );
+      cleanupLink = async () => unlink(linked);
       expectedReason = 'ROOT_TYPE';
     } else {
       linked = await makeBundle();
@@ -151,12 +153,18 @@ describe('learned runtime bundle', () => {
       );
       expectedReason = 'SYMLINK';
     }
-    const error = await resolveLearnedRuntimeBundle({
-      arch: 'arm64', platform: 'darwin', root: linked,
-    }).catch((value: unknown) => value);
-    expect(error).toBeInstanceOf(LearnedRuntimeBundleError);
-    expect(error).toMatchObject({ reason: expectedReason });
-    expect(String(error)).not.toContain(linked);
+    try {
+      const error = await resolveLearnedRuntimeBundle({
+        arch: 'arm64', platform: 'darwin', root: linked,
+      }).catch((value: unknown) => value);
+      expect(error).toBeInstanceOf(LearnedRuntimeBundleError);
+      expect(error).toMatchObject({ reason: expectedReason });
+      expect(String(error)).not.toContain(linked);
+    } finally {
+      // Windows must remove the reparse point itself before recursive fixture
+      // cleanup touches either the container or its target.
+      await cleanupLink?.();
+    }
   });
 
   it('rejects path traversal and unknown manifest fields', async () => {
