@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { Button, Input, Tag } from 'tdesign-react';
 
 import { formatFileSize } from '../analysis/draft';
@@ -16,6 +16,7 @@ import {
   ProductStorageStatus,
 } from '../product/types';
 import { GameProductEnrichmentPanel } from './GameProductEnrichmentPanel';
+import { resetProductPageScroll } from './product-form-scroll';
 
 type ProductView = 'list' | 'form' | 'detail' | 'maintenance';
 
@@ -827,6 +828,10 @@ export const ProductLibraryPage = ({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useLayoutEffect(() => {
+    resetProductPageScroll((selector) => document.querySelector<HTMLElement>(selector));
+  }, [view]);
 
   const openDetail = async (id: string): Promise<void> => {
     const result = await window.materialApi.products.get(id);

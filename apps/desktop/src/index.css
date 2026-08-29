@@ -3268,7 +3268,16 @@ textarea:focus-visible,
   to { opacity: 1; }
 }
 
-.product-form-header { position: sticky; top: 0; z-index: 3; }
+.product-form-header {
+  background: #f1f4f8;
+  border-bottom: 1px solid #dce3ec;
+  box-shadow: 0 6px 16px rgb(40 59 87 / 8%);
+  margin: -34px -38px 24px;
+  padding: 24px 38px 18px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
 .product-form-card { margin-bottom: 16px; padding: 23px 24px 26px; }
 
 .form-section-title,
@@ -3639,6 +3648,7 @@ textarea:focus-visible,
   .app-frame { grid-template-columns: 176px 8px minmax(0, 1fr); }
   .new-analysis-grid { grid-template-columns: minmax(0, 1fr) 282px; }
   .page-shell { padding-left: 26px; padding-right: 26px; }
+  .product-form-header { margin-left: -26px; margin-right: -26px; padding-left: 26px; padding-right: 26px; }
   .product-list-head,
   .product-row { grid-template-columns: minmax(190px, 1fr) 70px minmax(140px, 0.8fr) 125px 62px; }
   .context-row { grid-template-columns: 125px 125px minmax(180px, 1fr) auto; }
