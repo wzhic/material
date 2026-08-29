@@ -1,11 +1,14 @@
 {
   "compilerOptions": {
-    "target": "ES6",
-    "allowJs": true,
+    "target": "ES2020",
+    "allowJs": false,
+    "lib": ["DOM", "DOM.Iterable", "ES2020"],
     "module": "commonjs",
     "skipLibCheck": true,
     "esModuleInterop": true,
     "noImplicitAny": true,
+    "strict": true,
+    "jsx": "react-jsx",
     "sourceMap": true,
     "baseUrl": ".",
     "outDir": "dist",

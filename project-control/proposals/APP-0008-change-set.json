@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0008",
+  "base_head": "60e707f6e5de493b2d3506889a0627edffa957e7",
+  "paths": [
+    "apps/desktop/src/global.d.ts",
+    "apps/desktop/src/index.css",
+    "apps/desktop/src/index.ts",
+    "apps/desktop/src/preload.ts",
+    "apps/desktop/src/record/domain.ts",
+    "apps/desktop/src/record/ipc.ts",
+    "apps/desktop/src/record/performance.test.ts",
+    "apps/desktop/src/record/repository.test.ts",
+    "apps/desktop/src/record/repository.ts",
+    "apps/desktop/src/record/types.ts",
+    "apps/desktop/src/ui/App.tsx",
+    "apps/desktop/src/ui/RecordsPage.tsx",
+    "docs/development/README.md",
+    "docs/development/分析记录本地核心-DEV-0006-v1.0.md",
+    "docs/troubleshooting/README.md",
+    "docs/troubleshooting/分析记录本地存储-TRB-0003-v1.0.md",
+    "project-control/proposals/APP-0008-task.json"
+  ]
+}

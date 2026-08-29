@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0034",
+  "base_head": "1a972c7ef1317468066e57360273912c4de63fbe",
+  "paths": [
+    "apps/desktop/src/index.css",
+    "apps/desktop/src/ui/ProductLibraryPage.tsx",
+    "apps/desktop/src/ui/product-form-scroll.test.ts",
+    "apps/desktop/src/ui/product-form-scroll.ts",
+    "docs/development/产品库客户端-DEV-0004-v1.0.md",
+    "docs/troubleshooting/产品库本地存储-TRB-0002-v1.0.md"
+  ]
+}

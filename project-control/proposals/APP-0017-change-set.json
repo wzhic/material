@@ -1,0 +1,27 @@
+{
+  "base_head": "514fd62fbef38d0c30b9c9023e200314fcc09d47",
+  "paths": [
+    "apps/desktop/package.json",
+    "apps/desktop/src/index.ts",
+    "apps/desktop/src/preload.ts",
+    "apps/desktop/src/product/performance.test.ts",
+    "apps/desktop/src/record/confirmation.test.ts",
+    "apps/desktop/src/record/confirmation.ts",
+    "apps/desktop/src/record/domain.ts",
+    "apps/desktop/src/record/ipc.test.ts",
+    "apps/desktop/src/record/ipc.ts",
+    "apps/desktop/src/record/performance.test.ts",
+    "apps/desktop/src/record/repository.test.ts",
+    "apps/desktop/src/record/repository.ts",
+    "apps/desktop/src/record/types.ts",
+    "apps/desktop/src/ui/AnalysisReportPreviewPage.tsx",
+    "apps/desktop/src/ui/App.tsx",
+    "apps/desktop/src/ui/RecordsPage.tsx",
+    "docs/development/README.md",
+    "docs/development/报告确认与分析记录接线-DEV-0014-v1.0.md",
+    "docs/troubleshooting/README.md",
+    "docs/troubleshooting/报告确认与分析记录接线-TRB-0011-v1.0.md"
+  ],
+  "schema_version": 1,
+  "task_id": "APP-0017"
+}

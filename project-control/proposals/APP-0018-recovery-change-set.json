@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0018",
+  "base_head": "85048dd637f4e3ab15312d0580164f8cf787042a",
+  "paths": [
+    ".github/workflows/governance.yml",
+    "project-control/proposals/APP-0018-scope-v2.json"
+  ]
+}

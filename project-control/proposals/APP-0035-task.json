@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0035",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "summary": "把已分别实现并验证的桌面产品功能链整合到当前 main 治理基线：以 APP-0034 远端头为完整产品内容来源，保留 main 上更新的治理工作流和治理工具，解决受保护 current-task 选择，并重新执行文档、桌面端、模型、Codex、本地学习运行时、产品联网补全、打包和治理门禁。该任务不新增产品行为、不发布、不豁免 Windows 失败；旧 Codex PR #29 在确认由 PR #32 覆盖后以 superseded 说明关闭。",
+  "requirement": {
+    "id": "项目初始化-REQ-0002",
+    "name": "已验证产品栈主线整合",
+    "version": "v1.0",
+    "interaction_kind": "non_ui"
+  },
+  "release_units": ["mac", "win", "backend"],
+  "branch": "codex/req-0002-app-0035-product-stack-main-integration",
+  "base_branch": "main",
+  "allowed_paths": [
+    ".github/**",
+    ".codex/**",
+    ".gitignore",
+    "README.md",
+    "apps/desktop/**",
+    "docs/**",
+    "project-control/**",
+    "tools/governance/**"
+  ],
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py docs --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/reconcile.py precommit --json",
+    "python3 tools/governance/taskctl.py begin APP-0035",
+    "python3 tools/governance/taskctl.py run-validation APP-0035",
+    "python3 tools/governance/taskctl.py run-required APP-0035",
+    "python3 tools/governance/taskctl.py commit-task APP-0035",
+    "python3 tools/governance/taskctl.py push-task APP-0035",
+    "python3 tools/governance/taskctl.py open-pr APP-0035",
+    "git merge --no-commit --no-ff origin/codex/req-0003-app-0034-product-form-layout",
+    "git restore --source=HEAD --staged --worktree .github/workflows/governance.yml tools/governance",
+    "git restore --source=HEAD --staged --worktree project-control/current-task.json",
+    "npm ci --prefix apps/desktop",
+    "npm --prefix apps/desktop run lint",
+    "npm --prefix apps/desktop run typecheck",
+    "npm --prefix apps/desktop run test",
+    "npm --prefix apps/desktop run test:product-enrichment",
+    "npm --prefix apps/desktop run test:learned-runtime",
+    "npm --prefix apps/desktop run test:model-runtime",
+    "npm --prefix apps/desktop run test:codex-runtime",
+    "npm --prefix apps/desktop run package",
+    "python3 -m unittest discover"
+  ],
+  "allowed_tools": ["apply_patch", "ApplyPatch", "Bash", "Read", "Glob", "Grep", "view_image", "web__run"],
+  "dependencies": [],
+  "blockers": [],
+  "open_questions": [],
+  "required_docs": [
+    "docs/requirements/项目初始化-REQ-0002/项目初始化-REQ-0002-v1.0.md",
+    "docs/requirements/产品库-REQ-0003/产品库-REQ-0003-v1.0.md"
+  ],
+  "assumptions": [
+    {
+      "id": "APP-0035-ASM-001",
+      "statement": "用户已明确要求整合各个功能分支并清理旧 PR；本任务只组合既有已提交能力和修复组合验证暴露的问题，不新增第二个产品功能。",
+      "status": "confirmed",
+      "source": "当前用户消息"
+    },
+    {
+      "id": "APP-0035-ASM-002",
+      "statement": "远端 APP-0034 头 1ee1e55ee7881e4ddbc67fc8a2997d59ffd916ab 是 APP-0029、APP-0030、APP-0031、APP-0033、APP-0034 的线性完整产品内容头；APP-0027 已由 PR #32 合入其共同产品基线。",
+      "status": "confirmed",
+      "source": "2026-08-29 远端分支图、GitHub compare 与 PR #32"
+    },
+    {
+      "id": "APP-0035-ASM-003",
+      "statement": "main 的治理工作流和 tools/governance 是较新的权威实现；功能分支中的治理文件仅为旧基线回移，冲突时保留 main 版本，产品代码和文档按完整功能头引入。",
+      "status": "confirmed",
+      "source": "merge-tree 仅在 governance.yml、current-task.json、core.py、taskctl.py 产生冲突，main 含后续治理提交"
+    },
+    {
+      "id": "APP-0035-ASM-004",
+      "statement": "PR #33 当前 Windows 的 desktop_tests、desktop_product_enrichment_tests、desktop_learned_runtime_tests 失败；整合分支必须修复并让新 PR 的 Ubuntu、macOS、Windows 门禁全部通过，不复用失败结果、不豁免。",
+      "status": "confirmed",
+      "source": "GitHub Actions run 33244675248"
+    },
+    {
+      "id": "APP-0035-ASM-005",
+      "statement": "旧 PR #29 的订阅登录能力已经由合并的 PR #32 覆盖且旧分支与新产品栈分叉；清理方式是添加 superseded 说明并关闭，不合并旧提交。",
+      "status": "confirmed",
+      "source": "GitHub PR #29、PR #32 与分支 compare"
+    }
+  ],
+  "validation": {
+    "required": [
+      {
+        "id": "docs_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "docs", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "repository_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "static", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      },
+      {
+        "id": "desktop_lint",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "lint"],
+        "timeout_seconds": 300,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_typecheck",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "typecheck"],
+        "timeout_seconds": 300,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_tests",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "test"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_product_enrichment_tests",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "test:product-enrichment"],
+        "timeout_seconds": 300,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_learned_runtime_tests",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "test:learned-runtime"],
+        "timeout_seconds": 600,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_model_runtime_tests",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "test:model-runtime"],
+        "timeout_seconds": 300,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_codex_runtime_tests",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "test:codex-runtime"],
+        "timeout_seconds": 300,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_package",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "package"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "governance_unit_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", "tools/governance/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      },
+      {
+        "id": "hook_contract_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", ".codex/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 600,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win", "backend"]
+      }
+    ]
+  }
+}

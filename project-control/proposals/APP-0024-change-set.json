@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0024",
+  "base_head": "b141cec257484c0cc1b469128b3cdbdc5fb3d9b9",
+  "paths": [
+    "apps/desktop/src/index.css",
+    "apps/desktop/src/index.ts",
+    "apps/desktop/src/media/ipc.ts",
+    "apps/desktop/src/preload.ts",
+    "apps/desktop/src/record/ipc.test.ts",
+    "apps/desktop/src/record/ipc.ts",
+    "apps/desktop/src/record/repository.test.ts",
+    "apps/desktop/src/record/repository.ts",
+    "apps/desktop/src/record/source-access.test.ts",
+    "apps/desktop/src/record/source-access.ts",
+    "apps/desktop/src/record/types.ts",
+    "apps/desktop/src/ui/App.tsx",
+    "apps/desktop/src/ui/RecordsPage.tsx",
+    "docs/development/历史记录源素材恢复-DEV-0017-v1.0.md",
+    "docs/development/README.md",
+    "docs/troubleshooting/历史记录源素材恢复-TRB-0014-v1.0.md",
+    "docs/troubleshooting/README.md",
+    "project-control/proposals/APP-0024-task.json"
+  ]
+}

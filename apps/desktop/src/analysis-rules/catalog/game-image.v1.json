@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "packageId": "analysis.game.image",
+  "packageVersion": "1.0.0",
+  "template": {
+    "id": "template.game.image",
+    "version": "1.0.0",
+    "industry": "game",
+    "mediaKind": "image",
+    "goal": "acquisition_or_reactivation",
+    "sections": [
+      { "id": "context", "label": "分析上下文", "required": true },
+      { "id": "overview", "label": "整体结论", "required": true },
+      { "id": "structure", "label": "信息结构", "required": true },
+      { "id": "visuals", "label": "画面内容", "required": true },
+      { "id": "product_or_gameplay", "label": "玩法与内容", "required": true },
+      { "id": "selling_points", "label": "卖点", "required": true },
+      { "id": "emotion", "label": "情绪表达", "required": true },
+      { "id": "cta", "label": "目标引导", "required": true },
+      { "id": "evidence", "label": "证据", "required": true },
+      { "id": "tags", "label": "素材标签", "required": true },
+      { "id": "diagnosis", "label": "问题诊断", "required": true },
+      { "id": "recommendations", "label": "优化建议", "required": true },
+      { "id": "limitations", "label": "局限说明", "required": true }
+    ]
+  },
+  "tags": {
+    "id": "tags.game.image",
+    "version": "1.0.0",
+    "fixedTags": [
+      { "id": "game.gameplay", "label": "玩法展示", "facet": "content", "description": "图片直接呈现核心玩法、操作或战斗内容。" },
+      { "id": "game.character", "label": "角色展示", "facet": "content", "description": "图片突出角色、职业、皮肤或养成内容。" },
+      { "id": "game.benefit", "label": "福利信息", "facet": "selling_point", "description": "图片出现登录、抽取、奖励等福利信息；仅按证据标记。" },
+      { "id": "game.version_content", "label": "版本内容", "facet": "context", "description": "图片明确关联某个版本或版本新增内容。" },
+      { "id": "game.channel_content", "label": "渠道内容", "facet": "context", "description": "图片包含特定渠道的内容或利益点。" },
+      { "id": "game.acquisition", "label": "拉新诉求", "facet": "goal", "description": "图片主要面向未安装或未体验用户。" },
+      { "id": "game.reactivation", "label": "拉活诉求", "facet": "goal", "description": "图片主要面向回流或已有用户。" },
+      { "id": "game.visual_hierarchy", "label": "视觉层级", "facet": "presentation", "description": "图片通过角色、玩法与文字层级组织信息。" },
+      { "id": "game.emotion_drive", "label": "情绪推动", "facet": "emotion", "description": "图片通过爽感、紧张、好奇等情绪推动行动。" },
+      { "id": "game.call_to_action", "label": "行动引导", "facet": "conversion", "description": "图片包含下载、回归或进入游戏的明确引导。" }
+    ]
+  },
+  "scoring": {
+    "id": "scoring.game.image",
+    "version": "1.0.0",
+    "minimumCoverage": 0.6,
+    "missingEvidencePolicy": "renormalize_scored",
+    "dimensions": [
+      { "id": "visual_attraction", "label": "视觉吸引力", "description": "角色、冲突或核心画面是否能快速吸引注意。", "evidenceKinds": ["visual", "region"], "weight": 0.18 },
+      { "id": "visual_hierarchy", "label": "视觉层级", "description": "玩法、角色、福利和文字的阅读顺序是否清晰。", "evidenceKinds": ["visual", "ocr", "region"], "weight": 0.12 },
+      { "id": "gameplay_character_clarity", "label": "玩法角色清晰度", "description": "用户是否能理解主要玩法、角色或内容吸引点。", "evidenceKinds": ["visual", "ocr", "gameplay", "region"], "weight": 0.2 },
+      { "id": "benefit_version_accuracy", "label": "利益版本准确性", "description": "福利、版本与渠道信息是否清楚且符合当前上下文。", "evidenceKinds": ["context", "ocr", "region"], "weight": 0.15 },
+      { "id": "selling_point_credibility", "label": "卖点可信度", "description": "玩法、福利或内容卖点是否有图片证据支撑。", "evidenceKinds": ["visual", "ocr", "gameplay"], "weight": 0.15 },
+      { "id": "emotion_motivation", "label": "情绪与动机", "description": "情绪表达是否服务于拉新或拉活动机。", "evidenceKinds": ["emotion", "visual", "context"], "weight": 0.1 },
+      { "id": "cta_goal_fit", "label": "目标引导匹配", "description": "CTA 是否明确并匹配拉新或拉活场景。", "evidenceKinds": ["cta", "ocr", "context"], "weight": 0.1 }
+    ]
+  }
+}

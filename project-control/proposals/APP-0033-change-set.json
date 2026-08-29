@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0033",
+  "base_head": "519f35788d2de5d470c68ad54a1622f7ac4ba63b",
+  "paths": [
+    "apps/desktop/src/product-enrichment/query-scheduling.test.ts",
+    "apps/desktop/src/product-enrichment/query-scheduling.ts",
+    "apps/desktop/src/ui/GameProductEnrichmentPanel.tsx",
+    "docs/development/游戏产品联网补全-DEV-0023-v1.0.md",
+    "docs/troubleshooting/游戏产品联网补全-TRB-0020-v1.0.md"
+  ]
+}

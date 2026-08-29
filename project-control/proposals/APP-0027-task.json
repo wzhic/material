@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0027",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "requirement": {
+    "id": "Codex订阅模型分析-REQ-0008",
+    "name": "Codex 订阅模型分析与 V1 模型切换",
+    "version": "v1.0",
+    "interaction_kind": "mixed"
+  },
+  "summary": "在 APP-0025 的完整单素材分析、报告、记录和数据维护产品栈上，整合 Codex App Server 订阅登录能力，并把 Codex 订阅模型作为 V1 独立分析来源接入现有模型选择和 AnalysisEngine：登录且目录可用时，用户可在新建分析页显式选择一个 Codex 模型或现有 API Key 模型；开始分析后严格绑定所选来源与模型，不自动切换、不回退到 API Key。Codex 分析只接收现有受控文本提示、结构化产品快照和归一化证据，不上传原始媒体；每次分析新建一个 ephemeral thread 和一个 turn，使用结构化输出、空临时目录、只读且受限的文件访问、关闭工具与网络、approval never，取消和超时必须中断对应 turn。结果继续经过既有 schema 校验、规则融合、确认、记录和导出链路，报告保留来源、请求模型、实际返回模型、版本与用量摘要。任务同时解决 Codex 来源分支与产品栈的代码组合和重复文档编号，不导入来源分支的冲突机器记录。本任务不实现静默复用全局 Codex 登录、自动选模型、自动重试、模型回退、多模型并行、原始图片/视频直传、任意 Codex 工具或文件访问、会话续聊、云端历史同步、部署、发布或最终合并。",
+  "release_units": ["mac", "win"],
+  "branch": "codex/req-0008-app-0027-codex-analysis-provider",
+  "base_branch": "codex/req-0005-app-0025-record-backup-restore",
+  "allowed_paths": [
+    "apps/desktop/**",
+    "docs/requirements/Codex订阅接入-REQ-0007/**",
+    "docs/requirements/Codex订阅模型分析-REQ-0008/**",
+    "docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md",
+    "docs/requirements/README.md",
+    "docs/development/Codex订阅模型分析-DEV-0020-v1.0.md",
+    "docs/development/README.md",
+    "docs/troubleshooting/Codex订阅模型分析-TRB-0017-v1.0.md",
+    "docs/troubleshooting/README.md",
+    "project-control/**"
+  ],
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py docs --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/reconcile.py precommit --json",
+    "python3 tools/governance/taskctl.py begin APP-0027",
+    "python3 tools/governance/taskctl.py subtask-start APP-0027",
+    "python3 tools/governance/taskctl.py subtask-finish APP-0027",
+    "python3 tools/governance/taskctl.py run-validation APP-0027",
+    "python3 tools/governance/taskctl.py run-required APP-0027",
+    "python3 tools/governance/taskctl.py commit-task APP-0027",
+    "python3 tools/governance/taskctl.py push-task APP-0027",
+    "python3 tools/governance/taskctl.py open-pr APP-0027",
+    "npm --prefix apps/desktop install",
+    "npm --prefix apps/desktop run lint",
+    "npm --prefix apps/desktop run typecheck",
+    "npm --prefix apps/desktop run test",
+    "npm --prefix apps/desktop run test:model-runtime",
+    "npm --prefix apps/desktop run test:codex-runtime",
+    "npm --prefix apps/desktop run package"
+  ],
+  "allowed_tools": [
+    "apply_patch", "ApplyPatch", "Bash", "Read", "Glob", "Grep", "view_image",
+    "codex_app__read_thread_terminal", "collaborationspawn_agent", "collaborationsend_message",
+    "collaborationfollowup_task", "collaborationwait_agent", "collaborationinterrupt_agent",
+    "collaborationlist_agents"
+  ],
+  "dependencies": [],
+  "required_docs": [
+    "docs/requirements/Codex订阅接入-REQ-0007/Codex订阅接入-REQ-0007-v1.0.md",
+    "docs/requirements/Codex订阅模型分析-REQ-0008/Codex订阅模型分析-REQ-0008-v1.0.md",
+    "docs/development/Codex订阅模型分析-DEV-0020-v1.0.md"
+  ],
+  "validation": {
+    "required": [
+      {"id":"docs_reconcile","argv":["python3","tools/governance/reconcile.py","docs","--json"],"timeout_seconds":120,"gates":["LOCAL_VERIFIED","CI_VERIFIED","POST_MERGE_VERIFIED"],"release_units":["mac","win"]},
+      {"id":"repository_reconcile","argv":["python3","tools/governance/reconcile.py","static","--json"],"timeout_seconds":120,"gates":["LOCAL_VERIFIED","CI_VERIFIED","POST_MERGE_VERIFIED"],"release_units":["mac","win"]},
+      {"id":"desktop_lint","argv":["npm","--prefix","apps/desktop","run","lint"],"timeout_seconds":300,"gates":["LOCAL_VERIFIED","CI_VERIFIED","POST_MERGE_VERIFIED"],"release_units":["mac","win"]},
+      {"id":"desktop_typecheck","argv":["npm","--prefix","apps/desktop","run","typecheck"],"timeout_seconds":300,"gates":["LOCAL_VERIFIED","CI_VERIFIED","POST_MERGE_VERIFIED"],"release_units":["mac","win"]},
+      {"id":"desktop_tests","argv":["npm","--prefix","apps/desktop","run","test"],"timeout_seconds":1200,"gates":["LOCAL_VERIFIED","CI_VERIFIED","POST_MERGE_VERIFIED"],"release_units":["mac","win"]},
+      {"id":"desktop_model_runtime_tests","argv":["npm","--prefix","apps/desktop","run","test:model-runtime"],"timeout_seconds":300,"gates":["LOCAL_VERIFIED","CI_VERIFIED","POST_MERGE_VERIFIED"],"release_units":["mac","win"]},
+      {"id":"desktop_codex_runtime_tests","argv":["npm","--prefix","apps/desktop","run","test:codex-runtime"],"timeout_seconds":300,"gates":["LOCAL_VERIFIED","CI_VERIFIED","POST_MERGE_VERIFIED"],"release_units":["mac","win"]},
+      {"id":"desktop_package","argv":["npm","--prefix","apps/desktop","run","package"],"timeout_seconds":1200,"gates":["LOCAL_VERIFIED","CI_VERIFIED","POST_MERGE_VERIFIED"],"release_units":["mac","win"]},
+      {"id":"governance_unit_tests","argv":["python3","-m","unittest","discover","-s","tools/governance/tests","-p","test_*.py","-v"],"timeout_seconds":1200,"gates":["LOCAL_VERIFIED","CI_VERIFIED","POST_MERGE_VERIFIED"],"release_units":["mac","win"]}
+    ],
+    "results": []
+  },
+  "assumptions": [
+    {"id":"APP-0027-ASM-001","statement":"Codex 作为独立订阅分析来源进入 V1 模型选择；用户每次显式选择 API Key 配置模型或 Codex 订阅模型，分析期间来源和模型固定，失败不自动重试、切换或回退。","status":"confirmed","source":"用户本次明确要求 Codex 作为单独模型分析能力并允许 V1 模型切换"},
+    {"id":"APP-0027-ASM-002","statement":"Codex 分析复用应用专属 CODEX_HOME、ChatGPT 托管登录、OS keyring 和固定 runtime；不复制全局会话，不把 token、auth URL、任意 RPC 或 Prompt 控制权暴露给 Renderer。","status":"confirmed","source":"Codex 来源分支已验证安全边界与 OpenAI 官方认证文档"},
+    {"id":"APP-0027-ASM-003","statement":"V1 Codex 分析只发送既有 AnalysisEngine 生成的受控文本消息、结构化产品快照和归一化证据；原始图片、视频、音频、本地路径与素材字节不进入 Codex。","status":"confirmed","source":"REQ-0005 当前文本分析和原始媒体不外发边界"},
+    {"id":"APP-0027-ASM-004","statement":"一次 Codex 分析只创建一个 ephemeral thread 和一个 turn；使用当前回合 outputSchema、空临时目录、approval never、只读受限根、网络关闭、工具关闭，并把取消和超时绑定到同一 generation 的 turn/interrupt。","status":"confirmed","source":"OpenAI App Server 官方 thread/start、turn/start 与现有固定探测合同"},
+    {"id":"APP-0027-ASM-005","statement":"Codex App Server 当前属于实验性产品接口，因此 UI 保留 Beta 标识和 API Key 稳定通路；真实订阅 smoke、签名、公证和双平台 keyring 验收未完成前不得宣称生产可用。","status":"confirmed","source":"OpenAI App Server 与 Feature Maturity 官方文档"},
+    {"id":"APP-0027-ASM-006","statement":"Codex 来源分支和 APP-0025 只作为内容来源；APP-0027 在最新产品栈重新组合、解决重复 APP/DEV/TRB 编号并完整重跑验证，不导入来源分支的 current-task、任务 JSON、change-set 或旧通过结果。","status":"confirmed","source":"当前分支图、并发 APP-0026 与隔离任务治理要求"}
+  ],
+  "open_questions": [],
+  "blockers": [],
+  "review_authority": {
+    "scheme":"ssh-keygen-y-v1",
+    "identity":"material-project-owner",
+    "namespace":"material-governance-review",
+    "public_key":"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "key_fingerprint":"SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E"
+  },
+  "ci_trust": {
+    "provider":"github_actions_rest_v1","repository":"wzhic/material","workflow_path":".github/workflows/governance.yml","api_base":"https://api.github.com","api_version":"2026-03-10","private":true,"token_env":"MATERIAL_GITHUB_ACTIONS_READ_TOKEN","ci_events":["pull_request","push"],"post_merge_events":["push"],"required_jobs":{"pull_request":["Governance (ubuntu-latest)","Governance (macos-latest)","Governance (windows-latest)"],"push":["Governance (ubuntu-latest)","Governance (macos-latest)","Governance (windows-latest)"]}
+  },
+  "coordination": {
+    "mode":"coordinated-multi","coordinator_task":"APP-0027","unit_tasks":{"mac":"APP-0027","win":"APP-0027"},"compatibility_matrix_doc":"docs/requirements/Codex订阅模型分析-REQ-0008/Codex订阅模型分析-REQ-0008-v1.0.md","deployment_order":["mac","win"],"rollback_order":["win","mac"],"unit_validation_checks":{"mac":["desktop_lint","desktop_typecheck","desktop_tests","desktop_model_runtime_tests","desktop_codex_runtime_tests","desktop_package"],"win":["desktop_lint","desktop_typecheck","desktop_tests","desktop_model_runtime_tests","desktop_codex_runtime_tests","desktop_package"]},"unit_rollback_checks":{"mac":["desktop_tests","desktop_package"],"win":["desktop_tests","desktop_package"]}
+  }
+}

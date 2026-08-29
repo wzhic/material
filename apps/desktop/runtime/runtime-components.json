@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "python": {
+    "family": "3.11",
+    "source": "https://github.com/astral-sh/python-build-standalone"
+  },
+  "packages": [
+    {
+      "license": "Apache-2.0",
+      "name": "paddlepaddle",
+      "source": "https://github.com/PaddlePaddle/Paddle",
+      "version": "3.3.1"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "paddleocr",
+      "source": "https://github.com/PaddlePaddle/PaddleOCR",
+      "version": "3.7.0"
+    },
+    {
+      "license": "MIT",
+      "name": "faster-whisper",
+      "source": "https://github.com/SYSTRAN/faster-whisper",
+      "version": "1.2.1"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "tensorflow",
+      "source": "https://github.com/tensorflow/tensorflow",
+      "version": "2.21.0"
+    },
+    {
+      "license": "BSD-3-Clause",
+      "name": "soundfile",
+      "source": "https://github.com/bastibe/python-soundfile",
+      "version": "0.13.1"
+    }
+  ],
+  "models": [
+    {
+      "id": "PP-OCRv5_mobile_det+PP-OCRv5_mobile_rec",
+      "license": "Apache-2.0",
+      "purpose": "ocr",
+      "source": "https://github.com/PaddlePaddle/PaddleOCR"
+    },
+    {
+      "id": "Systran/faster-whisper-small",
+      "license": "MIT",
+      "purpose": "asr",
+      "source": "https://huggingface.co/Systran/faster-whisper-small"
+    },
+    {
+      "id": "google/yamnet/1",
+      "license": "Apache-2.0",
+      "purpose": "audio_event",
+      "source": "https://tfhub.dev/google/yamnet/1"
+    }
+  ]
+}

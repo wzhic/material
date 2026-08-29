@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0027",
+  "base_head": "3150d7c949d6cc36f42a402c25584e4d65911727",
+  "paths": [
+    "apps/desktop/src/codex-subscription/runtime.test.ts",
+    "apps/desktop/src/codex-subscription/service.test.ts",
+    "apps/desktop/src/codex-subscription/service.ts"
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "packageId": "analysis.game.video",
+  "packageVersion": "1.0.0",
+  "template": {
+    "id": "template.game.video",
+    "version": "1.0.0",
+    "industry": "game",
+    "mediaKind": "video",
+    "goal": "acquisition_or_reactivation",
+    "sections": [
+      { "id": "context", "label": "分析上下文", "required": true },
+      { "id": "overview", "label": "整体结论", "required": true },
+      { "id": "structure", "label": "脚本结构", "required": true },
+      { "id": "visuals", "label": "镜头与画面", "required": true },
+      { "id": "voice_and_sound", "label": "字幕口播与声音", "required": true },
+      { "id": "product_or_gameplay", "label": "玩法与内容", "required": true },
+      { "id": "selling_points", "label": "卖点", "required": true },
+      { "id": "emotion", "label": "情绪变化", "required": true },
+      { "id": "cta", "label": "目标引导", "required": true },
+      { "id": "evidence", "label": "证据", "required": true },
+      { "id": "timeline", "label": "时间轴", "required": true },
+      { "id": "tags", "label": "素材标签", "required": true },
+      { "id": "diagnosis", "label": "问题诊断", "required": true },
+      { "id": "recommendations", "label": "优化建议", "required": true },
+      { "id": "limitations", "label": "局限说明", "required": true }
+    ]
+  },
+  "tags": {
+    "id": "tags.game.video",
+    "version": "1.0.0",
+    "fixedTags": [
+      { "id": "game.gameplay", "label": "玩法展示", "facet": "content", "description": "素材直接展示核心玩法、操作或战斗过程。" },
+      { "id": "game.character", "label": "角色展示", "facet": "content", "description": "素材突出角色、职业、皮肤或养成内容。" },
+      { "id": "game.benefit", "label": "福利信息", "facet": "selling_point", "description": "素材出现登录、抽取、奖励等福利信息；仅按证据标记。" },
+      { "id": "game.version_content", "label": "版本内容", "facet": "context", "description": "素材明确关联某个版本或版本新增内容。" },
+      { "id": "game.channel_content", "label": "渠道内容", "facet": "context", "description": "素材包含特定渠道的内容或利益点。" },
+      { "id": "game.acquisition", "label": "拉新诉求", "facet": "goal", "description": "素材主要面向未安装或未体验用户。" },
+      { "id": "game.reactivation", "label": "拉活诉求", "facet": "goal", "description": "素材主要面向回流或已有用户。" },
+      { "id": "game.emotion_drive", "label": "情绪推动", "facet": "emotion", "description": "素材通过爽感、紧张、好奇等情绪推动行动。" },
+      { "id": "game.call_to_action", "label": "行动引导", "facet": "conversion", "description": "素材包含下载、回归或进入游戏的明确引导。" },
+      { "id": "game.subtitle_voice", "label": "字幕口播", "facet": "presentation", "description": "素材使用字幕或口播承载关键信息。" }
+    ]
+  },
+  "scoring": {
+    "id": "scoring.game.video",
+    "version": "1.0.0",
+    "minimumCoverage": 0.6,
+    "missingEvidencePolicy": "renormalize_scored",
+    "dimensions": [
+      { "id": "opening_attraction", "label": "开场吸引力", "description": "开场是否快速建立玩法、角色或冲突看点。", "evidenceKinds": ["shot", "visual", "timeline"], "weight": 0.14 },
+      { "id": "gameplay_clarity", "label": "玩法清晰度", "description": "用户是否能从素材理解核心玩法与反馈。", "evidenceKinds": ["shot", "visual", "gameplay", "timeline"], "weight": 0.18 },
+      { "id": "character_content", "label": "角色内容呈现", "description": "角色、内容与成长吸引点是否表达清楚。", "evidenceKinds": ["visual", "ocr", "speech", "gameplay"], "weight": 0.13 },
+      { "id": "version_channel_accuracy", "label": "版本渠道准确性", "description": "版本、角色和渠道信息是否与当前上下文一致。", "evidenceKinds": ["context", "ocr", "speech"], "weight": 0.1 },
+      { "id": "selling_point_credibility", "label": "卖点可信度", "description": "玩法、福利或内容卖点是否有素材证据支撑。", "evidenceKinds": ["visual", "ocr", "speech", "gameplay"], "weight": 0.14 },
+      { "id": "emotion_motivation", "label": "情绪与动机", "description": "情绪节奏是否服务于拉新或拉活动机。", "evidenceKinds": ["emotion", "audio", "timeline"], "weight": 0.12 },
+      { "id": "cta_goal_fit", "label": "目标引导匹配", "description": "CTA 是否明确并匹配拉新或拉活场景。", "evidenceKinds": ["cta", "ocr", "speech", "context"], "weight": 0.12 },
+      { "id": "audio_text_coordination", "label": "声画协同", "description": "声音、字幕、口播与玩法画面是否协同。", "evidenceKinds": ["audio", "ocr", "speech", "timeline"], "weight": 0.07 }
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0031",
+  "base_head": "97cd0dfeda5ba5a57ef457739f82e6c752f065f6",
+  "paths": [
+    "apps/desktop/package.json",
+    "apps/desktop/src/index.css",
+    "apps/desktop/src/index.ts",
+    "apps/desktop/src/preload.ts",
+    "apps/desktop/src/product-enrichment/bangumi-adapter.test.ts",
+    "apps/desktop/src/product-enrichment/bangumi-adapter.ts",
+    "apps/desktop/src/product-enrichment/consent-store.test.ts",
+    "apps/desktop/src/product-enrichment/consent-store.ts",
+    "apps/desktop/src/product-enrichment/errors.ts",
+    "apps/desktop/src/product-enrichment/form-merge.test.ts",
+    "apps/desktop/src/product-enrichment/form-merge.ts",
+    "apps/desktop/src/product-enrichment/ipc.test.ts",
+    "apps/desktop/src/product-enrichment/ipc.ts",
+    "apps/desktop/src/product-enrichment/service.test.ts",
+    "apps/desktop/src/product-enrichment/service.ts",
+    "apps/desktop/src/product-enrichment/types.ts",
+    "apps/desktop/src/product-enrichment/validation.ts",
+    "apps/desktop/src/product/types.ts",
+    "apps/desktop/src/ui/GameProductEnrichmentPanel.tsx",
+    "apps/desktop/src/ui/ProductLibraryPage.tsx",
+    "docs/development/README.md",
+    "docs/development/产品库客户端-DEV-0004-v1.0.md",
+    "docs/development/游戏产品联网补全-DEV-0023-v1.0.md",
+    "docs/requirements/产品库-REQ-0003/产品库-REQ-0003-v1.0.md",
+    "docs/troubleshooting/README.md",
+    "docs/troubleshooting/游戏产品联网补全-TRB-0020-v1.0.md"
+  ]
+}
