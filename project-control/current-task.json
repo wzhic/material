@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0029",
-  "reason": "选择 OCR、ASR 与声音事件生产运行时作为当前独立功能任务",
+  "previous_task_id": "APP-0030",
+  "reason": "继续实现产品库游戏联网补全的独立功能",
   "schema_version": 1,
-  "selected_at": "2026-08-27T06:31:29+00:00",
+  "selected_at": "2026-08-29T01:44:11+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0030"
+  "task_id": "APP-0031"
 }
