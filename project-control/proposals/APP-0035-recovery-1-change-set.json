@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0035",
+  "base_head": "05b066582e2cbbb28ca526e08e33d64b8484bffe",
+  "paths": [
+    "apps/desktop/src/media-tools/learned-runtime-bundle.test.ts",
+    "docs/development/本地学习型媒体生产运行时-DEV-0022-v1.0.md",
+    "docs/troubleshooting/本地学习型媒体生产运行时-TRB-0019-v1.0.md"
+  ]
+}

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -125,20 +125,33 @@ describe('learned runtime bundle', () => {
     // Windows hosted runners can create directory junctions without the
     // elevated file-symlink privilege. Both are links that the verifier must
     // reject before following their targets.
+    const linkedPath = process.platform === 'win32'
+      ? path.join(linked, 'models', 'linked-asr')
+      : path.join(linked, 'models', 'asr', 'linked.bin');
     await symlink(
       process.platform === 'win32'
         ? path.join(linked, 'models', 'asr')
         : path.join(linked, 'models', 'asr', 'model.bin'),
-      process.platform === 'win32'
-        ? path.join(linked, 'models', 'linked-asr')
-        : path.join(linked, 'models', 'asr', 'linked.bin'),
+      linkedPath,
       process.platform === 'win32' ? 'junction' : 'file',
     );
-    const error = await resolveLearnedRuntimeBundle({
-      arch: 'arm64', platform: 'darwin', root: linked,
-    }).catch((value: unknown) => value);
-    expect(error).toBeInstanceOf(LearnedRuntimeBundleError);
-    expect(String(error)).not.toContain(linked);
+    expect((await lstat(linkedPath)).isSymbolicLink()).toBe(true);
+    try {
+      const error = await resolveLearnedRuntimeBundle({
+        arch: 'arm64', platform: 'darwin', root: linked,
+      }).catch((value: unknown) => value);
+      expect(error).toBeInstanceOf(LearnedRuntimeBundleError);
+      expect(String(error)).not.toContain(linked);
+    } finally {
+      // Remove the link before recursive fixture cleanup. Windows can retain a
+      // junction handle briefly after enumeration when the full suite is busy.
+      await rm(linkedPath, {
+        force: true,
+        maxRetries: process.platform === 'win32' ? 5 : 0,
+        recursive: process.platform === 'win32',
+        retryDelay: 100,
+      });
+    }
   });
 
   it('rejects path traversal and unknown manifest fields', async () => {
