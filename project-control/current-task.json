@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0031",
-  "reason": "选择新的隔离竞态修复任务",
+  "previous_task_id": "APP-0033",
+  "reason": "选择用户截图对应的独立布局修复任务",
   "schema_version": 1,
-  "selected_at": "2026-08-29T03:08:33+00:00",
+  "selected_at": "2026-08-29T03:14:31+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0033"
+  "task_id": "APP-0034"
 }
