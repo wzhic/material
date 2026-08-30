@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "APP-0033",
-  "reason": "选择用户截图对应的独立布局修复任务",
+  "previous_task_id": "APP-0034",
+  "reason": "PR #33 Windows CI 已精确定位为跨平台测试入口问题，开始独立修复任务",
   "schema_version": 1,
-  "selected_at": "2026-08-29T03:14:31+00:00",
+  "selected_at": "2026-08-29T15:27:45+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0034"
+  "task_id": "APP-0035"
 }

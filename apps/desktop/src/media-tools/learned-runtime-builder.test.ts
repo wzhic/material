@@ -29,8 +29,15 @@ describe('learned runtime assembler', () => {
     const ocrRoot = path.join(root, 'ocr-source');
     const asrRoot = path.join(root, 'asr-source');
     const yamnetRoot = path.join(root, 'yamnet-source');
-    await writeFixture(pythonRoot, 'bin/python3.11', '#!/bin/sh\nexit 0\n');
-    await symlink('python3.11', path.join(pythonRoot, 'bin', 'python'));
+    const pythonFixture = '#!/bin/sh\nexit 0\n';
+    await writeFixture(pythonRoot, 'bin/python3.11', pythonFixture);
+    if (process.platform === 'win32') {
+      // The assembler contract is independent of Windows file-symlink
+      // privileges; the verifier's Windows link rejection uses a junction.
+      await writeFixture(pythonRoot, 'bin/python', pythonFixture);
+    } else {
+      await symlink('python3.11', path.join(pythonRoot, 'bin', 'python'));
+    }
     await writeFixture(ocrRoot, 'det/inference.json', '{}');
     await writeFixture(ocrRoot, 'rec/inference.json', '{}');
     await writeFixture(asrRoot, 'config.json', '{}');
