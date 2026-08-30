@@ -763,7 +763,9 @@ export const CodexSubscriptionPanel = ({
               <option value="">{state.models.length ? '请选择模型' : '当前没有可用模型'}</option>
               {state.models.map((model) => (
                 <option key={model.id} value={model.id}>
-                  {model.displayName} · {model.id}{model.isDefault ? '（Codex 推荐）' : ''}
+                  {model.displayName} · {model.id}
+                  {model.inputModalities.includes('image') ? ' · 视觉' : ' · 文本'}
+                  {model.isDefault ? '（Codex 推荐）' : ''}
                 </option>
               ))}
             </select>
@@ -824,8 +826,9 @@ export const CodexSubscriptionPanel = ({
             </p>
           ) : null}
           <div className="codex-data-notice">
-            真实分析会消耗当前账号的 Codex 订阅额度或 credits；V1 仅发送本地提取的
-            结构化文本证据，不发送原始视频、图片或音频。Codex 与 API Key 不会自动切换。
+            真实分析会消耗当前账号的 Codex 订阅额度或 credits；始终发送本地提取的
+            结构化文本，目录声明 image 的模型还会发送最多 8 个受控 JPEG 代表帧；
+            不上传原始视频或音频。Codex 与 API Key 不会自动切换。
           </div>
         </div>
       )}

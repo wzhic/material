@@ -98,6 +98,39 @@ describe('analysis model selection options', () => {
     });
   });
 
+  it('marks only image-capable Codex catalog models as visual', () => {
+    const textModel = codexState().models[0];
+    const options = createAnalysisModelOptions([], codexState({
+      models: [
+        textModel,
+        {
+          ...textModel,
+          displayName: 'Codex Vision',
+          id: 'vision-preset',
+          inputModalities: ['text', 'image'],
+          modelSlug: 'vision-model-slug',
+        },
+      ],
+    }));
+
+    expect(options.map((option) => ({
+      label: option.label,
+      modelId: option.modelId,
+      visualInputEnabled: option.visualInputEnabled,
+    }))).toEqual([
+      {
+        label: expect.not.stringContaining('· 视觉'),
+        modelId: 'shared/model',
+        visualInputEnabled: false,
+      },
+      {
+        label: expect.stringContaining('· 视觉'),
+        modelId: 'vision-preset',
+        visualInputEnabled: true,
+      },
+    ]);
+  });
+
   it.each<CodexSubscriptionStatus>([
     'unavailable',
     'signedOut',

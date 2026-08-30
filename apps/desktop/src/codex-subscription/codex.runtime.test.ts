@@ -64,6 +64,7 @@ describe('locked Codex App Server runtime compatibility', () => {
           sandboxPolicy,
           model,
           inputModality,
+          userInput,
           thread,
           rateLimitsResponse,
           tokenUsageBreakdown,
@@ -84,6 +85,7 @@ describe('locked Codex App Server runtime compatibility', () => {
           readFile(path.join(bindingsDirectory, 'v2', 'SandboxPolicy.ts'), 'utf8'),
           readFile(path.join(bindingsDirectory, 'v2', 'Model.ts'), 'utf8'),
           readFile(path.join(bindingsDirectory, 'InputModality.ts'), 'utf8'),
+          readFile(path.join(bindingsDirectory, 'v2', 'UserInput.ts'), 'utf8'),
           readFile(path.join(bindingsDirectory, 'v2', 'Thread.ts'), 'utf8'),
           readFile(path.join(bindingsDirectory, 'v2', 'GetAccountRateLimitsResponse.ts'), 'utf8'),
           readFile(path.join(bindingsDirectory, 'v2', 'TokenUsageBreakdown.ts'), 'utf8'),
@@ -164,6 +166,10 @@ describe('locked Codex App Server runtime compatibility', () => {
           'isDefault',
         ].forEach((field) => expect(model).toContain(`${field}:`));
         expect(inputModality).toContain('"text" | "image" | "audio"');
+        expect(userInput).toContain('{ "type": "localImage"');
+        expect(userInput).toContain('path: string');
+        expect(userInput).toContain('{ "type": "image"');
+        expect(userInput).toContain('url: string');
         expect(thread).toContain('modelProvider: string');
         expect(thread).toContain('cwd: AbsolutePathBuf');
         ['path', 'turns', 'forkedFromId', 'parentThreadId', 'source']

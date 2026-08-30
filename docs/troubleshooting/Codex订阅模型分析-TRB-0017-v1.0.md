@@ -4,12 +4,12 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档 / 版本 | Codex订阅模型分析-TRB-0017 / v1.0 |
-| 日期 / 状态 | 2026-08-26 / DRAFT |
-| 适用范围 | “Codex 订阅（Beta）”登录、目录、限额、分析、取消、报告、runtime 与双平台打包 |
+| 文档 / 版本 | Codex订阅模型分析-TRB-0017 / v1.1 |
+| 日期 / 状态 | 2026-08-30 / DRAFT |
+| 适用范围 | “Codex 订阅（Beta）”登录、目录、限额、文本/代表帧分析、取消、报告、runtime 与双平台打包 |
 | 关联需求 | [REQ-0008](../requirements/Codex订阅模型分析-REQ-0008/Codex订阅模型分析-REQ-0008-v1.0.md)、[REQ-0007](../requirements/Codex订阅接入-REQ-0007/Codex订阅接入-REQ-0007-v1.0.md) |
 | 关联设计 | [DEV-0020](../development/Codex订阅模型分析-DEV-0020-v1.0.md) |
-| 关联任务 | APP-0027 |
+| 关联任务 | APP-0027、APP-0036 |
 
 来源 APP-0022 的 TRB-0010 不导入：当前仓库 TRB-0010 已用于分析编排与报告预览。本文用 TRB-0017 统一处理 Codex 前置接入和分析调用，避免编号冲突。
 
@@ -19,11 +19,11 @@
 
 - ChatGPT token、refresh token、cookie、完整/动态 auth URL 或当前一次性设备码 `userCode`；设备码只可由用户在当前登录 dialog 查看或主动复制，不作为排障材料；
 - API Key、系统凭据导出、auth.json 或 Material 专属 CODEX_HOME 内容；
-- 原始媒体、缩略图、素材/产品库/仓库/用户目录路径；
+- 原始媒体、代表帧字节/临时路径、缩略图、素材/产品库/仓库/用户目录路径；
 - 完整 prompt、结构化证据正文、App Server 原始 JSONL 或 reasoning；
 - 用户完整邮箱、组织名称或与问题无关的账号信息。
 
-只收集：公开错误码、掩码账号、planType、状态、catalog selection ID、provider requested/returned slug、frozen reasoning effort、runtime/客户端版本、非秘密 correlation id、平台/架构、耗时和 usage 是否存在。怀疑秘密泄露时先停止复现，按第 14 章处理。
+只收集：公开错误码、掩码账号、planType、状态、catalog selection ID、provider requested/returned slug、frozen reasoning effort、代表帧数量与覆盖局限、runtime/客户端版本、非秘密 correlation id、平台/架构、耗时和 usage 是否存在。不得收集帧内容或路径。怀疑秘密泄露时先停止复现，按第 14 章处理。
 
 ## 3. 先确定证据层级
 
@@ -47,7 +47,7 @@
 4. 确认网络可达 OpenAI 登录与服务；不要用工具网络开关判断模型端点离线。
 5. 手动刷新账号、模型和限额；不得循环或脚本化消耗订阅。
 6. 确认新建分析显式选中的 source/config/catalog selection ID 与目录一致，并从权威目录核对 provider slug 和 default effort；不用 slug 反推目录 ID。
-7. 用 mock 或受控真实 smoke 复现一次；不要为了“偶现”自动重试。
+7. 用 mock 或受控真实 smoke 复现一次；视觉故障只记录代表帧计数/限制结果，不复制图片或路径，不要为了“偶现”自动重试。
 8. 分别核对 thread/start、turn/start、interrupt 次数和受控终态。
 9. 检查 audit/报告/记录/PDF 的 catalog selection ID、provider requested/returned slug、frozen effort、usage 或 unknown、错误码和日志脱敏。
 10. 只有目标层级需要时才进入签名安装包和另一操作系统验证。
@@ -91,6 +91,7 @@ MODEL_NOT_AVAILABLE 可能来自：
 
 - catalog selection ID 已从最新 model/list 消失或被隐藏；
 - 所选目录项不是文本输入，或缺/含非法 `id`、`model` slug、`defaultReasoningEffort`；
+- 视觉分析所选目录项未同时声明 image，或目录刷新后 image 能力消失；
 - 游标合并误按 provider slug 去重，使共享 slug 的多个预设互相覆盖；
 - 账号切换后目录不同；
 - thread/start 返回的 provider/model/reasoning effort 与冻结值不同；
@@ -106,6 +107,7 @@ MODEL_NOT_AVAILABLE 可能来自：
 3. 由用户重新显式选择目录 ID；V1 不提供 effort 切换。
 4. 确认 `thread/start` 发送 provider slug、`config.model_reasoning_effort=<frozen effort>` 和 `allowProviderModelFallback=false`；`turn/start` 发同一 slug + effort；provider 以响应 `modelProvider=openai` 校验确认。
 5. 逐字段核对 `ThreadStartResponse` 的 provider、slug、reasoningEffort、cwd/roots、approval never、readOnly + network false；任一偏差或 `model/rerouted` 都必须使当前 generation 失败关闭，并在失败 audit 保留已知返回 slug。
+6. 视觉调用只核对公开的 image capability 与匿名帧计数；不要抄录 `localImage.path`。无 image 能力时正确行为是纯文本模式或启动前失败，而不是上传原视频或改用 remote URL。
 
 从历史重新分析时，模型可见预填本身不是自动选择故障：现代记录只有在 `configurationId + providerId + source + catalog preset ID` 与当前候选四元精确匹配时才允许预填，且不会自动运行；用户仍须审阅、显式点击开始并完成额度确认。若 legacy、任一字段不匹配、目录项下线却仍被预填，或系统按 display name/provider slug/同 slug 其他 preset 猜测，则按路由错误处理；正确行为是清空并要求重新选择，绝不回退。
 
@@ -113,7 +115,8 @@ MODEL_NOT_AVAILABLE 可能来自：
 
 | 错误 | 可能阶段 | 检查 | 恢复 |
 | --- | --- | --- | --- |
-| INVALID_INPUT | thread/start 前 | configuration、消息数量/角色、schema 大小、模型 ID、EvidencePacket 路径/媒体扫描 | 修复本地请求生成；不重试上游 |
+| INVALID_INPUT | thread/start 前 | configuration、消息数量/角色、schema 大小、模型 ID、EvidencePacket；视觉时核对帧数、尺寸、Base64、JPEG、单帧/总字节和 evidenceId，不打印内容 | 修复本地请求生成；不重试上游 |
+| MODEL_NOT_AVAILABLE | preflight | 所选目录项下线，或视觉批次存在但当前项无 image capability | 刷新目录并由用户重新选择；不上传原视频、不自动换模型 |
 | SERVICE_UNAVAILABLE | runtime/preflight/thread | sidecar generation、版本、server request、工具违规、进程退出 | 停止当前分析，修复 runtime 或安全条件 |
 | RESPONSE_INVALID | thread/turn/输出 | JSONL 协议、ephemeral、ThreadStartResponse provider/slug/effort/cwd/roots/approval/sandbox、最终 JSON/schema/证据引用 | 保留草稿；不得追加修复 turn 或更换预设/slug/effort |
 | UNKNOWN | 任意 | correlation id、阶段、版本和脱敏错误类别 | 最小复现；不要展示原始上游 message |
@@ -122,9 +125,9 @@ MODEL_NOT_AVAILABLE 可能来自：
 
 排查 `Turn.items`、`item/started` 或 `item/completed` 时先按 pinned `0.149.1 generate-ts --experimental` 区分：
 
-- 严格合法的 `userMessage` 与 `reasoning` 是协议兼容 item，不是工具安全违规；主进程应立即丢弃，renderer、报告、日志、存储命中数都必须为 0；
+- 严格合法的 `userMessage` 与 `reasoning` 是协议兼容 item，不是工具安全违规；视觉调用只允许与当前 ProbeContext 匿名帧集合精确一致的 `localImage.path`。主进程应立即丢弃整个 item，renderer、报告、日志、存储命中数都必须为 0；
 - 严格合法的 `agentMessage` 是唯一可作为最终正文候选的 item，仍须通过最终 JSON/schema/语义校验；
-- 三类允许 item 的必填字段、类型或长度畸形属于协议失败；tool/command/file/web/MCP/image/collab 或未知 item 属安全失败。两者都应结束当前 generation，不得保留部分结果。
+- 三类允许 item 的必填字段、类型或长度畸形属于协议失败；其他 `localImage`、remote image、tool/command/file/web/MCP/collab 或未知 item 属安全失败。两者都应结束当前 generation，不得保留部分结果。
 
 `ErrorNotification.willRetry=true` 与 `false` 都是合法通知形状；不要把 `true` 误诊为畸形协议，也不要因此等待或续跑。Material 对任一值都应终止本次调用，且 `turn/start` 总数仍为 1；出现第二 turn 是客户端缺陷。
 
@@ -151,7 +154,7 @@ sequenceDiagram
 - threadId 尚未返回时取消，也不能补发第二个 turn。
 - turnId 迟到时 interrupt 仍最多一次。
 - `cancelling` 只是取消请求态，不是 CANCELLED 终态。CANCELLED/TIMEOUT 先确立时，迟到成功不能生成报告；模型成功已先确立时，后到取消请求不得把 succeeded 改写为 cancelled。
-- 临时目录必须按精确路径清理；禁止扩大删除目标。
+- 临时目录必须按精确路径清理；视觉调用在成功、失败、取消、超时和安全/协议终态后均不得残留 `representative-frame-NN.jpg`。禁止扩大删除目标。
 
 如果取消一直转圈，先核对 renderer 是否收到单一终态，再核对 AbortSignal、active probe、generation 和 runtime close；不要让用户重复点击造成多次请求。
 
@@ -161,18 +164,18 @@ sequenceDiagram
 
 - App Server 请求批准 shell、文件写入或目录扩权；
 - 模型尝试调用 MCP、web search、network tool、skills、hooks、memory 或子 Agent；
-- runtime workspace roots/cwd 不再等于本次空临时目录；
-- input/日志/输出出现本地路径、媒体字节或凭据；
+- runtime workspace roots/cwd 不再等于本次分析专用临时目录，或目录出现匿名代表帧以外的文件；
+- input/日志/输出出现用户素材路径、非本次 `localImage`、remote image、原始媒体字节或凭据；
 - experimental server request 不在固定拒绝列表内。
 
-严格合法并被立即丢弃的 `userMessage` / `reasoning` item 本身不是本节的安全违规；若它们出现在 renderer、报告、日志或存储，则按数据泄露处理。只有 `agentMessage` 可进入最终正文校验。
+严格合法并被立即丢弃的 `userMessage` / `reasoning` item 本身不是本节的安全违规；视觉调用中精确匹配本次匿名路径的 `localImage` 也只是该 `userMessage` 的允许输入回显。若原文、路径或帧字节出现在 renderer、报告、日志或存储，则按数据泄露处理。只有 `agentMessage` 可进入最终正文校验。
 
 动作：
 
 1. 立即取消当前 turn 并使 generation 失效。
 2. 禁止保存模型结果或继续自动重试。
 3. 保存不含正文的版本、阶段、方法类别、correlation id 和时间。
-4. 检查空临时 cwd、sandbox readOnly、networkAccess=false、approval never、空 tools/environments/capabilities，以及 app-scoped strict config 的 `[features] view_image=false/shell_tool=false/unified_exec=false` 与根级 `web_search="disabled"`。pinned 0.149.1 会拒绝实时官网新式 `[tools] view_image=false`，排障时不得照抄该键；锁定协议没有 readableRoots 字段时也不得伪造该保护。
+4. 检查分析专用 cwd（纯文本为空，视觉仅含匿名 JPEG）、sandbox readOnly、networkAccess=false、approval never、空 tools/environments/capabilities，以及 app-scoped strict config 的 `[features] view_image=false/shell_tool=false/unified_exec=false` 与根级 `web_search="disabled"`。pinned 0.149.1 会拒绝实时官网新式 `[tools] view_image=false`，排障时不得照抄该键；锁定协议没有 readableRoots 字段时也不得伪造该保护。`view_image=false` 关闭工具，不等于禁止显式 `localImage` 用户输入。
 5. 按第 14 章判断是否存在真实泄露；若有，停止分发和真实 smoke。
 
 注意：networkAccess=false 只表示无工具网络，模型传输本身需要连接 OpenAI；不要把正常模型连接误报为违规。
@@ -234,10 +237,10 @@ macOS 核对 Keychain，Windows 核对 Credential Manager/DPAPI。退出 Materia
 1. 记录平台、包/签名状态、客户端和 runtime 版本。
 2. 在 Material 专属会话登录测试账号。
 3. 读取掩码 account/plan、model/list、rate limits。
-4. 显式选择一个可见文本 catalog ID，核对其 provider slug 和 default effort；同 slug 多预设不折叠。
-5. 确认只外发结构化文本且会消耗额度。
-6. 运行一次分析，核对一个 ephemeral thread、一个 turn、tool call 与 unexpected server request 计数均为 0，并确认无重试。
-7. 记录 catalog selection ID、provider requested/returned slug、frozen effort、usage 或缺失、结果和时间。
+4. 显式选择一个可见文本 catalog ID；视觉 smoke 还要求该项声明 image。核对 provider slug 和 default effort；同 slug 多预设不折叠。
+5. 确认会消耗额度；纯文本只外发结构化文本，视觉还外发最多 8 个受控代表帧且不上传原始视频。
+6. 运行一次分析，核对一个 ephemeral thread、一个 turn、tool call 与 unexpected server request 计数均为 0，并确认无重试；视觉还须核对匿名帧计数与终态删除。
+7. 记录 catalog selection ID、provider requested/returned slug、frozen effort、代表帧数/覆盖局限、usage 或缺失、结果和时间；不得记录帧或路径。
 8. 退出应用专属会话并确认全局 CLI/IDE 会话未变化。
 9. 单独记录非代码素材分析的 OpenAI 产品/条款适配确认是否完成；官方 SDK 主要定位是 coding-focused threads，本指南不把该定位误写为条款禁止。
 
@@ -254,6 +257,10 @@ macOS 核对 Keychain，Windows 核对 Credential Manager/DPAPI。退出 Materia
 | 输出与用量 | 固定结构化结果校验通过；收到 token usage 通知，但连接测试结果不持久化 token 明细，记为 unavailable 而非 0 |
 | 结论与时间 | 2026-08-26 19:47（Asia/Shanghai）用户确认客户端“调用成功”；直接等价烟测也得到 completed 且只有 agentMessage |
 | 证据边界 | 仅证明当前账号、当前模型、当前未签名 macOS 开发环境；不能复制为 Windows、签名包、公证包或其他套餐证据 |
+
+### 13.2 代表帧视觉 smoke（APP-0036 待执行）
+
+自动化和未登录 runtime 只能证明 `inputModalities=image`、`UserInput.localImage`、客户端校验与清理合同，不能证明真实订阅视觉调用已调通。由用户授权执行时必须选一份可人工核对的游戏素材，并记录以下非秘密事实：目录项声明 text/image、代表帧数量、输出是否命中画面可见事实、一次 thread/turn、无 tool/server request、原视频未进入请求、终态后匿名帧目录已删除。不得记录素材绝对路径、帧图、帧 Base64 或 `localImage.path`。未执行前结论必须写“真实视觉 smoke 待验证”。
 
 同一结果不得复制成 macOS/Windows 两个平台证据。未签名开发包不得标为签名安装包通过。真实账号 smoke 或适配确认任一未完成时，Codex 仍仅能标 Beta，不设默认/稳定来源，API Key 必须可用。
 
@@ -274,14 +281,14 @@ macOS 核对 Keychain，Windows 核对 Credential Manager/DPAPI。退出 Materia
 
 - 原故障在同一层级可稳定复现，修复后消失。
 - API Key 模型新增、刷新、显式分析和错误仍通过。
-- Codex 候选仍要求 ready + 当前文本目录 + 非 limited；`id`/`model`/`defaultReasoningEffort` 必需，同 slug 多 ID 不折叠。
+- Codex 候选仍要求 ready + 当前文本目录 + 非 limited；`id`/`model`/`defaultReasoningEffort` 必需，同 slug 多 ID 不折叠；只有 image modality 项标记视觉。
 - 一次 thread/start、一次 turn/start；thread config 和 turn 的 provider slug/frozen effort 一致，`allowProviderModelFallback=false`，无应用层重试/回退。
 - `ThreadStartResponse` 逐字段验证 provider=openai、slug、effort、cwd/roots、approval never、readOnly/network false、空 instruction sources 与受控 profile；偏差失败 audit 保留 returned slug。
-- `Turn.items` 与 item 通知只接受严格合法的 `userMessage`/`reasoning`/`agentMessage`；前两类立即丢弃且四类禁止位置零命中，只有 `agentMessage` 可作最终正文；三类畸形及 tool/command/file/web/MCP/image/collab/未知 item 均失败关闭。
+- `Turn.items` 与 item 通知只接受严格合法的 `userMessage`/`reasoning`/`agentMessage`；本次精确 `localImage` 可回显，其他路径/remote image 失败关闭；前两类立即丢弃且四类禁止位置零命中，只有 `agentMessage` 可作最终正文；三类畸形及 tool/command/file/web/MCP/collab/未知 item 均失败关闭。
 - `ErrorNotification.willRetry=true/false` 都终止本次 generation，且没有等待重试、第二 turn、换模型或 API Key fallback。
 - 取消/超时最多一次 interrupt，迟到结果丢弃。
-- 空 cwd 无业务文件、read-only、approval never、pinned strict config 的 `[features] view_image/shell_tool/unified_exec=false` 与根级 `web_search="disabled"` 经 initialize/account-read 实测、事件流 tool/unexpected server request 计数均为 0；不声称 locked schema 尚无的 `[tools]` 或 readableRoots 强制。
-- 输入无媒体/路径，输出严格 schema，未知 evidenceId 拒绝。
+- 分析专用 cwd 纯文本时为空、视觉时只含匿名代表帧；read-only、approval never、pinned strict config 的 `[features] view_image/shell_tool/unified_exec=false` 与根级 `web_search="disabled"` 经 initialize/account-read 实测、事件流 tool/unexpected server request 计数均为 0；不声称 locked schema 尚无的 `[tools]` 或 readableRoots 强制。
+- 视觉批次数量/尺寸/Base64/JPEG/单帧/总字节和 evidenceId 复验通过；原始视频/音频/素材路径不进入请求，所有终态临时帧删除；输出严格 schema，未知 evidenceId 拒绝。
 - catalog selection ID、provider requested/returned slug、frozen effort 与 usage/unknown 在 audit/报告/记录/PDF 不被覆盖；旧记录可缺且不回填。
 - Renderer、日志、报告、存储和临时目录秘密扫描通过。
 - 真实订阅、签名包和双平台仅在实际执行后分别更新结论。
@@ -315,4 +322,5 @@ macOS 核对 Keychain，Windows 核对 Credential Manager/DPAPI。退出 Materia
 
 | 版本 | 日期 | 变更摘要 | 任务 |
 | --- | --- | --- | --- |
+| v1.1 | 2026-08-30 | 增加 image 能力、受控代表帧、`localImage`、匿名临时目录、全终态清理、原视频不上传、路径/帧隐私响应和真实视觉 smoke 排障合同 | APP-0036 |
 | v1.0 | 2026-08-26 | 新增订阅分析入口/状态、登录限额、catalog ID/provider slug/default effort 冻结与同 slug 多预设、ThreadStartResponse fail-close、一次 thread/turn、取消超时、安全违规、结构化输出、audit/报告/记录/PDF 贯通、usage、runtime 打包、真实 smoke、非代码适配性、隐私响应与回退排障 | APP-0027 |

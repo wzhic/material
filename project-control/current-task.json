@@ -1,8 +1,8 @@
 {
-  "previous_task_id": "GOV-0028",
-  "reason": "产品栈 merge 已展开；恢复 main 权威治理实现后重新选择 APP-0035，继续解决组合结果",
+  "previous_task_id": "APP-0035",
+  "reason": "APP-0035 已由 PR #34 合入 main；切换到用户新要求的独立 Codex 代表帧视觉输入任务",
   "schema_version": 1,
-  "selected_at": "2026-08-29T09:27:43+00:00",
+  "selected_at": "2026-08-30T09:14:49+00:00",
   "selected_by": "Codex",
-  "task_id": "APP-0035"
+  "task_id": "APP-0036"
 }
