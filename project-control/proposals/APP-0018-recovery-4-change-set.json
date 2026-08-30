@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0018",
+  "base_head": "403362c9246236ebfe1e41e3153ab0bbdd2891ac",
+  "paths": [
+    "project-control/proposals/APP-0018-scope-v5.json",
+    "tools/governance/core.py",
+    "tools/governance/reconcile.py",
+    "tools/governance/taskctl.py",
+    "tools/governance/validation_runner.py",
+    "tools/governance/tests/test_core.py",
+    "tools/governance/tests/test_reconcile_ci_static.py",
+    "tools/governance/tests/test_validation_runner.py"
+  ]
+}

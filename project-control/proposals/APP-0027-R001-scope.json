@@ -1,0 +1,42 @@
+{
+  "task_id": "APP-0027",
+  "summary": "在 APP-0025 的完整单素材分析、报告、记录和数据维护产品栈上，整合 Codex App Server 订阅登录能力，并把 Codex 订阅模型作为 V1 独立分析来源接入现有模型选择和 AnalysisEngine：登录且目录可用时，用户可在新建分析页显式选择一个 Codex 模型或现有 API Key 模型；开始分析后严格绑定所选来源与模型，不自动切换、不回退到 API Key。Codex 分析只接收现有受控文本提示、结构化产品快照和归一化证据，不上传原始媒体；每次分析新建一个 ephemeral thread 和一个 turn，使用结构化输出、空临时目录、approval never、只读且网络关闭的沙箱，并通过锁定运行时可验证的 strict config 关闭 shell、统一执行、图片、Web、应用、插件、技能、MCP、记忆和子 Agent 等工具；任何意外工具、服务请求或协议越界都使当前 generation fail-close，取消和超时必须中断同一 generation 的 turn。结果继续经过既有 schema 校验、规则融合、确认、记录和导出链路，报告保留来源、请求模型、实际返回模型、版本与用量摘要。任务同时解决 Codex 来源分支与产品栈的代码组合和重复文档编号，不导入来源分支的冲突机器记录。本任务不实现静默复用全局 Codex 登录、自动选模型、自动重试、模型回退、多模型并行、原始图片/视频直传、任意 Codex 工具或文件访问、会话续聊、云端历史同步、部署、发布或最终合并；锁定的 0.149.1 运行时协议尚不支持官网较新文档描述的 restricted readable roots，V1 不声明该隔离能力，待固定运行时协议正式支持并完成回归后另行升级。",
+  "assumptions": [
+    {
+      "id": "APP-0027-ASM-001",
+      "source": "用户本次明确要求 Codex 作为单独模型分析能力并允许 V1 模型切换",
+      "statement": "Codex 作为独立订阅分析来源进入 V1 模型选择；用户每次显式选择 API Key 配置模型或 Codex 订阅模型，分析期间来源和模型固定，失败不自动重试、切换或回退。",
+      "status": "confirmed"
+    },
+    {
+      "id": "APP-0027-ASM-002",
+      "source": "Codex 来源分支已验证安全边界与 OpenAI 官方认证文档",
+      "statement": "Codex 分析复用应用专属 CODEX_HOME、ChatGPT 托管登录、OS keyring 和固定 runtime；不复制全局会话，不把 token、动态 auth URL、任意 RPC 或 Prompt 控制权暴露给 Renderer。",
+      "status": "confirmed"
+    },
+    {
+      "id": "APP-0027-ASM-003",
+      "source": "REQ-0005 当前文本分析和原始媒体不外发边界",
+      "statement": "V1 Codex 分析只发送既有 AnalysisEngine 生成的受控文本消息、结构化产品快照和归一化证据；原始图片、视频、音频、本地路径与素材字节不进入 Codex。",
+      "status": "confirmed"
+    },
+    {
+      "id": "APP-0027-ASM-004",
+      "source": "OpenAI App Server 官方文档与锁定 0.149.1、当前 alpha 的实际 generate-ts 协议",
+      "statement": "一次 Codex 分析只创建一个 ephemeral thread 和一个 turn；使用当前回合 outputSchema、空临时目录、approval never、read-only 且 networkAccess=false，并以 strict config 关闭所有本地、网络及扩展工具，意外工具或服务请求使当前 generation fail-close，取消和超时绑定同一 generation 的 turn/interrupt。锁定协议不支持 restricted readable roots，V1 不声明该能力。",
+      "status": "confirmed"
+    },
+    {
+      "id": "APP-0027-ASM-005",
+      "source": "OpenAI App Server 与 Feature Maturity 官方文档",
+      "statement": "Codex App Server 当前属于实验性产品接口，因此 UI 保留 Beta 标识和 API Key 稳定通路；真实订阅 smoke、签名、公证和双平台 keyring 验收未完成前不得宣称生产可用。",
+      "status": "confirmed"
+    },
+    {
+      "id": "APP-0027-ASM-006",
+      "source": "当前分支图、并发 APP-0026 与隔离任务治理要求",
+      "statement": "Codex 来源分支和 APP-0025 只作为内容来源；APP-0027 在最新产品栈重新组合、解决重复 APP/DEV/TRB 编号并完整重跑验证，不导入来源分支的 current-task、任务 JSON、change-set 或旧通过结果。",
+      "status": "confirmed"
+    }
+  ]
+}

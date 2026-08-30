@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0027",
+  "base_head": "1a7640b1820f819f79c6318eadd3fe518e6bb762",
+  "paths": [
+    "apps/desktop/src/codex-subscription/service.test.ts",
+    "apps/desktop/src/codex-subscription/service.ts",
+    "docs/troubleshooting/Codex订阅模型分析-TRB-0017-v1.0.md"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0005",
+  "base_head": "e7127d899920e66abdeb1d67069d30416028eedf",
+  "paths": [
+    "apps/desktop/forge.config.ts",
+    "apps/desktop/package-lock.json",
+    "apps/desktop/package.json",
+    "apps/desktop/src/analysis/draft.test.ts",
+    "apps/desktop/src/analysis/draft.ts",
+    "apps/desktop/src/index.css",
+    "apps/desktop/src/index.html",
+    "apps/desktop/src/index.ts",
+    "apps/desktop/src/renderer.ts",
+    "apps/desktop/src/renderer.tsx",
+    "apps/desktop/src/ui/App.tsx",
+    "apps/desktop/tsconfig.json",
+    "docs/development/README.md",
+    "docs/development/单素材分析客户端-DEV-0003-v1.0.md",
+    "project-control/proposals/APP-0005-task.json"
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "base_head": "3b459d83b02a506e9021a839be38bf91fa91d794",
+  "paths": [
+    "apps/desktop/package.json",
+    "apps/desktop/runtime/media_runtime.py",
+    "apps/desktop/src/media-tools/contracts.ts",
+    "apps/desktop/src/media-tools/ffmpeg.test.ts",
+    "apps/desktop/src/media-tools/ffmpeg.ts",
+    "apps/desktop/src/media-tools/index.ts",
+    "apps/desktop/src/media-tools/learned-runtime.test.ts",
+    "apps/desktop/src/media-tools/learned-runtime.ts",
+    "apps/desktop/src/media-tools/media.runtime.test.ts",
+    "apps/desktop/src/media-tools/normalizer.test.ts",
+    "apps/desktop/src/media-tools/normalizer.ts",
+    "apps/desktop/src/media-tools/process.ts",
+    "apps/desktop/src/media-tools/schemas.ts",
+    "apps/desktop/src/media-tools/suite.test.ts",
+    "apps/desktop/src/media-tools/suite.ts",
+    "apps/desktop/src/media/session.test.ts",
+    "apps/desktop/src/media/session.ts",
+    "apps/desktop/src/tooling/foundation.test.ts",
+    "apps/desktop/src/tooling/schema.ts",
+    "apps/desktop/src/tooling/types.ts",
+    "docs/development/README.md",
+    "docs/development/确定性媒体解析-DEV-0009-v1.0.md",
+    "docs/troubleshooting/README.md",
+    "docs/troubleshooting/确定性媒体解析-TRB-0006-v1.0.md"
+  ],
+  "schema_version": 1,
+  "task_id": "APP-0011"
+}

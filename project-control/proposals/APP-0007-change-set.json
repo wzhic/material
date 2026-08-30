@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0007",
+  "base_head": "cc3e1e25470818f5c2c835b29029093bbfc6bbe8",
+  "paths": [
+    "apps/desktop/package.json",
+    "apps/desktop/src/index.css",
+    "apps/desktop/src/index.ts",
+    "apps/desktop/src/preload.ts",
+    "apps/desktop/src/product/ipc.ts",
+    "apps/desktop/src/product/performance.test.ts",
+    "apps/desktop/src/product/repository.test.ts",
+    "apps/desktop/src/product/repository.ts",
+    "apps/desktop/src/product/storage.test.ts",
+    "apps/desktop/src/product/types.ts",
+    "apps/desktop/src/ui/App.tsx",
+    "apps/desktop/src/ui/ProductLibraryPage.tsx",
+    "docs/development/README.md",
+    "docs/development/产品库持久化治理-DEV-0005-v1.0.md",
+    "docs/troubleshooting/产品库本地存储-TRB-0002-v1.0.md",
+    "project-control/proposals/APP-0007-task.json"
+  ]
+}

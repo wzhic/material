@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0035",
+  "base_head": "87558f57d6dc5ab80815340596c3d4ccc4fbd642",
+  "paths": [
+    "apps/desktop/package.json",
+    "apps/desktop/src/media-tools/learned-runtime-builder.test.ts",
+    "apps/desktop/src/media-tools/learned-runtime-bundle.test.ts"
+  ]
+}

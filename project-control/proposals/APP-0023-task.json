@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0023",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "requirement": {
+    "id": "单素材分析-REQ-0005",
+    "name": "已确认报告 PDF 导出",
+    "version": "v1.0",
+    "interaction_kind": "mixed"
+  },
+  "summary": "为已确认分析记录实现单条 PDF 导出：用户从记录详情选择系统保存位置，主进程按记录 ID 重新读取不可变报告快照，生成包含报告正文、评分、标签、诊断、建议、局限和必要时间证据的可读 PDF；不包含本地绝对路径、API Key、内部提示词、工具日志、未确认预览或对话内部信息。源素材不可用时仍可导出；取消零写入，生成或落盘失败保留记录并允许重试，不把不完整文件报告为成功。使用 Electron 内置打印能力和受控 HTML 模板，不新增远端服务或第三方 PDF 运行时。本任务不实现批量导出、JSON 导出、导出历史管理、素材嵌入、报告编辑、部署、发布或最终合并。",
+  "release_units": [
+    "mac",
+    "win"
+  ],
+  "branch": "codex/req-0005-app-0023-pdf-export",
+  "base_branch": "codex/req-0005-app-0017-report-confirmation",
+  "allowed_paths": [
+    "apps/desktop/**",
+    "docs/development/PDF报告导出-DEV-0016-v1.0.md",
+    "docs/development/README.md",
+    "docs/troubleshooting/PDF报告导出-TRB-0013-v1.0.md",
+    "docs/troubleshooting/README.md",
+    "project-control/**"
+  ],
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py docs --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/reconcile.py precommit --json",
+    "python3 tools/governance/taskctl.py begin APP-0023",
+    "python3 tools/governance/taskctl.py run-validation APP-0023",
+    "python3 tools/governance/taskctl.py run-required APP-0023",
+    "python3 tools/governance/taskctl.py commit-task APP-0023",
+    "python3 tools/governance/taskctl.py push-task APP-0023",
+    "python3 tools/governance/taskctl.py open-pr APP-0023",
+    "npm --prefix apps/desktop run lint",
+    "npm --prefix apps/desktop run typecheck",
+    "npm --prefix apps/desktop run test",
+    "npm --prefix apps/desktop run package"
+  ],
+  "allowed_tools": [
+    "apply_patch",
+    "ApplyPatch",
+    "Bash",
+    "Read",
+    "Glob",
+    "Grep",
+    "view_image",
+    "codex_app__read_thread_terminal"
+  ],
+  "dependencies": [],
+  "required_docs": [
+    "docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md"
+  ],
+  "validation": {
+    "required": [
+      {
+        "id": "docs_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "docs", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "repository_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "static", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_lint",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "lint"],
+        "timeout_seconds": 300,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_typecheck",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "typecheck"],
+        "timeout_seconds": 300,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_tests",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "test"],
+        "timeout_seconds": 900,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_package",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "package"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "governance_unit_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", "tools/governance/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      }
+    ],
+    "results": []
+  },
+  "assumptions": [
+    {
+      "id": "APP-0023-ASM-001",
+      "statement": "V1 只导出已确认记录的不可变报告快照；用户可见对话与反馈不属于报告正文，默认不进入 PDF。",
+      "status": "confirmed",
+      "source": "REQ-0005 的导出隐私边界与本次独立功能拆分"
+    },
+    {
+      "id": "APP-0023-ASM-002",
+      "statement": "PDF 由 Electron 内置 printToPDF 在无脚本、无 Node 能力的隐藏页面中生成，避免新增第三方运行时、联网或许可证成本。",
+      "status": "confirmed",
+      "source": "当前 Electron 技术栈与可逆技术选择"
+    },
+    {
+      "id": "APP-0023-ASM-003",
+      "statement": "保存位置由系统对话框显式选择；用户取消时不创建文件，覆盖确认沿用操作系统对话框语义。",
+      "status": "confirmed",
+      "source": "REQ-0005 AC-31、AC-45、AC-50"
+    }
+  ],
+  "open_questions": [],
+  "blockers": [],
+  "review_authority": {
+    "scheme": "ssh-keygen-y-v1",
+    "identity": "material-project-owner",
+    "namespace": "material-governance-review",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E"
+  },
+  "ci_trust": {
+    "provider": "github_actions_rest_v1",
+    "repository": "wzhic/material",
+    "workflow_path": ".github/workflows/governance.yml",
+    "api_base": "https://api.github.com",
+    "api_version": "2026-03-10",
+    "private": true,
+    "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "ci_events": ["pull_request", "push"],
+    "post_merge_events": ["push"],
+    "required_jobs": {
+      "pull_request": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"],
+      "push": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"]
+    }
+  },
+  "coordination": {
+    "mode": "coordinated-multi",
+    "coordinator_task": "APP-0023",
+    "unit_tasks": {"mac": "APP-0023", "win": "APP-0023"},
+    "compatibility_matrix_doc": "docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md",
+    "deployment_order": ["mac", "win"],
+    "rollback_order": ["win", "mac"],
+    "unit_validation_checks": {
+      "mac": ["desktop_lint", "desktop_typecheck", "desktop_tests", "desktop_package"],
+      "win": ["desktop_lint", "desktop_typecheck", "desktop_tests", "desktop_package"]
+    },
+    "unit_rollback_checks": {
+      "mac": ["desktop_tests", "desktop_package"],
+      "win": ["desktop_tests", "desktop_package"]
+    }
+  }
+}

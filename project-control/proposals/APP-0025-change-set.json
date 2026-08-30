@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0025",
+  "base_head": "25069a01e59f87b824e3c274a54260a8f466b2a8",
+  "paths": [
+    "apps/desktop/src/index.css",
+    "apps/desktop/src/index.ts",
+    "apps/desktop/src/preload.ts",
+    "apps/desktop/src/record/fixtures.ts",
+    "apps/desktop/src/record/ipc.test.ts",
+    "apps/desktop/src/record/ipc.ts",
+    "apps/desktop/src/record/repository.test.ts",
+    "apps/desktop/src/record/repository.ts",
+    "apps/desktop/src/record/storage.test.ts",
+    "apps/desktop/src/record/types.ts",
+    "apps/desktop/src/ui/RecordsPage.tsx",
+    "docs/development/README.md",
+    "docs/development/分析记录备份恢复-DEV-0018-v1.0.md",
+    "docs/development/历史记录源素材恢复-DEV-0017-v1.0.md",
+    "docs/troubleshooting/README.md",
+    "docs/troubleshooting/分析记录备份恢复-TRB-0015-v1.0.md",
+    "project-control/proposals/APP-0025-task.json"
+  ]
+}

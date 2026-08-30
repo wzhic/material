@@ -1,0 +1,22 @@
+{
+  "base_head": "ed6b3634ef99375cf099f487783f4f3d4a93f69a",
+  "paths": [
+    "apps/desktop/src/analysis-engine/engine.test.ts",
+    "apps/desktop/src/analysis-engine/errors.ts",
+    "apps/desktop/src/analysis-engine/evidence-packet.test.ts",
+    "apps/desktop/src/analysis-engine/evidence-packet.ts",
+    "apps/desktop/src/analysis-engine/index.ts",
+    "apps/desktop/src/analysis-engine/model-output.ts",
+    "apps/desktop/src/analysis-engine/prompt.ts",
+    "apps/desktop/src/analysis-engine/prompts/fusion-analysis.v1.json",
+    "apps/desktop/src/analysis-engine/report.ts",
+    "apps/desktop/src/analysis-engine/runner.ts",
+    "apps/desktop/src/analysis-engine/types.ts",
+    "docs/development/README.md",
+    "docs/development/分析运行与融合报告-DEV-0012-v1.0.md",
+    "docs/troubleshooting/README.md",
+    "docs/troubleshooting/分析运行与融合报告-TRB-0009-v1.0.md"
+  ],
+  "schema_version": 1,
+  "task_id": "APP-0014"
+}

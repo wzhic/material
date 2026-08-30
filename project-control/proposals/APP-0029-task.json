@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0029",
+  "status": "DRAFT",
+  "scope_version": 1,
+  "requirement": {
+    "id": "单素材分析-REQ-0005",
+    "name": "视觉模型分析整合",
+    "version": "v1.0",
+    "interaction_kind": "mixed"
+  },
+  "summary": "在已包含 APP-0027 Codex 订阅分析的最新完整产品栈上，重新组合 APP-0028 已验证的 OpenAI 兼容视觉模型能力。用户选择 API Key 模型时，只有明确声明支持视觉输入的配置才接收当前图片的有界压缩副本或 M02 生成且绑定同一素材指纹的视频代表关键帧；原始视频、音频、任意本地路径和未选素材不外发。用户选择 Codex 订阅时继续沿用受控文本证据路径，不向 Codex 发送媒体字节。分析开始后来源、配置和模型固定，失败不自动重试、切换或回退。视觉结论继续经过结构化 schema、证据校验、行业模板、评分、报告确认、分析记录、反馈、重新分析和 PDF 链路。所有 data URL、压缩字节和临时路径只存在于主进程当前请求内存，不进入 Renderer、SQLite、报告、日志、导出或治理记录。本任务处理 APP-0028 与 APP-0027 在模型选择、分析编排、IPC 和 UI 上的交叉整合并完整重跑验证；不开发 OCR/ASR 发行、游戏联网补全、远程图片 URL、视觉能力自动探测、多模型并行、后台重试、部署、发布或最终合并。",
+  "release_units": [
+    "mac",
+    "win"
+  ],
+  "branch": "codex/req-0005-app-0029-vision-analysis-integration",
+  "base_branch": "codex/req-0005-app-0025-record-backup-restore",
+  "allowed_paths": [
+    "apps/desktop/**",
+    "docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md",
+    "docs/development/OpenAI兼容视觉模型分析-DEV-0021-v1.0.md",
+    "docs/development/README.md",
+    "docs/troubleshooting/OpenAI兼容视觉模型分析-TRB-0018-v1.0.md",
+    "docs/troubleshooting/README.md",
+    "project-control/**"
+  ],
+  "allowed_commands": [
+    "python3 tools/governance/taskctl.py current --json",
+    "python3 tools/governance/reconcile.py session --json",
+    "python3 tools/governance/reconcile.py docs --json",
+    "python3 tools/governance/reconcile.py static --json",
+    "python3 tools/governance/reconcile.py precommit --json",
+    "python3 tools/governance/taskctl.py begin APP-0029",
+    "python3 tools/governance/taskctl.py subtask-start APP-0029",
+    "python3 tools/governance/taskctl.py subtask-finish APP-0029",
+    "python3 tools/governance/taskctl.py run-validation APP-0029",
+    "python3 tools/governance/taskctl.py run-required APP-0029",
+    "python3 tools/governance/taskctl.py commit-task APP-0029",
+    "python3 tools/governance/taskctl.py push-task APP-0029",
+    "python3 tools/governance/taskctl.py open-pr APP-0029",
+    "git cherry-pick --no-commit fd2b5c0016797f9a9eceaa9ec86dfbb453372659",
+    "npm --prefix apps/desktop run lint",
+    "npm --prefix apps/desktop run typecheck",
+    "npm --prefix apps/desktop run test",
+    "npm --prefix apps/desktop run test:model-runtime",
+    "npm --prefix apps/desktop run test:codex-runtime",
+    "npm --prefix apps/desktop run package"
+  ],
+  "allowed_tools": [
+    "apply_patch",
+    "ApplyPatch",
+    "Bash",
+    "Read",
+    "Glob",
+    "Grep",
+    "view_image",
+    "codex_app__read_thread_terminal"
+  ],
+  "dependencies": [],
+  "required_docs": [
+    "docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md",
+    "docs/development/OpenAI兼容视觉模型分析-DEV-0021-v1.0.md"
+  ],
+  "validation": {
+    "required": [
+      {
+        "id": "docs_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "docs", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "repository_reconcile",
+        "argv": ["python3", "tools/governance/reconcile.py", "static", "--json"],
+        "timeout_seconds": 120,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_lint",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "lint"],
+        "timeout_seconds": 300,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_typecheck",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "typecheck"],
+        "timeout_seconds": 300,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_tests",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "test"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_model_runtime_tests",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "test:model-runtime"],
+        "timeout_seconds": 300,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_codex_runtime_tests",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "test:codex-runtime"],
+        "timeout_seconds": 300,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "desktop_package",
+        "argv": ["npm", "--prefix", "apps/desktop", "run", "package"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      },
+      {
+        "id": "governance_unit_tests",
+        "argv": ["python3", "-m", "unittest", "discover", "-s", "tools/governance/tests", "-p", "test_*.py", "-v"],
+        "timeout_seconds": 1200,
+        "gates": ["LOCAL_VERIFIED", "CI_VERIFIED", "POST_MERGE_VERIFIED"],
+        "release_units": ["mac", "win"]
+      }
+    ],
+    "results": []
+  },
+  "assumptions": [
+    {
+      "id": "APP-0029-ASM-001",
+      "statement": "用户已明确要求开始视觉模型分析整合；APP-0028 的已提交实现只作为代码来源，APP-0029 在包含 APP-0027 的最新产品栈重新组合并重新验证，不复用旧任务的通过结果。",
+      "status": "confirmed",
+      "source": "当前用户消息与已核对的分支状态"
+    },
+    {
+      "id": "APP-0029-ASM-002",
+      "statement": "视觉媒体只发送给用户显式选择且明确声明支持视觉输入的 API Key 模型；Codex 订阅继续只接收受控文本和结构化证据，两个来源互不静默替代。",
+      "status": "confirmed",
+      "source": "用户已确认的模型选择权与 APP-0027 数据边界"
+    },
+    {
+      "id": "APP-0029-ASM-003",
+      "statement": "图片输入只来自当前已验证素材会话；视频输入只来自 M02 代表帧并绑定同一素材指纹。默认最多 8 张、单边不超过 1280 像素、JPEG 质量 80、单张不超过 1 MiB、总原始图片负载不超过 6 MiB，越限明确降级或拒绝。",
+      "status": "confirmed",
+      "source": "APP-0028 已确认且可逆的数据最小化边界"
+    },
+    {
+      "id": "APP-0029-ASM-004",
+      "statement": "视觉请求只在 Electron 主进程准备；data URL、压缩字节、原始路径和临时帧路径不进入 Renderer、SQLite、报告、日志、导出、任务记录或错误正文。",
+      "status": "confirmed",
+      "source": "现有本地素材和凭据安全合同"
+    },
+    {
+      "id": "APP-0029-ASM-005",
+      "statement": "分析开始后固定用户选择的来源、配置和模型；视觉失败不自动切换、回退或重试，用户可查看局限并显式重新发起。",
+      "status": "confirmed",
+      "source": "REQ-0005 已确认的运行期模型控制规则"
+    },
+    {
+      "id": "APP-0029-ASM-006",
+      "statement": "视觉结论仍必须通过结构化输出和证据校验；模型不得引用未发送帧，也不得把有限代表帧推断表述为完整视频事实。",
+      "status": "confirmed",
+      "source": "REQ-0005 时间证据、报告局限和 M08 合同"
+    }
+  ],
+  "open_questions": [],
+  "blockers": [],
+  "review_authority": {
+    "scheme": "ssh-keygen-y-v1",
+    "identity": "material-project-owner",
+    "namespace": "material-governance-review",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNUEE8v6J5aSzWklD+6mhnu3Uff0P/q9so0iRsvQxyJ material-governance-review",
+    "key_fingerprint": "SHA256:4QhGxHaVWwbZzLTyBNp/lWD+tqNXtDt84oDzH4Wnx+E"
+  },
+  "ci_trust": {
+    "provider": "github_actions_rest_v1",
+    "repository": "wzhic/material",
+    "workflow_path": ".github/workflows/governance.yml",
+    "api_base": "https://api.github.com",
+    "api_version": "2026-03-10",
+    "private": true,
+    "token_env": "MATERIAL_GITHUB_ACTIONS_READ_TOKEN",
+    "ci_events": ["pull_request", "push"],
+    "post_merge_events": ["push"],
+    "required_jobs": {
+      "pull_request": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"],
+      "push": ["Governance (ubuntu-latest)", "Governance (macos-latest)", "Governance (windows-latest)"]
+    }
+  },
+  "coordination": {
+    "mode": "coordinated-multi",
+    "coordinator_task": "APP-0029",
+    "unit_tasks": {"mac": "APP-0029", "win": "APP-0029"},
+    "compatibility_matrix_doc": "docs/requirements/单素材分析-REQ-0005/单素材分析-REQ-0005-v1.0.md",
+    "deployment_order": ["mac", "win"],
+    "rollback_order": ["win", "mac"],
+    "unit_validation_checks": {
+      "mac": ["desktop_lint", "desktop_typecheck", "desktop_tests", "desktop_model_runtime_tests", "desktop_codex_runtime_tests", "desktop_package"],
+      "win": ["desktop_lint", "desktop_typecheck", "desktop_tests", "desktop_model_runtime_tests", "desktop_codex_runtime_tests", "desktop_package"]
+    },
+    "unit_rollback_checks": {
+      "mac": ["desktop_tests", "desktop_package"],
+      "win": ["desktop_tests", "desktop_package"]
+    }
+  }
+}

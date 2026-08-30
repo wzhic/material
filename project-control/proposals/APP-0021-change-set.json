@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0021",
+  "base_head": "3b79bed19d3e9f71862cac02594ba19a3d18fae6",
+  "paths": [
+    "apps/desktop/src/analysis-runtime/ipc.ts",
+    "apps/desktop/src/analysis-runtime/service.test.ts",
+    "apps/desktop/src/analysis-runtime/service.ts",
+    "apps/desktop/src/analysis-runtime/types.ts",
+    "apps/desktop/src/analysis/reanalysis.test.ts",
+    "apps/desktop/src/analysis/reanalysis.ts",
+    "apps/desktop/src/index.css",
+    "apps/desktop/src/preload.ts",
+    "apps/desktop/src/record/confirmation.test.ts",
+    "apps/desktop/src/record/confirmation.ts",
+    "apps/desktop/src/record/domain.ts",
+    "apps/desktop/src/record/repository.test.ts",
+    "apps/desktop/src/ui/AnalysisReportPreviewPage.tsx",
+    "apps/desktop/src/ui/App.tsx",
+    "apps/desktop/src/ui/RecordsPage.tsx",
+    "docs/development/README.md",
+    "docs/development/对话分析与重新分析-DEV-0015-v1.0.md",
+    "docs/troubleshooting/README.md",
+    "docs/troubleshooting/对话分析与重新分析-TRB-0012-v1.0.md",
+    "project-control/proposals/APP-0021-task.json"
+  ]
+}

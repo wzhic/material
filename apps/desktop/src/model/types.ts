@@ -1,0 +1,216 @@
+export type ModelProviderId = string;
+
+export interface ModelProviderInfo {
+  id: ModelProviderId;
+  displayName: string;
+  baseUrl: string | null;
+  customBaseUrl: boolean;
+  requiresManualModelId: boolean;
+  documentationUrl: string | null;
+  adapterVersion: string;
+  capabilities: {
+    dataDestination: string;
+    inputKinds: readonly ('image' | 'text')[];
+    maxInputCharacters: number;
+    maxMessages: number;
+    maxOutputTokens: number;
+    rawMediaUpload: false;
+    structuredOutput: true;
+    thinkingControl: boolean;
+  };
+}
+
+export interface ModelProviderConnection {
+  baseUrl: string | null;
+}
+
+export interface AvailableModel {
+  id: string;
+  ownedBy: string;
+}
+
+export type ModelConnectionStatus = 'error' | 'ready' | 'unchecked';
+
+export interface ModelConfigurationSummary {
+  id: string;
+  providerId: ModelProviderId;
+  providerName: string;
+  displayName: string;
+  baseUrl: string | null;
+  manualModelId: string | null;
+  availableModels: AvailableModel[];
+  selectedModelId: string | null;
+  connectionStatus: ModelConnectionStatus;
+  lastCheckedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  writeVersion: number;
+  visualInputEnabled: boolean;
+  hasCredential: true;
+}
+
+export interface SaveModelConfigurationInput {
+  id?: string;
+  providerId: ModelProviderId;
+  displayName: string;
+  apiKey?: string;
+  baseUrl?: string | null;
+  manualModelId?: string | null;
+  selectedModelId?: string | null;
+  visualInputEnabled?: boolean;
+  expectedWriteVersion?: number;
+}
+
+export interface ModelMessage {
+  role: 'assistant' | 'system' | 'user';
+  content: string;
+}
+
+/**
+ * Main-process-only visual payload. It must never cross IPC or enter persisted
+ * reports, logs, exports, or model invocation audits.
+ */
+export interface ModelVisualInput {
+  dataBase64: string;
+  evidenceId: string;
+  height: number;
+  mediaType: 'image/jpeg';
+  timeMs: number | null;
+  width: number;
+}
+
+export interface ModelCompletionRequest {
+  configurationId: string;
+  modelId: string;
+  messages: readonly ModelMessage[];
+  format: 'json' | 'text';
+  maxTokens: number;
+  /** Optional JSON Schema for providers that can constrain structured output. */
+  outputSchema?: Readonly<Record<string, unknown>>;
+  thinking: 'disabled' | 'enabled';
+  temperature?: number;
+  visualInputs?: readonly ModelVisualInput[];
+}
+
+export interface ModelUsage {
+  /** False means the provider did not return a complete, trustworthy usage record. */
+  available: boolean;
+  completionTokens: number;
+  promptCacheHitTokens: number;
+  promptCacheMissTokens: number;
+  promptTokens: number;
+  totalTokens: number;
+}
+
+export interface ModelCompletion {
+  content: string;
+  finishReason: string | null;
+  modelId: string;
+  providerId: ModelProviderId;
+  systemFingerprint: string | null;
+  usage: ModelUsage;
+}
+
+export interface ModelConnectivityTestResult {
+  checkedAt: string;
+  configurationId: string;
+  durationMs: number;
+  providerId: ModelProviderId;
+  requestedModelId: string;
+  returnedModelId: string;
+}
+
+export interface ModelInvocationAudit {
+  adapterVersion: string;
+  configurationId: string;
+  configurationVersion: number;
+  durationMs: number;
+  errorCode: ModelApiErrorCode | null;
+  finishedAt: string;
+  modelId: string;
+  providerId: ModelProviderId;
+  /** Provider-native model identifier sent on the wire. */
+  providerRequestedModelId: string | null;
+  /** Actual model reported by the upstream provider, when separately available. */
+  providerReturnedModelId: string | null;
+  /** Provider-native reasoning effort frozen for this invocation, when applicable. */
+  providerReasoningEffort: string | null;
+  startedAt: string;
+  status: 'cancelled' | 'failed' | 'succeeded' | 'timed_out';
+}
+
+export type ModelInvocationResult =
+  | {
+      ok: true;
+      audit: ModelInvocationAudit;
+      completion: ModelCompletion;
+    }
+  | {
+      ok: false;
+      audit: ModelInvocationAudit;
+      error: ModelApiError;
+    };
+
+export type ModelApiErrorCode =
+  | 'AUTHENTICATION_FAILED'
+  | 'BALANCE_INSUFFICIENT'
+  | 'CANCELLED'
+  | 'CONFIGURATION_CHANGED'
+  | 'CONFIGURATION_NOT_FOUND'
+  | 'INVALID_INPUT'
+  | 'MODEL_NOT_AVAILABLE'
+  | 'NETWORK_UNAVAILABLE'
+  | 'PROVIDER_NOT_SUPPORTED'
+  | 'RATE_LIMITED'
+  | 'RESPONSE_INVALID'
+  | 'SECURE_STORAGE_UNAVAILABLE'
+  | 'SERVICE_UNAVAILABLE'
+  | 'TIMEOUT'
+  | 'UNKNOWN';
+
+export interface ModelApiError {
+  code: ModelApiErrorCode;
+  message: string;
+}
+
+export type ModelApiResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: ModelApiError };
+
+export interface SecureStorageStatus {
+  available: boolean;
+  backend: 'keychain' | 'dpapi' | 'secret-service' | 'unavailable';
+  message: string;
+}
+
+export interface ModelSettingsSnapshot {
+  configurations: ModelConfigurationSummary[];
+  providers: ModelProviderInfo[];
+  secureStorage: SecureStorageStatus;
+}
+
+export interface ModelApi {
+  getSettings: () => Promise<ModelApiResult<ModelSettingsSnapshot>>;
+  saveConfiguration: (
+    input: SaveModelConfigurationInput,
+  ) => Promise<ModelApiResult<ModelConfigurationSummary>>;
+  refreshModels: (
+    id: string,
+  ) => Promise<ModelApiResult<ModelConfigurationSummary>>;
+  testModel: (
+    configurationId: string,
+    modelId: string,
+  ) => Promise<ModelApiResult<ModelConnectivityTestResult>>;
+  removeConfiguration: (
+    id: string,
+    expectedWriteVersion: number,
+  ) => Promise<ModelApiResult<null>>;
+}
+
+export const MODEL_IPC_CHANNELS = {
+  getSettings: 'material:models:get-settings',
+  refreshModels: 'material:models:refresh-models',
+  removeConfiguration: 'material:models:remove-configuration',
+  saveConfiguration: 'material:models:save-configuration',
+  testModel: 'material:models:test-model',
+} as const;

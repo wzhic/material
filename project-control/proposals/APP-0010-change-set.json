@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "task_id": "APP-0010",
+  "base_head": "2e1b8d519928a466f0b8c2db123cd76c4a321b74",
+  "paths": [
+    "apps/desktop/src/tooling/adapters.ts",
+    "apps/desktop/src/tooling/artifact-manager.ts",
+    "apps/desktop/src/tooling/broker.ts",
+    "apps/desktop/src/tooling/evidence.test.ts",
+    "apps/desktop/src/tooling/evidence.ts",
+    "apps/desktop/src/tooling/foundation.test.ts",
+    "apps/desktop/src/tooling/index.ts",
+    "apps/desktop/src/tooling/orchestrator.test.ts",
+    "apps/desktop/src/tooling/orchestrator.ts",
+    "apps/desktop/src/tooling/registry.ts",
+    "apps/desktop/src/tooling/schema.ts",
+    "apps/desktop/src/tooling/types.ts",
+    "docs/development/README.md",
+    "docs/development/工具执行底座-DEV-0008-v1.0.md",
+    "docs/troubleshooting/README.md",
+    "docs/troubleshooting/工具执行底座-TRB-0005-v1.0.md"
+  ]
+}
