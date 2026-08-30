@@ -66,6 +66,13 @@ export interface ModelMessage {
   content: string;
 }
 
+export const MODEL_VISUAL_INPUT_LIMITS = Object.freeze({
+  maxDimension: 1_280,
+  maxImageBytes: 1024 * 1024,
+  maxImages: 8,
+  maxTotalBytes: 6 * 1024 * 1024,
+});
+
 /**
  * Main-process-only visual payload. It must never cross IPC or enter persisted
  * reports, logs, exports, or model invocation audits.

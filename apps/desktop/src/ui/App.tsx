@@ -213,11 +213,13 @@ export const createAnalysisModelOptions = (
   const codexOptions = codexState.models.flatMap((model) => {
     if (!model.inputModalities.includes('text') || seenModelIds.has(model.id)) return [];
     seenModelIds.add(model.id);
+    const visualInputEnabled = model.inputModalities.includes('image');
     return [{
       configurationDisplayName: CODEX_SUBSCRIPTION_CONFIGURATION_DISPLAY_NAME,
       configurationId: CODEX_SUBSCRIPTION_CONFIGURATION_ID,
       label: `${model.displayName} · ${model.id} · ${model.modelSlug}`
-        + ` · ${model.defaultReasoningEffort} · Codex 订阅 · Beta`,
+        + ` · ${model.defaultReasoningEffort}`
+        + `${visualInputEnabled ? ' · 视觉' : ''} · Codex 订阅 · Beta`,
       modelId: model.id,
       providerId: CODEX_SUBSCRIPTION_CONFIGURATION_ID,
       source: 'codex-subscription' as const,
@@ -226,7 +228,7 @@ export const createAnalysisModelOptions = (
         CODEX_SUBSCRIPTION_CONFIGURATION_ID,
         model.id,
       ),
-      visualInputEnabled: false,
+      visualInputEnabled,
     }];
   });
   return [...apiKeyOptions, ...codexOptions];
@@ -669,7 +671,9 @@ const NewAnalysisPage = ({
               </select>
               <small>
                 {selectedModel?.source === 'codex-subscription'
-                  ? '将消耗当前账号的 Codex 订阅额度；V1 只发送结构化文本证据，不发送原始素材。'
+                  ? selectedModel.visualInputEnabled
+                    ? '将消耗当前账号的 Codex 订阅额度；发送结构化文本和最多 8 个受控视频代表帧，不上传原视频或音频。'
+                    : '将消耗当前账号的 Codex 订阅额度；该模型只发送结构化文本证据，不发送原始素材。'
                   : selectedModel?.visualInputEnabled
                     ? '该 API Key 配置会发送受控压缩图片或视频代表帧；不发送原视频和音频。'
                     : selectedModel

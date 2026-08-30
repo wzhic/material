@@ -1,14 +1,11 @@
 import type { FrameExtractionOutput } from '../media-tools';
 import { frameEvidenceId } from '../media-tools';
-import type { ModelVisualInput } from '../model/types';
+import { MODEL_VISUAL_INPUT_LIMITS, type ModelVisualInput } from '../model/types';
 import type { ToolArtifact, ToolInvocationSuccess } from '../tooling/types';
 
 export const VISUAL_INPUT_LIMITS = Object.freeze({
   jpegQuality: 80,
-  maxDimension: 1_280,
-  maxImageBytes: 1024 * 1024,
-  maxImages: 8,
-  maxTotalBytes: 6 * 1024 * 1024,
+  ...MODEL_VISUAL_INPUT_LIMITS,
 });
 
 export interface EncodedVisualImage {

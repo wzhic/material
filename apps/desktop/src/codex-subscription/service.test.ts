@@ -209,6 +209,18 @@ const analysisRequest = (modelId = 'gpt-5.6-sol'): ModelCompletionRequest => ({
   thinking: 'disabled',
 });
 
+const controlledVisualInput = (overrides: Partial<NonNullable<
+  ModelCompletionRequest['visualInputs']
+>[number]> = {}): NonNullable<ModelCompletionRequest['visualInputs']>[number] => ({
+  dataBase64: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0xff, 0xd9]).toString('base64'),
+  evidenceId: 'frame-00000000000000000001',
+  height: 1,
+  mediaType: 'image/jpeg',
+  timeMs: 0,
+  width: 1,
+  ...overrides,
+});
+
 const appliedThreadStart = (
   params: unknown,
   threadId = 'thread-1',
@@ -1857,7 +1869,7 @@ describe('Codex subscription service', () => {
     expect(client.invalidateGeneration).toHaveBeenCalledWith(1, 'PROTOCOL_ERROR');
   });
 
-  it('rejects visual bytes before starting the Codex runtime', async () => {
+  it('rejects malformed visual bytes before starting the Codex runtime', async () => {
     const client = new FakeClient(signedInHandler());
     const service = new CodexSubscriptionService({
       client,
@@ -1868,12 +1880,8 @@ describe('Codex subscription service', () => {
     const result = await service.complete({
       ...analysisRequest(),
       visualInputs: [{
-        dataBase64: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64'),
-        evidenceId: 'frame-1',
-        height: 1,
-        mediaType: 'image/jpeg',
-        timeMs: 0,
-        width: 1,
+        ...controlledVisualInput(),
+        dataBase64: Buffer.from('not-a-jpeg').toString('base64'),
       }],
     });
 
@@ -1881,8 +1889,145 @@ describe('Codex subscription service', () => {
       error: { code: 'INVALID_INPUT' },
       ok: false,
     });
+    await expect(service.complete({
+      ...analysisRequest(),
+      visualInputs: {} as never,
+    })).resolves.toMatchObject({
+      error: { code: 'INVALID_INPUT' },
+      ok: false,
+    });
     expect(client.calls).toEqual([]);
   });
+
+  it('rejects visual batches that exceed count, dimension, single-frame, or total limits',
+    async () => {
+      const largeJpeg = (bytes: number): string => {
+        const value = Buffer.alloc(bytes, 0);
+        value.set([0xff, 0xd8, 0xff, 0xe0], 0);
+        value.set([0xff, 0xd9], bytes - 2);
+        return value.toString('base64');
+      };
+      const invalidBatches = [
+        [],
+        Array.from({ length: 9 }, (_value, index) => controlledVisualInput({
+          evidenceId: `frame-${index}`,
+        })),
+        [controlledVisualInput({ width: 1_281 })],
+        [controlledVisualInput({ dataBase64: largeJpeg((1024 * 1024) + 1) })],
+        Array.from({ length: 7 }, (_value, index) => controlledVisualInput({
+          dataBase64: largeJpeg(900 * 1024),
+          evidenceId: `frame-${index}`,
+        })),
+      ];
+
+      for (const visualInputs of invalidBatches) {
+        const client = new FakeClient(signedInHandler());
+        const service = new CodexSubscriptionService({
+          client,
+          openExternal: vi.fn(async () => undefined),
+          settingsPath,
+        });
+        const result = await service.complete({ ...analysisRequest(), visualInputs });
+        expect(result).toMatchObject({ error: { code: 'INVALID_INPUT' }, ok: false });
+        expect(client.calls).toEqual([]);
+      }
+    });
+
+  it('rejects controlled frames when the selected catalog model lacks image capability',
+    async () => {
+      const client = new FakeClient(signedInHandler());
+      const service = new CodexSubscriptionService({
+        client,
+        openExternal: vi.fn(async () => undefined),
+        settingsPath,
+      });
+
+      const result = await service.complete({
+        ...analysisRequest(),
+        visualInputs: [controlledVisualInput()],
+      });
+
+      expect(result).toMatchObject({
+        error: { code: 'MODEL_NOT_AVAILABLE' },
+        ok: false,
+      });
+      expect(client.calls.filter((call) => call.method === 'thread/start')).toEqual([]);
+      expect(client.calls.filter((call) => call.method === 'turn/start')).toEqual([]);
+    });
+
+  it('materializes bounded frames as opaque localImage inputs and deletes them after success',
+    async () => {
+      let analysisDirectory: string | null = null;
+      let localImagePath: string | null = null;
+      const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x01, 0x02, 0xff, 0xd9]);
+      const client = new FakeClient(async (method, params) => {
+        if (method === 'model/list') {
+          return {
+            data: [model('gpt-5.6-sol', ['text', 'image'])],
+            nextCursor: null,
+          };
+        }
+        if (method === 'thread/start') return appliedThreadStart(params, 'analysis-thread-1');
+        if (method === 'turn/start') {
+          const turnParams = params as {
+            cwd: string;
+            input: Array<Record<string, unknown>>;
+          };
+          analysisDirectory = turnParams.cwd;
+          expect(turnParams.input[0]).toMatchObject({ type: 'text' });
+          expect(turnParams.input[1]).toMatchObject({ type: 'localImage' });
+          localImagePath = String(turnParams.input[1]?.path);
+          expect(path.dirname(localImagePath)).toBe(analysisDirectory);
+          expect(path.basename(localImagePath)).toBe('representative-frame-01.jpg');
+          expect(localImagePath).not.toContain('frame-secret-evidence');
+          expect(await readFile(localImagePath)).toEqual(jpeg);
+          expect(await readdir(analysisDirectory)).toEqual(['representative-frame-01.jpg']);
+          setImmediate(() => {
+            const message = agentMessage('{"result":"vision-done"}');
+            client.emit('item/completed', itemCompleted(
+              'analysis-thread-1',
+              'analysis-turn-1',
+              message,
+            ));
+            client.emit('turn/completed', turnCompleted(
+              'analysis-thread-1',
+              'analysis-turn-1',
+              [message],
+            ));
+          });
+          return turnStartResponse('analysis-turn-1', [{
+            clientId: null,
+            content: turnParams.input,
+            id: 'user-message-visual-1',
+            type: 'userMessage',
+          }]);
+        }
+        return signedInHandler()(method, params);
+      });
+      const service = new CodexSubscriptionService({
+        client,
+        openExternal: vi.fn(async () => undefined),
+        settingsPath,
+      });
+
+      const result = await service.complete({
+        ...analysisRequest(),
+        visualInputs: [controlledVisualInput({
+          dataBase64: jpeg.toString('base64'),
+          evidenceId: 'frame-secret-evidence',
+        })],
+      });
+
+      expect(result).toMatchObject({
+        completion: { content: '{"result":"vision-done"}' },
+        ok: true,
+      });
+      expect(analysisDirectory).not.toBeNull();
+      expect(localImagePath).not.toBeNull();
+      if (!analysisDirectory || !localImagePath) throw new Error('visual paths were not captured');
+      await expect(readdir(analysisDirectory)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(readFile(localImagePath)).rejects.toMatchObject({ code: 'ENOENT' });
+    });
 
   it('completes analysis with the explicitly requested catalog model and strict turn bounds',
     async () => {
@@ -1910,8 +2055,9 @@ describe('Codex subscription service', () => {
           return appliedThreadStart(params, 'analysis-thread-1');
         }
         if (method === 'turn/start') {
-          const turnParams = params as { cwd: string };
+          const turnParams = params as { cwd: string; input: Array<{ type: string }> };
           expect(await readdir(turnParams.cwd)).toEqual([]);
+          expect(turnParams.input.map((entry) => entry.type)).toEqual(['text']);
           setImmediate(() => {
             client.emit('thread/tokenUsage/updated', {
               threadId: 'analysis-thread-1',
@@ -2893,9 +3039,16 @@ describe('Codex subscription service', () => {
   it('interrupts a late-bound turn once after cancellation without a started notification',
     async () => {
       const turnStart = deferred<unknown>();
+      let analysisDirectory: string | null = null;
       const client = new FakeClient((method, params) => {
+        if (method === 'model/list') {
+          return { data: [model('gpt-5.6-sol', ['text', 'image'])], nextCursor: null };
+        }
         if (method === 'thread/start') return appliedThreadStart(params);
-        if (method === 'turn/start') return turnStart.promise;
+        if (method === 'turn/start') {
+          analysisDirectory = (params as { cwd: string }).cwd;
+          return turnStart.promise;
+        }
         return signedInHandler()(method, params);
       });
       const service = new CodexSubscriptionService({
@@ -2905,7 +3058,10 @@ describe('Codex subscription service', () => {
       });
       const controller = new AbortController();
 
-      const invocation = service.complete(analysisRequest(), controller.signal);
+      const invocation = service.complete({
+        ...analysisRequest(),
+        visualInputs: [controlledVisualInput()],
+      }, controller.signal);
       await vi.waitFor(() => {
         expect(client.calls.filter((call) => call.method === 'turn/start')).toHaveLength(1);
       });
@@ -2915,6 +3071,9 @@ describe('Codex subscription service', () => {
         error: { code: 'CANCELLED' },
         ok: false,
       });
+      expect(analysisDirectory).not.toBeNull();
+      if (!analysisDirectory) throw new Error('visual analysis directory was not captured');
+      await expect(readdir(analysisDirectory)).rejects.toMatchObject({ code: 'ENOENT' });
 
       turnStart.resolve(turnStartResponse('turn-1'));
       await flush();
